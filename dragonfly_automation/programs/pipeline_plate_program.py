@@ -3,9 +3,10 @@ import os
 import numpy as np
 from skimage import filters
 
+from dragonfly_automation import operations
+from dragonfly_automation import global_settings
 from dragonfly_automation.gateway import gateway_utils
-from dragonfly_automation.operations import operations
-from dragonfly_automation.configs import pipeline_plate_config as config
+from dragonfly_automation.programs import pipeline_plate_settings as settings
 
 
 class PipelinePlateProgram(object):
@@ -20,7 +21,7 @@ class PipelinePlateProgram(object):
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(env=env)
 
         # copied from Nathan's script - likely unnecessary
-        self.mm_core.setExposure(config.DEFAULT_EXPOSURE_TIME)
+        self.mm_core.setExposure(settings.DEFAULT_EXPOSURE_TIME)
 
         if env=='prod':
             self.datastore = self._initialize_datastore()
@@ -31,7 +32,7 @@ class PipelinePlateProgram(object):
             self.datastore = None
 
             # reduce the number of z-steps to make debugging easier
-            config.ZSTACK_STEP_SIZE = 6.0
+            settings.ZSTACK_STEP_SIZE = 6.0
 
 
     def _initialize_datastore(self):
@@ -65,8 +66,8 @@ class PipelinePlateProgram(object):
 
         # these `assignImageSynchro` calls are copied directly from Nathan's script
         # TODO: check with Bryant if these are necessary
-        self.mm_core.assignImageSynchro(config.PIEZO_STAGE)
-        self.mm_core.assignImageSynchro(config.XY_STAGE)
+        self.mm_core.assignImageSynchro(global_settings.PIEZO_STAGE)
+        self.mm_core.assignImageSynchro(global_settings.XY_STAGE)
         self.mm_core.assignImageSynchro(self.mm_core.getShutterDevice())
         self.mm_core.assignImageSynchro(self.mm_core.getCameraDevice())
 
@@ -136,7 +137,7 @@ class PipelinePlateProgram(object):
             print('------------------------- Position %d -------------------------' % position_index)
 
             # reset the piezo stage
-            self.mm_core.setPosition(config.PIEZO_STAGE, 0.0)
+            self.mm_core.setPosition(global_settings.PIEZO_STAGE, 0.0)
 
             # move to the next position
             position = position_list.getPosition(position_index)
@@ -148,34 +149,34 @@ class PipelinePlateProgram(object):
                 self.num_fovs_acquired_in_current_well = 0
 
             # if we have already acquired enough FOVs from the current well
-            if self.num_fovs_acquired_in_current_well >= config.MAX_NUM_FOV_PER_WELL:
+            if self.num_fovs_acquired_in_current_well >= settings.MAX_NUM_FOV_PER_WELL:
                 continue
 
             # autofocus
             operations.autofocus(
                 self.mm_studio, 
                 self.mm_core, 
-                config_group=config.HARDWARE_CONFIG_GROUP,
-                channel_name=config.CHANNEL_405['name'],
-                laser_line=config.LASER_LINE,
-                laser_name=config.CHANNEL_405['laser_name'],
-                laser_power=config.CHANNEL_405['laser_power'],
-                camera_name=config.CAMERA_NAME,
-                camera_gain=config.DEFAULT_CAMERA_GAIN,
-                exposure_time=config.DEFAULT_EXPOSURE_TIME)
+                channel_name=settings.CHANNEL_405['name'],
+                laser_name=settings.CHANNEL_405['laser_name'],
+                laser_power=settings.CHANNEL_405['laser_power'],
+                camera_gain=settings.DEFAULT_CAMERA_GAIN,
+                exposure_time=settings.DEFAULT_EXPOSURE_TIME)
     
 
             # confluency check
             if not self.confluency_test():
                 continue
+    
 
+            # auto-exposure (only if this is the first FOV of a new well)
             if new_well_flag:
-                exposure_time, laser_power, status = operations.autoexposure(config.CHANNEL_488)
-                config.CHANNEL_488['calculated_laser_power'] = laser_power
-                config.CHANNEL_488['calculated_exposure_time'] = exposure_time
-
-            operations.acquire_stack(self.datastore, config.CHANNEL_405)
-            operations.acquire_stack(self.datastore, config.CHANNEL_488)
+                exposure_time, laser_power, status = operations.autoexposure(settings.CHANNEL_488)
+                settings.CHANNEL_488['calculated_laser_power'] = laser_power
+                settings.CHANNEL_488['calculated_exposure_time'] = exposure_time
+            
+            # acquire the stacks using the calculated laser power and exposure time
+            operations.acquire_stack(self.datastore, settings.CHANNEL_405)
+            operations.acquire_stack(self.datastore, settings.CHANNEL_488)
 
 
         self.cleanup()

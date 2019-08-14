@@ -1,26 +1,29 @@
 
-
+from dragonfly_automation import global_settings
 
 def autofocus(
     mm_studio, 
     mm_core, 
-    config_group, 
     channel_name, 
-    laser_line, laser_name, laser_power, 
-    camera_name, camera_gain, exposure_time):
+    laser_name, 
+    laser_power, 
+    camera_gain, 
+    exposure_time,
+    config_group=global_settings.HARDWARE_CONFIG_GROUP, 
+    laser_line=global_settings.LASER_LINE,
+    camera_name=global_settings.CAMERA_NAME):
+
     '''
     Autofocus using a given configuration
 
     Parameters
     ----------
     mm_studio, mm_core : 
-    config_group :
     channel_name : 
-    laser_line, laser_name, laser_power :
-    camera_name, camera_gain, exposure_time : 
-
-    TODO: determine which of these parameters should be global constants 
-          (e.g., config_group, laser_line, camera_name)
+    laser_name : 
+    laser_power :
+    camera_gain : 
+    exposure_time : 
 
     TODO: optionally specify the autofocus method (either AFC or traditional autofocus)
     
