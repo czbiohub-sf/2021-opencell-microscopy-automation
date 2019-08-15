@@ -1,5 +1,7 @@
 
+import numpy as np
 from dragonfly_automation import global_settings
+
 
 def autofocus(
     mm_studio, 
@@ -50,8 +52,97 @@ def autofocus(
     mm_core.waitForSystem()
 
 
-def acquire_stack(datastore, config):
+def acquire_snap(gate, mm_studio):
+    '''
+    Acquire an image using the current laser/camera/exposure settings
+    and return the image data as a numpy memmap
+
+    TODO: call gate.clearQueue (wait for new version of mm2python)
+    TODO: check that meta.bitDepth is uint16
+    '''
+
+    mm_studio.live().snape(True)
+    meta = gate.getLastMeta()
+
+    data = np.memmap(
+        meta.getFilepath(),
+        dtype='uint16',
+        mode='r+',
+        offset=0,
+        shape=(meta.getxRange(). meta.getyRange()))
+    
+    return data
+
+
+def acquire_stack(mm_core, datastore, settings):
+    '''
+    Acquire a z-stack using the given settings
+    and 'put' it in the datastore object
+    '''
+
+    # move_z(mm_core, zdevice, position=0, kind='absolute')
+
     pass
+
+
+def update_channel_settings(mm_core, channel_settings):
+    '''
+    Convenience method to set the laser power, exposure time, and camera gain
+    
+    (KC: not sure whether the order of these operations matters,
+    but to be safe the order here is preserved from Nathan's script)
+    '''
+
+    mm_core.setConfig(
+        global_settings.HARDWARE_CONFIG_GROUP, 
+        channel_settings['name'])
+
+    # laser power
+    mm_core.setProperty(
+        global_settings.LASER_LINE,
+        channel_settings['laser_name'],
+        channel_settings['laser_power'])
+
+    # exposure time
+    mm_core.setExposure(
+        float(channel_settings['exposure_time']))
+
+    # camera gain
+    mm_core.setProperty(
+        global_settings.CAMERA_NAME,
+        'Gain',
+        channel_settings['camera_gain'])
+
+
+
+def move_z(mm_core, zdevice, position=None, kind=None):
+    '''
+    Convenience method to move a z-stage
+    (adapted from Nathan's script)
+
+    TODO: basic sanity checks on the value of `position`
+    (e.g., if kind=='relative', `position` shouldn't be a 'big' number)
+    '''
+
+    if kind not in ['relative', 'absolute']:
+        raise ValueError("`kind` must be either 'relative' or 'absolute'")
+
+    try:
+        position = float(position)
+    except ValueError:
+        raise TypeError('`position` cannot be coerced to float')
+    
+    if np.isnan(position):
+        raise TypeError('`position` cannot be nan')
+    
+    if kind=='absolute':
+        mm_core.setPosition(zdevice, position)
+    elif kind=='relative':
+        mm_core.setRelativePosition(zdevice, position)
+
+    mm_core.waitForDevice(zdevice)
+    actual_position = mm_core.getPosition(zdevice)
+    return actual_position
 
 
 def autoexposure(config):

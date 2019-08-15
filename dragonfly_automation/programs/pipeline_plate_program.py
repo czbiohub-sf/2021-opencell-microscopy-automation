@@ -140,6 +140,7 @@ class PipelinePlateProgram(object):
             self.mm_core.setPosition(global_settings.PIEZO_STAGE, 0.0)
 
             # move to the next position
+            # (note that this does *not* update the Piezo stage, only the motorized stage)
             position = position_list.getPosition(position_index)
             position.goToPosition(position, self.mm_core)
 
