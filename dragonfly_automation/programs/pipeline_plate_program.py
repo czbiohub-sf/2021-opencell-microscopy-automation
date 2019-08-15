@@ -4,7 +4,7 @@ import numpy as np
 from skimage import filters
 
 from dragonfly_automation import operations
-from dragonfly_automation import global_settings
+from dragonfly_automation import constants
 from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.programs import pipeline_plate_settings as settings
 
@@ -19,9 +19,6 @@ class PipelinePlateProgram(object):
 
         # create the py4j objects
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(env=env)
-
-        # copied from Nathan's script - likely unnecessary
-        self.mm_core.setExposure(settings.DEFAULT_EXPOSURE_TIME)
 
         if env=='prod':
             self.datastore = self._initialize_datastore()
@@ -47,7 +44,9 @@ class PipelinePlateProgram(object):
         should_split_positions = True
 
         datastore = self.mm_studio.data().createMultipageTIFFDatastore(
-            self.data_dirpath, should_generate_separate_metadata, should_split_positions)
+            self.data_dirpath, 
+            should_generate_separate_metadata, 
+            should_split_positions)
 
         self.mm_studio.displays().createDisplay(datastore)
         return datastore
@@ -66,8 +65,8 @@ class PipelinePlateProgram(object):
 
         # these `assignImageSynchro` calls are copied directly from Nathan's script
         # TODO: check with Bryant if these are necessary
-        self.mm_core.assignImageSynchro(global_settings.PIEZO_STAGE)
-        self.mm_core.assignImageSynchro(global_settings.XY_STAGE)
+        self.mm_core.assignImageSynchro(constants.PIEZO_STAGE)
+        self.mm_core.assignImageSynchro(constants.XY_STAGE)
         self.mm_core.assignImageSynchro(self.mm_core.getShutterDevice())
         self.mm_core.assignImageSynchro(self.mm_core.getCameraDevice())
 
@@ -137,7 +136,11 @@ class PipelinePlateProgram(object):
             print('------------------------- Position %d -------------------------' % position_index)
 
             # reset the piezo stage
-            self.mm_core.setPosition(global_settings.PIEZO_STAGE, 0.0)
+            self.mm_core.setPosition(constants.PIEZO_STAGE, 0.0)
+
+            # reset the channel settings to their default values
+            settings.dapi_channel.reset()
+            settings.gfp_channel.reset()
 
             # move to the next position
             # (note that this does *not* update the Piezo stage, only the motorized stage)
@@ -153,16 +156,8 @@ class PipelinePlateProgram(object):
             if self.num_fovs_acquired_in_current_well >= settings.MAX_NUM_FOV_PER_WELL:
                 continue
 
-            # autofocus
-            operations.autofocus(
-                self.mm_studio, 
-                self.mm_core, 
-                channel_name=settings.CHANNEL_405['name'],
-                laser_name=settings.CHANNEL_405['laser_name'],
-                laser_power=settings.CHANNEL_405['laser_power'],
-                camera_gain=settings.DEFAULT_CAMERA_GAIN,
-                exposure_time=settings.DEFAULT_EXPOSURE_TIME)
-    
+            # autofocus using DAPI 
+            operations.autofocus(self.mm_studio, self.mm_core, settings.dapi_channel)    
 
             # confluency check
             if not self.confluency_test():
@@ -171,13 +166,13 @@ class PipelinePlateProgram(object):
 
             # auto-exposure (only if this is the first FOV of a new well)
             if new_well_flag:
-                exposure_time, laser_power, status = operations.autoexposure(settings.CHANNEL_488)
-                settings.CHANNEL_488['calculated_laser_power'] = laser_power
-                settings.CHANNEL_488['calculated_exposure_time'] = exposure_time
+                exposure_time, laser_power, status = operations.autoexposure(settings.gfp_channel)
+                settings.gfp_channel.laser_power = laser_power
+                settings.gfp_channel.exposure_time = exposure_time
             
             # acquire the stacks using the calculated laser power and exposure time
-            operations.acquire_stack(self.datastore, settings.CHANNEL_405)
-            operations.acquire_stack(self.datastore, settings.CHANNEL_488)
+            operations.acquire_stack(self.mm_core, self.datastore, settings.dapi_channel)
+            operations.acquire_stack(self.mm_core, self.datastore, settings.gfp_channel)
 
 
         self.cleanup()

@@ -1,19 +1,8 @@
 
 import numpy as np
-from dragonfly_automation import global_settings
 
 
-def autofocus(
-    mm_studio, 
-    mm_core, 
-    channel_name, 
-    laser_name, 
-    laser_power, 
-    camera_gain, 
-    exposure_time,
-    config_group=global_settings.HARDWARE_CONFIG_GROUP, 
-    laser_line=global_settings.LASER_LINE,
-    camera_name=global_settings.CAMERA_NAME):
+def autofocus(mm_studio, mm_core, channel_settings):
 
     '''
     Autofocus using a given configuration
@@ -21,22 +10,14 @@ def autofocus(
     Parameters
     ----------
     mm_studio, mm_core : 
-    channel_name : 
-    laser_name : 
-    laser_power :
-    camera_gain : 
-    exposure_time : 
+    channel_settings : 
 
     TODO: optionally specify the autofocus method (either AFC or traditional autofocus)
     
     '''
 
-    mm_core.setConfig(config_group, channel_name)
-    mm_core.waitForConfig(config_group, channel_name)
-
-    mm_core.setExposure(float(exposure_time))
-    mm_core.setProperty(laser_line, laser_name, laser_power)
-    mm_core.setProperty(camera_name, 'Gain', camera_gain)
+    # change to the right channel
+    change_channel(mm_core, channel_settings)
 
     af_manager = mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()
@@ -50,6 +31,7 @@ def autofocus(
 
     # just to be safe
     mm_core.waitForSystem()
+
 
 
 def acquire_snap(gate, mm_studio):
@@ -74,6 +56,7 @@ def acquire_snap(gate, mm_studio):
     return data
 
 
+
 def acquire_stack(mm_core, datastore, settings):
     '''
     Acquire a z-stack using the given settings
@@ -85,33 +68,41 @@ def acquire_stack(mm_core, datastore, settings):
     pass
 
 
-def update_channel_settings(mm_core, channel_settings):
+
+def change_channel(mm_core, channel_settings):
     '''
     Convenience method to set the laser power, exposure time, and camera gain
     
-    (KC: not sure whether the order of these operations matters,
+    (KC: pretty sure the order of these operations doesn't matter,
     but to be safe the order here is preserved from Nathan's script)
     '''
 
+    # hardware config
     mm_core.setConfig(
-        global_settings.HARDWARE_CONFIG_GROUP, 
-        channel_settings['name'])
+        channel_settings.config_group, 
+        channel_settings.config_name)
+
+    # TODO: is this waitForConfig call necessary?
+    mm_core.waitForConfig(
+        channel_settings.config_group, 
+        channel_settings.config_name)
 
     # laser power
     mm_core.setProperty(
-        global_settings.LASER_LINE,
-        channel_settings['laser_name'],
-        channel_settings['laser_power'])
+        channel_settings.laser_line,
+        channel_settings.laser_name,
+        channel_settings.laser_power)
 
     # exposure time
     mm_core.setExposure(
-        float(channel_settings['exposure_time']))
+        float(channel_settings.exposure_time))
 
     # camera gain
+    prop_name = 'Gain'
     mm_core.setProperty(
-        global_settings.CAMERA_NAME,
-        'Gain',
-        channel_settings['camera_gain'])
+        channel_settings.camera_name, 
+        prop_name, 
+        channel_settings.camera_gain)
 
 
 
@@ -124,9 +115,11 @@ def move_z(mm_core, zdevice, position=None, kind=None):
     (e.g., if kind=='relative', `position` shouldn't be a 'big' number)
     '''
 
+    # validate `kind`
     if kind not in ['relative', 'absolute']:
         raise ValueError("`kind` must be either 'relative' or 'absolute'")
-
+    
+    # validate `position`
     try:
         position = float(position)
     except ValueError:
@@ -135,14 +128,17 @@ def move_z(mm_core, zdevice, position=None, kind=None):
     if np.isnan(position):
         raise TypeError('`position` cannot be nan')
     
+    # move the stage
     if kind=='absolute':
         mm_core.setPosition(zdevice, position)
     elif kind=='relative':
         mm_core.setRelativePosition(zdevice, position)
-
+    
+    # return the actual position of the stage
     mm_core.waitForDevice(zdevice)
     actual_position = mm_core.getPosition(zdevice)
     return actual_position
+
 
 
 def autoexposure(config):
