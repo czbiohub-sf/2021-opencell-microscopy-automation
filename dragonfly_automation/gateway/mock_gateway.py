@@ -27,24 +27,41 @@ class Gate(object):
 
     def __init__(self):
 
-        self._getLastMeta_count = 0
+        self.laser_power = None
+        def set_laser_power(laser_power):
+            self.laser_power = laser_power
+
+        self.exposure_time = None
+        def set_exposure_time(exposure_time):
+            self.exposure_time = exposure_time
+
+        self.studio = CoreOrStudio(kind='studio')
+        self.core = CoreOrStudio(
+            kind='core', 
+            set_laser_power=set_laser_power,
+            set_exposure_time=set_exposure_time)
 
     def getCMMCore(self):
-        return CoreOrStudio(kind='core')
+        return self.core
 
     def getStudio(self):
-        return CoreOrStudio(kind='studio')
+        return self.studio
 
     def getLastMeta(self):
-        self._getLastMeta_count += 1
-        return Meta(self._getLastMeta_count)
+        return Meta(self.laser_power, self.exposure_time)
 
 
 class Meta(object):
 
-    def __init__(self, count):
+    def __init__(self, laser_power, exposure_time):
 
-        maxx = int(65535 * (.99**(count - 1)))
+        # over-exposed unless laser_power is below 10 and exposure_time is below 40
+        if laser_power >= 10 or exposure_time > 40:
+            rel_max = 1
+        else:
+            rel_max = exposure_time/40
+
+        maxx = int(65535 * min(1, rel_max))
 
         self.shape = (1024, 1024)
         self.filepath = os.path.join(tempfile.mkdtemp(), 'mock_snap.dat')
@@ -77,9 +94,12 @@ class CoreOrStudio(object):
     Mock for mm_core and mm_studio
     '''
 
-    def __init__(self, kind):
+    def __init__(self, kind, set_laser_power=None, set_exposure_time=None):
         self.kind = kind
         self._current_z_position = 0
+        self.set_laser_power = set_laser_power
+        self.set_exposure_time = set_exposure_time
+
 
     def __getattr__(self, name):
         def wrapper(*args):
@@ -107,8 +127,21 @@ class CoreOrStudio(object):
     def live(self):
         return Base(name='live')
 
-
+    def setExposure(self, exposure_time):
+        self.__getattr__('setExposure')(exposure_time)
+        self.set_exposure_time(exposure_time)
     
+    def setProperty(self, label, prop_name, prop_value):
+        '''
+        Explicitly mock setProperty in order to intercept laser power
+        '''
+        self.__getattr__('setProperty')(label, prop_name, prop_value)
+
+        # hack-ish way to determine whether we're setting the laser power
+        if prop_name.startswith('Laser'):
+            self.set_laser_power(prop_value)
+        
+        
 class PositionList(object):
 
     def __init__(self):
