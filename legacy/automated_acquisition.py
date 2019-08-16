@@ -57,7 +57,7 @@ from skimage import filters
 #
 ENV = 'test'
 sys.path.insert(0, '../')
-from automated_microscopy.gateway import gateway_utils
+from dragonfly_automation.gateway import gateway_utils
 print('WARNING: automated_acquisition is using the mock gateway')
 #
 # --------------------------------------------------------------------------
@@ -241,6 +241,7 @@ def main():
         #
         # --------------------------------------------------------------------------------
         # NC: Move to bottom of stack
+        # KC: `initial_z_position` should always be zero
         print("Moving the stage to: %0.2f" % ZSTACK_REL_START)
         move_z_absolute(mm_core, ZDEVICE, initial_z_position)
         bottom_z_position = move_z_relative(mm_core, ZDEVICE, ZSTACK_REL_START)
@@ -507,7 +508,7 @@ def stack_assessment(exposure_time, laser_power, overall_max, total_high_pixels)
         print("Increasing exposure time in stack_assessment")
         exposure_time = float(exposure_time) * 45000 / float(overall_max)
 
-        # KC: this sghould be an inner if block, because the line above
+        # KC: this should be an inner if block, because the line above
         # is the only way the exposure_time can be increased
         if exposure_time > MAX_EXPOSURE_TIME:
             print("Clamping to maximum exposure time in stack_assessment")

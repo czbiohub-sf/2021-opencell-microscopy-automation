@@ -12,19 +12,27 @@ from dragonfly_automation.settings import ChannelSettings
 
 # -----------------------------------------------------------------------------
 #
-# Various free-floating constants used directly in 'pipeline_plate_program'
+# z-stack range, relative to the AFC point, and stepsize
 #
 # -----------------------------------------------------------------------------
-
-# the maximum number of FOVs/positions to acquire per well
-# (note that if few FOVs pass the confluency test, 
-# we may end up with fewer stacks than this number)
-MAX_NUM_FOV_PER_WELL = 8
-
-# z-stack range and stepsize (relative to the AFC point)
 ZSTACK_REL_START = -6.0
 ZSTACK_REL_END = 16.0
 ZSTACK_STEP_SIZE = 0.2
+
+
+# -----------------------------------------------------------------------------
+#
+# Settings required by the autoexposure algorithm
+#
+# -----------------------------------------------------------------------------
+# empirically determined max intensity used to define over-exposure 
+# in the autoexposure algorithm
+# (KC: this value is from rounding the 60620 that appears in Nathan's script)
+MAX_INTENSITY = 60000
+
+# factor by which to decrease the laser power or the exposure time 
+# if a z-slice is found to be over-exposed 
+RELATIVE_EXPOSURE_STEP = 0.8
 
 # min/max/default exposure times (in milliseconds)
 MIN_EXPOSURE_TIME = 30.0
@@ -79,3 +87,13 @@ gfp_channel = ChannelSettings(
     default_camera_gain=DEFAULT_CAMERA_GAIN)
 
 
+# -----------------------------------------------------------------------------
+#
+# Misc settings/constants
+#
+# -----------------------------------------------------------------------------
+
+# the maximum number of FOVs/positions to acquire per well
+# (note that if few FOVs pass the confluency test, 
+# we may end up with fewer stacks than this number)
+MAX_NUM_FOV_PER_WELL = 8

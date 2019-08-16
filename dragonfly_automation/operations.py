@@ -43,7 +43,7 @@ def acquire_snap(gate, mm_studio):
     TODO: check that meta.bitDepth is uint16
     '''
 
-    mm_studio.live().snape(True)
+    mm_studio.live().snap(True)
     meta = gate.getLastMeta()
 
     data = np.memmap(
@@ -141,11 +141,15 @@ def move_z(mm_core, zdevice, position=None, kind=None):
 
 
 
-def autoexposure(config):
+def autoexposure(program, settings, channel_settings):
     '''
     
     Parameters
     ----------
+    program : a program instance (for accessing gate, mm_studio, and mm_core)
+    settings : 
+    channel_settings : 
+
 
     Returns
     -------
@@ -156,9 +160,88 @@ def autoexposure(config):
     exposure_time : float
         The calculated exposure time
 
-    success : bool
+    autoexposure_did_succeed : bool
         Whether the autoexposure algorithm was successful
+
+
+    Algorithm description
+    ---------------------
+    slice check:
+    while an over-exposed slice exists:
+      step through z-stack until an over-exposed slice is encountered
+      lower exposure time and/or laser power
+
+    stack check:
+    one-time check for under-exposure using the overall max intensity;
+    increase the exposure time, up to the maximum, if necessary
 
     '''
     
+    laser_power = channel_settings.laser_power
+    exposure_time = channel_settings.exposure_time
+
+    # move to the bottom of the z-stack
+    current_z_position = move_z(
+        program.mm_core, 
+        program.zstage, 
+        position=settings.ZSTACK_REL_START, 
+        kind='relative')
+
+    while current_z_position <= settings.ZSTACK_REL_END:
+
+        # snap an image
+        program.mm_core.waitForSystem()
+        snap = acquire_snap(program.gate, program.mm_studio)
+
+        # check exposure
+        laser_power, exposure_time, slice_was_overexposed = check_slice_for_overexposure(
+            settings, snap, laser_power, exposure_time)
+
+        if slice_was_overexposed:
+            new_z_position = settings.ZSTACK_REL_START
+            # set the laser power and exposure time
+
+        else:
+            new_z_position = settings.ZSTACK_STEP_SIZE
+
+        # move to the new z-position 
+        # (either the next slice or back to the start/bottom of the stack)
+        current_z_position = move_z(
+            program.mm_core, 
+            program.zstage, 
+            position=new_z_position,
+            kind='relative')
+    
+
     return None, None, True
+
+
+
+def check_slice_for_overexposure(settings, snap, current_laser_power, current_exposure_time):
+    '''
+    Check a single slice for over-exposure and lower the exposure time or laser power
+    if it is indeed over-exposed
+
+    Parameters
+    ----------
+    settings : program-level settings object (with min/max/default exposure times etc)
+    snap : the slice image data as a numpy array (assumed to be uint16)
+    current_laser_power : the laser power used to acquire the snap
+    current_exposure_time : the exposure time used to acquire the snap
+    '''
+
+    new_laser_power = current_laser_power
+    new_exposure_time = current_exposure_time
+
+    # KC: the 99.9th percentile corresponds to ~1000 pixels in a 1024x1024 image;
+    # this value was empirically determined
+    slice_was_overexposed = np.percentile(snap, 99.9) > settings.MAX_INTENSITY
+    if slice_was_overexposed:
+        new_exposure_time = settings.RELATIVE_EXPOSURE_STEP * current_exposure_time
+
+        # if the new exposure time is below the minimum, turn down the laser instead
+        if new_exposure_time < settings.MIN_EXPOSURE_TIME:
+            new_exposure_time = settings.DEFAULT_EXPOSURE_TIME
+            new_laser_power = settings.RELATIVE_EXPOSURE_STEP * current_laser_power
+
+    return new_laser_power, new_exposure_time, slice_was_overexposed

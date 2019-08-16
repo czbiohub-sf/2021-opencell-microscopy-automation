@@ -17,6 +17,11 @@ class PipelinePlateProgram(object):
         self.env = env
         self.data_dirpath = data_dirpath
 
+        # program settings and constants
+        self.settings = settings
+        self.zstage = constants.PIEZO_STAGE
+        self.xystage = constants.XY_STAGE
+
         # create the py4j objects
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(env=env)
 
@@ -65,8 +70,8 @@ class PipelinePlateProgram(object):
 
         # these `assignImageSynchro` calls are copied directly from Nathan's script
         # TODO: check with Bryant if these are necessary
-        self.mm_core.assignImageSynchro(constants.PIEZO_STAGE)
-        self.mm_core.assignImageSynchro(constants.XY_STAGE)
+        self.mm_core.assignImageSynchro(self.zstage)
+        self.mm_core.assignImageSynchro(self.xystage)
         self.mm_core.assignImageSynchro(self.mm_core.getShutterDevice())
         self.mm_core.assignImageSynchro(self.mm_core.getCameraDevice())
 
@@ -133,20 +138,32 @@ class PipelinePlateProgram(object):
 
         position_list = self.mm_studio.getPositionList()
         for position_index in range(position_list.getNumberOfPositions()):
-            print('------------------------- Position %d -------------------------' % position_index)
-
+            print(' -------- Position %d --------' % position_index)
+            
+            # -----------------------------------------------------------------
+            #
+            # Initialization
+            #
+            # -----------------------------------------------------------------
             # reset the piezo stage
-            self.mm_core.setPosition(constants.PIEZO_STAGE, 0.0)
+            operations.move_z(self.mm_core, self.zstage, position=0.0, kind='absolute')
 
             # reset the channel settings to their default values
             settings.dapi_channel.reset()
             settings.gfp_channel.reset()
 
             # move to the next position
-            # (note that this does *not* update the Piezo stage, only the motorized stage)
+            # note that `goToPosition` does *not* move the Piezo stage, only the XY stage
+            # TODO: think about moving the goToPosition line to after the num FOV check,
+            # to prevent needlessly moving the stage itself to any 'extra' positions in a well
             position = position_list.getPosition(position_index)
             position.goToPosition(position, self.mm_core)
 
+            # -----------------------------------------------------------------
+            #
+            # Determine position status, run autofocus, and test for confluency
+            #
+            # -----------------------------------------------------------------
             # check if the position is the first one in a new well
             new_well_flag = self._is_first_position_in_new_well(position.getLabel())
             if new_well_flag:
@@ -163,14 +180,26 @@ class PipelinePlateProgram(object):
             if not self.confluency_test():
                 continue
     
-
-            # auto-exposure (only if this is the first FOV of a new well)
+            # -----------------------------------------------------------------
+            #
+            # Autoexposure for the GFP channel
+            # (only if the current position is the first FOV of a new well)
+            #
+            # -----------------------------------------------------------------
             if new_well_flag:
-                exposure_time, laser_power, status = operations.autoexposure(settings.gfp_channel)
+                exposure_time, laser_power, flag = operations.autoexposure(
+                    self,
+                    settings,
+                    settings.gfp_channel)
+
                 settings.gfp_channel.laser_power = laser_power
                 settings.gfp_channel.exposure_time = exposure_time
             
-            # acquire the stacks using the calculated laser power and exposure time
+            # -----------------------------------------------------------------
+            #
+            # Acquire the stacks
+            #
+            # -----------------------------------------------------------------
             operations.acquire_stack(self.mm_core, self.datastore, settings.dapi_channel)
             operations.acquire_stack(self.mm_core, self.datastore, settings.gfp_channel)
 
