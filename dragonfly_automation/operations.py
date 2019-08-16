@@ -2,6 +2,18 @@
 import numpy as np
 
 
+def log_operation(operation):
+
+    def wrapper(*args, **kwargs):
+        print('START OPERATION: %s' % operation.__name__)
+        result = operation(*args, **kwargs)
+        print('END OPERATION: %s' % operation.__name__)
+        return result
+
+    return wrapper
+
+
+@log_operation
 def autofocus(mm_studio, mm_core, channel_settings):
 
     '''
@@ -24,14 +36,12 @@ def autofocus(mm_studio, mm_core, channel_settings):
 
     try:
         af_plugin.fullFocus()
-        print('AFC success')
     except Exception as error:
-        print('AFC failure')
+        print('WARNING: AFC failure')
         print(error)
 
     # just to be safe
     mm_core.waitForSystem()
-
 
 
 def acquire_snap(gate, mm_studio):
@@ -51,12 +61,12 @@ def acquire_snap(gate, mm_studio):
         dtype='uint16',
         mode='r+',
         offset=0,
-        shape=(meta.getxRange(). meta.getyRange()))
+        shape=(meta.getxRange(), meta.getyRange()))
     
     return data
 
 
-
+@log_operation
 def acquire_stack(mm_core, datastore, settings):
     '''
     Acquire a z-stack using the given settings
@@ -68,7 +78,7 @@ def acquire_stack(mm_core, datastore, settings):
     pass
 
 
-
+@log_operation
 def change_channel(mm_core, channel_settings):
     '''
     Convenience method to set the laser power, exposure time, and camera gain
@@ -105,7 +115,6 @@ def change_channel(mm_core, channel_settings):
         channel_settings.camera_gain)
 
 
-
 def move_z(mm_core, zdevice, position=None, kind=None):
     '''
     Convenience method to move a z-stage
@@ -140,7 +149,7 @@ def move_z(mm_core, zdevice, position=None, kind=None):
     return actual_position
 
 
-
+@log_operation
 def autoexposure(program, settings, channel_settings):
     '''
     
@@ -198,11 +207,25 @@ def autoexposure(program, settings, channel_settings):
             settings, snap, laser_power, exposure_time)
 
         if slice_was_overexposed:
+            print('z-slice at %s was overexposed' % current_z_position)
             new_z_position = settings.ZSTACK_REL_START
-            # set the laser power and exposure time
+            
+            channel_settings.laser_power = laser_power
+            channel_settings.exposure_time = exposure_time
+
+            # update laser power
+            program.mm_core.setProperty(
+                channel_settings.laser_line,
+                channel_settings.laser_name,
+                channel_settings.laser_power)
+
+            # update exposure time
+            program.mm_core.setExposure(
+                float(channel_settings.exposure_time))
 
         else:
-            new_z_position = settings.ZSTACK_STEP_SIZE
+            print('z-slice at %s was not overexposed' % current_z_position)
+            new_z_position = current_z_position + settings.ZSTACK_STEP_SIZE
 
         # move to the new z-position 
         # (either the next slice or back to the start/bottom of the stack)
@@ -210,7 +233,7 @@ def autoexposure(program, settings, channel_settings):
             program.mm_core, 
             program.zstage, 
             position=new_z_position,
-            kind='relative')
+            kind='absolute')
     
 
     return None, None, True

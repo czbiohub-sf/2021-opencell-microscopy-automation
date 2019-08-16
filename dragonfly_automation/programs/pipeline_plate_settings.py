@@ -15,8 +15,8 @@ from dragonfly_automation.settings import ChannelSettings
 # z-stack range, relative to the AFC point, and stepsize
 #
 # -----------------------------------------------------------------------------
-ZSTACK_REL_START = -6.0
-ZSTACK_REL_END = 16.0
+ZSTACK_REL_START = -10.0
+ZSTACK_REL_END = 10.0
 ZSTACK_STEP_SIZE = 0.2
 
 

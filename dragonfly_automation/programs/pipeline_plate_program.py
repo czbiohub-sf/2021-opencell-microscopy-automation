@@ -34,7 +34,7 @@ class PipelinePlateProgram(object):
             self.datastore = None
 
             # reduce the number of z-steps to make debugging easier
-            settings.ZSTACK_STEP_SIZE = 6.0
+            settings.ZSTACK_STEP_SIZE = 3
 
 
     def _initialize_datastore(self):
@@ -138,7 +138,7 @@ class PipelinePlateProgram(object):
 
         position_list = self.mm_studio.getPositionList()
         for position_index in range(position_list.getNumberOfPositions()):
-            print(' -------- Position %d --------' % position_index)
+            print('\n-------- Position %d --------' % position_index)
             
             # -----------------------------------------------------------------
             #
