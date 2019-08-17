@@ -2,6 +2,8 @@ import os
 import tempfile
 import numpy as np
 
+def null_fn(*args):
+    return None
 
 
 class Base(object):
@@ -94,7 +96,7 @@ class CoreOrStudio(object):
     Mock for mm_core and mm_studio
     '''
 
-    def __init__(self, kind, set_laser_power=None, set_exposure_time=None):
+    def __init__(self, kind, set_laser_power=null_fn, set_exposure_time=null_fn):
         self.kind = kind
         self._current_z_position = 0
         self.set_laser_power = set_laser_power
