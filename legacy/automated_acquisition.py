@@ -400,29 +400,28 @@ def main():
                     if ENV=='test':
                         print('AUTOSAVESTORE: (position=%d, channel=%d, z=%d)' % (position_index, ind, zslice_count))
 
+                    # here we use mmc, rather than mm, to get the image
+                    # (this is okay because we don't want to access the image from python)
+                    mm_core.waitForImageSynchro()
+                    mm_core.snapImage()
+                    tmp1 = mm_core.getTaggedImage()
+
+                    # TODO possibly use bytearray to get the image data from tmp1
+                    # (bryant remembers this being very slow - 100ms per MB)
+
+                    # this line 
+                    channel0 = mm_studio.data().convertTaggedImage(tmp1)
+
+                    # assigns metadata to the snap
+                    channel0 = channel0.copyWith(
+                        channel0.getCoords().copy().channel(ind).z(zslice_count).stagePosition(position_index).build(),
+                        channel0.getMetadata().copy().positionName(str(position_index)).build()
+                    )
+                    
+                    # NOTE: filename is determined by the value of stagePosition (which has to be a int)
+
+                    # autosavestore is a dict-like object keyed by the coordinates
                     if ENV=='prod':
-
-                        # here we use mmc, rather than mm, to get the image
-                        # (this is okay because we don't want to access the image from python)
-                        mm_core.waitForImageSynchro()
-                        mm_core.snapImage()
-                        tmp1 = mm_core.getTaggedImage()
-
-                        # TODO possibly use bytearray to get the image data from tmp1
-                        # (bryant remembers this being very slow - 100ms per MB)
-
-                        # this line 
-                        channel0 = mm_studio.data().convertTaggedImage(tmp1)
-
-                        # assigns metadata to the snap
-                        channel0 = channel0.copyWith(
-                            channel0.getCoords().copy().channel(ind).z(zslice_count).stagePosition(position_index).build(),
-                            channel0.getMetadata().copy().positionName(str(position_index)).build()
-                        )
-                        
-                        # NOTE: filename is determined by the value of stagePosition (which has to be a int)
-
-                        # autosavestore is a dict-like object keyed by the coordinates
                         autosavestore.putImage(channel0)
 
                     # NC: Move to next z-position
