@@ -62,9 +62,9 @@ class PipelinePlateProgram(object):
 
         '''
 
-        # change autofocus mode to AFC
-        af_manager = self.mm_studio.getAutofocusManager()
-        af_manager.setAutofocusMethodByName("Adaptive Focus Control")
+        # get the AutofocusManager and change the autofocus mode to AFC
+        self.af_manager = self.mm_studio.getAutofocusManager()
+        self.af_manager.setAutofocusMethodByName("Adaptive Focus Control")
 
         # these `assignImageSynchro` calls are copied directly from Nathan's script
         # TODO: check with Bryant if these are necessary
@@ -181,7 +181,8 @@ class PipelinePlateProgram(object):
 
 
             # autofocus using DAPI 
-            operations.autofocus(self.mm_studio, self.mm_core, self.settings.dapi_channel)    
+            operations.change_channel(self.mm_core, self.settings.dapi_channel)
+            operations.autofocus(self.af_manager, self.mm_core)    
 
 
             # confluency check
@@ -191,8 +192,8 @@ class PipelinePlateProgram(object):
 
             # -----------------------------------------------------------------
             #
-            # Autoexposure for the GFP channel if the current position
-            # is the first FOV of a new well
+            # Autoexposure for the GFP channel 
+            # *if* the current position is the first FOV of a new well
             # (Note that laser power and exposure time are modified in-place)
             #
             # -----------------------------------------------------------------
@@ -202,8 +203,8 @@ class PipelinePlateProgram(object):
                     self.mm_studio,
                     self.mm_core,
                     self.settings.stack_settings,
-                    self.settings.gfp_channel,
-                    self.settings.autoexposure_settings)
+                    self.settings.autoexposure_settings,
+                    self.settings.gfp_channel)
 
                 if not autoexposure_did_succeed:
                     # TODO: decide how to handle this situation
@@ -218,12 +219,15 @@ class PipelinePlateProgram(object):
             channels = [self.settings.dapi_channel, self.settings.gfp_channel]
             for channel_ind, channel_settings in enumerate(channels):
 
+                # change the channel
+                operations.change_channel(self.mm_core, channel_settings)
+
+                # acquire the stack
                 operations.acquire_stack(
                     self.mm_studio,
                     self.mm_core, 
                     self.datastore, 
                     self.settings.stack_settings,
-                    channel_settings,
                     position_ind=position_ind,
                     channel_ind=channel_ind)
 

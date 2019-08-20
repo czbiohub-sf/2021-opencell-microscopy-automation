@@ -5,33 +5,30 @@ import numpy as np
 def log_operation(operation):
 
     def wrapper(*args, **kwargs):
-        print('START OPERATION: %s' % operation.__name__)
+        print('\nSTART OPERATION: %s' % operation.__name__)
         result = operation(*args, **kwargs)
-        print('END OPERATION: %s' % operation.__name__)
+        print('END OPERATION: %s\n' % operation.__name__)
         return result
 
     return wrapper
 
 
 @log_operation
-def autofocus(mm_studio, mm_core, channel_settings):
+def autofocus(af_manager, mm_core):
 
     '''
     Autofocus using a given configuration
 
     Parameters
     ----------
-    mm_studio, mm_core : 
-    channel_settings : 
+    af_manager :
+    mm_core : 
 
     TODO: optionally specify the autofocus method (either AFC or traditional autofocus)
     
     '''
 
-    # change to the right channel
-    change_channel(mm_core, channel_settings)
-
-    af_manager = mm_studio.getAutofocusManager()
+    # get the current AutofocusPlugin being used for autofocusing
     af_plugin = af_manager.getAutofocusMethod()
 
     try:
@@ -72,15 +69,12 @@ def acquire_stack(
     mm_core, 
     datastore, 
     stack_settings, 
-    channel_settings, 
     position_ind, 
     channel_ind):
     '''
     Acquire a z-stack using the given settings
     and 'put' it in the datastore object
     '''
-
-    change_channel(mm_core, channel_settings)
 
     # generate a list of the z positions to visit
     z_positions = np.arange(
@@ -198,27 +192,22 @@ def autoexposure(
     mm_studio,
     mm_core,
     stack_settings, 
-    channel_settings,
-    autoexposure_settings):
+    autoexposure_settings,
+    channel_settings):
     '''
 
     Parameters
     ----------
     gate, mm_studio, mm_core : gateway objects
     stack_settings : an instance of StackSettings
-    channel_settings : the settings object for the channel to auto-exposure 
     autoexposure_settings : an instance of AutoexposureSettings
+    channel_settings : the ChannelSettings instance corresponding to the channel 
+        on which to run the autoexposure algorithm
+        NOTE that this method modifies the `laser_power` and `exposure_time` attributes
 
 
     Returns
     -------
-
-    laser_power  : float
-        The calculated laser power
-
-    exposure_time : float
-        The calculated exposure time
-
     autoexposure_did_succeed : bool
         Whether the autoexposure algorithm was successful
 
@@ -226,13 +215,13 @@ def autoexposure(
     Algorithm description
     ---------------------
     slice check:
-    while an over-exposed slice exists:
-      step through z-stack until an over-exposed slice is encountered
-      lower exposure time and/or laser power
+        while an over-exposed slice exists:
+            step through z-stack until an over-exposed slice is encountered,
+            and lower the exposure time and/or laser power
 
     stack check:
-    one-time check for under-exposure using the overall max intensity;
-    increase the exposure time, up to the maximum, if necessary
+        one-time check for under-exposure using the overall max intensity:
+            if under-exposed, increase the exposure time up to the maximum
 
     '''
     
