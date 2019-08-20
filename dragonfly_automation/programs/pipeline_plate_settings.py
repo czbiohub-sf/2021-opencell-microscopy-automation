@@ -84,15 +84,17 @@ gfp_channel = ChannelSettings(
 # Settings required by the autoexposure algorithm
 #
 # -----------------------------------------------------------------------------
-# (KC: these values are copied from Nathan's script)
+# KC: these values are copied from Nathan's script,
+# except for min_laser_power, which is just a guess for now
 autoexposure_settings = AutoexposureSettings(
+    min_intensity=40000,
     max_intensity=60000,
     min_exposure_time=30.0,
     max_exposure_time=500.0,
     default_exposure_time=DEFAULT_EXPOSURE_TIME,
+    min_laser_power=DEFAULT_LASER_POWER/10,
     relative_exposure_step=0.8,
 )
-
 
 
 # -----------------------------------------------------------------------------

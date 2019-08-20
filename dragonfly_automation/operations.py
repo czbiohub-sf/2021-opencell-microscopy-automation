@@ -199,52 +199,89 @@ def autoexposure(
         stack_settings.stage_label, 
         position=stack_settings.relative_bottom, 
         kind='relative')
+    
+    # keep track of the maximum intensity
+    stack_max_intensity = 0
+    
+    # keep track of whether any slices were ever over-exposed
+    overexposure_did_occur = False
 
+    # step through the z-stack and check each slice for over-exposure
     while current_z_position <= stack_settings.relative_top:
 
         # snap an image
         mm_core.waitForSystem()
         snap_data = acquire_snap(gate, mm_studio)
 
-        # check the exposure
+        # check the exposure of the slice
         laser_power, exposure_time, slice_was_overexposed = check_slice_for_overexposure(
             channel_settings.laser_power, 
             channel_settings.exposure_time, 
             snap_data,
             autoexposure_settings)
 
-        # if over-exposed, update the laser power and exposure time and reset the z-stack
+        # if the slice was over-exposed, update the laser power and exposure time,
+        # reset stack_max, and go back to the bottom of the z-stack
         if slice_was_overexposed:
+            overexposure_did_occur = True
+        
             print('z-slice at %s was overexposed' % current_z_position)
-            
+
+            # break out of the while loop if the exposure has been lowered
+            # as far as it can be and the slice is still over-exposed
+            if laser_power < autoexposure_settings.min_laser_power:
+                autoexposure_did_succeed = False
+                break
+        
             channel_settings.laser_power = laser_power
             channel_settings.exposure_time = exposure_time
 
-            # update laser power
+            # update the laser power
             mm_core.setProperty(
                 channel_settings.laser_line,
                 channel_settings.laser_name,
                 channel_settings.laser_power)
 
-            # update exposure time
+            # update the exposure time
             mm_core.setExposure(
                 float(channel_settings.exposure_time))
 
-            # reset the z-stack
+            # prepare to return to the bottom of the stack
             new_z_position = stack_settings.relative_bottom
 
+            # reset the max intensity
+            stack_max_intensity = 0
+
+
+        # if the slice was not over-exposued, update stack_max
+        # and move to the next z-slice
         else:
             print('z-slice at %s was not overexposed' % current_z_position)
             new_z_position = current_z_position + stack_settings.step_size
-
+            stack_max_intensity = max(stack_max_intensity, snap_data.max())
+    
         # move to the new z-position 
-        # (either the next slice or back to the bottom of the stack)
+        # (this is either the next slice or the bottom of the stack)
         current_z_position = move_z(
             mm_core, 
             stack_settings.stage_label, 
             position=new_z_position,
             kind='absolute')
-    
+
+
+    # after existing the while-loop, we have traversed the entire stack and either
+    # 1) some slices were over-exposed and the exposure is now adjusted, or
+    # 2) no slices were over-exposed and we need to check for under-exposure
+    # here, we check for scenario (2) and use stack_max_intensity 
+    # to increase the exposure time if it is too low
+    if not overexposure_did_occur:
+        intensity_ratio = autoexposure_settings.min_intensity / stack_max_intensity
+        if intensity_ratio > 1:
+            channel_settings.exposure_time *= intensity_ratio
+            if channel_settings.exposure_time > autoexposure_settings.max_exposure_time:
+                print('Warning: maximum exposure time exceeded in autoexposure')
+                channel_settings.exposure_time = autoexposure_settings.max_exposure_time
+
     return autoexposure_did_succeed
 
 
