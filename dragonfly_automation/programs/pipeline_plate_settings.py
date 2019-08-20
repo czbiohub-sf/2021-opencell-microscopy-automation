@@ -7,7 +7,14 @@ TODO: Must laser powers also be floats? (they are ints in Nathan's script)
 
 '''
 
-from dragonfly_automation.settings import ChannelSettings
+from dragonfly_automation.settings import (
+    ChannelSettings,
+    StackSettings,
+    AutoexposureSettings,
+)
+
+DEV_STEP_SIZE = 3
+PROD_STEP_SIZE = 0.2
 
 
 # -----------------------------------------------------------------------------
@@ -15,28 +22,12 @@ from dragonfly_automation.settings import ChannelSettings
 # z-stack range, relative to the AFC point, and stepsize
 #
 # -----------------------------------------------------------------------------
-ZSTACK_REL_START = -10.0
-ZSTACK_REL_END = 10.0
-ZSTACK_STEP_SIZE = 0.2
-
-
-# -----------------------------------------------------------------------------
-#
-# Settings required by the autoexposure algorithm
-#
-# -----------------------------------------------------------------------------
-# empirically determined max intensity used to define over-exposure 
-# in the autoexposure algorithm
-# (KC: this value is from rounding the 60620 that appears in Nathan's script)
-MAX_INTENSITY = 60000
-
-# factor by which to decrease the laser power or the exposure time 
-# if a z-slice is found to be over-exposed 
-RELATIVE_EXPOSURE_STEP = 0.8
-
-# min/max/default exposure times (in milliseconds)
-MIN_EXPOSURE_TIME = 30.0
-MAX_EXPOSURE_TIME = 500.0
+stack_settings = StackSettings(
+    stage_label='PiezoZ',
+    relative_bottom=-10.0,
+    relative_top=10.0,
+    step_size=DEV_STEP_SIZE
+)
 
 
 # -----------------------------------------------------------------------------
@@ -85,6 +76,23 @@ gfp_channel = ChannelSettings(
     default_laser_power=DEFAULT_LASER_POWER,
     default_exposure_time=DEFAULT_EXPOSURE_TIME,
     default_camera_gain=DEFAULT_CAMERA_GAIN)
+
+
+
+# -----------------------------------------------------------------------------
+#
+# Settings required by the autoexposure algorithm
+#
+# -----------------------------------------------------------------------------
+# (KC: these values are copied from Nathan's script)
+autoexposure_settings = AutoexposureSettings(
+    max_intensity=60000,
+    min_exposure_time=30.0,
+    max_exposure_time=500.0,
+    default_exposure_time=DEFAULT_EXPOSURE_TIME,
+    relative_exposure_step=0.8,
+)
+
 
 
 # -----------------------------------------------------------------------------

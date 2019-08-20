@@ -17,10 +17,12 @@ class PipelinePlateProgram(object):
         self.env = env
         self.data_dirpath = data_dirpath
 
-        # program settings and constants
+        # program settings
         self.settings = settings
-        self.zstage = constants.PIEZO_STAGE
-        self.xystage = constants.XY_STAGE
+
+        # stage labels for convenience
+        self.zstage_label = settings.stack_settings.stage_label
+        self.xystage_label = constants.XY_STAGE
 
         # create the py4j objects
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(env=env)
@@ -29,12 +31,8 @@ class PipelinePlateProgram(object):
             self.datastore = self._initialize_datastore()
         
         if env=='dev':
-
             # no mock yet for the datastore object
             self.datastore = None
-
-            # reduce the number of z-steps to make debugging easier
-            settings.ZSTACK_STEP_SIZE = 3
 
 
     def _initialize_datastore(self):
@@ -70,8 +68,8 @@ class PipelinePlateProgram(object):
 
         # these `assignImageSynchro` calls are copied directly from Nathan's script
         # TODO: check with Bryant if these are necessary
-        self.mm_core.assignImageSynchro(self.zstage)
-        self.mm_core.assignImageSynchro(self.xystage)
+        self.mm_core.assignImageSynchro(self.zstage_label)
+        self.mm_core.assignImageSynchro(self.xystage_label)
         self.mm_core.assignImageSynchro(self.mm_core.getShutterDevice())
         self.mm_core.assignImageSynchro(self.mm_core.getCameraDevice())
 
@@ -146,18 +144,25 @@ class PipelinePlateProgram(object):
             #
             # -----------------------------------------------------------------
             # reset the piezo stage
-            operations.move_z(self.mm_core, self.zstage, position=0.0, kind='absolute')
+            operations.move_z(self.mm_core, self.zstage_label, position=0.0, kind='absolute')
 
             # reset the channel settings to their default values
-            settings.dapi_channel.reset()
-            settings.gfp_channel.reset()
+            self.settings.dapi_channel.reset()
+            self.settings.gfp_channel.reset()
 
-            # move to the next position
-            # note that `goToPosition` does *not* move the Piezo stage, only the XY stage
+            
+            # -----------------------------------------------------------------
+            #
+            # Move the xystage to the next position
+            #
+            # -----------------------------------------------------------------
+            # Note that `goToPosition` moves only the stage specified in the position list,
+            # which should always be the 'XYStage', *not* the 'PiezoZ' stage
             # TODO: think about moving the goToPosition line to after the num FOV check,
             # to prevent needlessly moving the stage itself to any 'extra' positions in a well
             position = position_list.getPosition(position_index)
             position.goToPosition(position, self.mm_core)
+
 
             # -----------------------------------------------------------------
             #
@@ -170,38 +175,41 @@ class PipelinePlateProgram(object):
                 self.num_fovs_acquired_in_current_well = 0
 
             # if we have already acquired enough FOVs from the current well
-            if self.num_fovs_acquired_in_current_well >= settings.MAX_NUM_FOV_PER_WELL:
+            if self.num_fovs_acquired_in_current_well >= self.settings.MAX_NUM_FOV_PER_WELL:
                 continue
 
             # autofocus using DAPI 
-            operations.autofocus(self.mm_studio, self.mm_core, settings.dapi_channel)    
+            operations.autofocus(self.mm_studio, self.mm_core, self.settings.dapi_channel)    
 
             # confluency check
             if not self.confluency_test():
                 continue
     
+
             # -----------------------------------------------------------------
             #
             # Autoexposure for the GFP channel
-            # (only if the current position is the first FOV of a new well)
+            # (Only if the current position is the first FOV of a new well)
+            # (Note that laser power and exposure time are modified in-place)
             #
             # -----------------------------------------------------------------
             if new_well_flag:
-                exposure_time, laser_power, flag = operations.autoexposure(
-                    self,
-                    settings,
-                    settings.gfp_channel)
+                autoexposure_did_succeed = operations.autoexposure(
+                    self.gate,
+                    self.mm_studio,
+                    self.mm_core,
+                    self.settings.stack_settings,
+                    self.settings.gfp_channel,
+                    self.settings.autoexposure_settings)
 
-                settings.gfp_channel.laser_power = laser_power
-                settings.gfp_channel.exposure_time = exposure_time
-            
+
             # -----------------------------------------------------------------
             #
             # Acquire the stacks
             #
             # -----------------------------------------------------------------
-            operations.acquire_stack(self.mm_core, self.datastore, settings.dapi_channel)
-            operations.acquire_stack(self.mm_core, self.datastore, settings.gfp_channel)
+            operations.acquire_stack(self.mm_core, self.datastore, self.settings.dapi_channel)
+            operations.acquire_stack(self.mm_core, self.datastore, self.settings.gfp_channel)
 
 
         self.cleanup()

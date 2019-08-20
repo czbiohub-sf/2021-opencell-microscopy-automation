@@ -2,9 +2,6 @@ import os
 import tempfile
 import numpy as np
 
-def null_fn(*args):
-    return None
-
 
 class Base(object):
 
@@ -25,6 +22,7 @@ class JavaGateway(object):
         self.entry_point = Gate()
 
 
+
 class Gate(object):
 
     def __init__(self):
@@ -37,7 +35,11 @@ class Gate(object):
         def set_exposure_time(exposure_time):
             self.exposure_time = exposure_time
 
-        self.studio = CoreOrStudio(kind='studio')
+        self.studio = CoreOrStudio(
+            kind='studio',
+            set_laser_power=lambda _: None,
+            set_exposure_time=lambda _: None)
+
         self.core = CoreOrStudio(
             kind='core', 
             set_laser_power=set_laser_power,
@@ -51,6 +53,7 @@ class Gate(object):
 
     def getLastMeta(self):
         return Meta(self.laser_power, self.exposure_time)
+
 
 
 class Meta(object):
@@ -73,7 +76,6 @@ class Meta(object):
         fp[:] = im[:]
         del fp
 
-
     def getFilepath(self):
         return self.filepath
 
@@ -84,6 +86,7 @@ class Meta(object):
         return self.shape[1]
 
 
+
 class AutofocusManager(Base):
     name = 'AutofocusManager'
     def getAutofocusMethod(self):
@@ -91,12 +94,13 @@ class AutofocusManager(Base):
         return Base(name='AutofocusMethod')
 
 
+
 class CoreOrStudio(object):
     '''
     Mock for mm_core and mm_studio
     '''
 
-    def __init__(self, kind, set_laser_power=null_fn, set_exposure_time=null_fn):
+    def __init__(self, kind, set_laser_power, set_exposure_time):
         self.kind = kind
         self._current_z_position = 0
         self.set_laser_power = set_laser_power
@@ -144,6 +148,7 @@ class CoreOrStudio(object):
             self.set_laser_power(prop_value)
         
         
+
 class PositionList(object):
 
     def __init__(self):
