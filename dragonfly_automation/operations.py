@@ -67,13 +67,58 @@ def acquire_snap(gate, mm_studio):
 
 
 @log_operation
-def acquire_stack(mm_core, datastore, settings):
+def acquire_stack(
+    mm_studio, 
+    mm_core, 
+    datastore, 
+    stack_settings, 
+    channel_settings, 
+    position_ind, 
+    channel_ind):
     '''
     Acquire a z-stack using the given settings
     and 'put' it in the datastore object
     '''
 
-    pass
+    change_channel(mm_core, channel_settings)
+
+    # generate a list of the z positions to visit
+    z_positions = np.arange(
+        stack_settings.relative_bottom, 
+        stack_settings.relative_top + stack_settings.step_size, 
+        stack_settings.step_size)
+
+    for z_ind, z_position in enumerate(z_positions):
+
+        # move to the new z-position 
+        move_z_stage(
+            mm_core, 
+            stack_settings.stage_label, 
+            position=z_position,
+            kind='absolute')
+
+        # acquire an image
+        mm_core.waitForImageSynchro()
+        mm_core.snapImage()
+
+        # convert the image
+        # TODO: understand what's happening here
+        tagged_image = mm_core.getTaggedImage()
+        image = mm_studio.data().convertTaggedImage(tagged_image)
+
+        # assign metadata to the image
+        # NOTE that the TIFF filename is determined by the value passed to stagePosition 
+        # (which has to be a int)
+        # TODO: see if there is there a way to include the value passed to positionName
+        # (which can be any string) in the TIFF filename
+        image = image.copyWith(
+            image.getCoords().copy().channel(channel_ind).z(z_ind).stagePosition(position_ind).build(),
+            image.getMetadata().copy().positionName(str(position_ind)).build()
+        )
+
+        if datastore:
+            datastore.putImage(image)
+
 
 
 @log_operation
@@ -113,7 +158,7 @@ def change_channel(mm_core, channel_settings):
         channel_settings.camera_gain)
 
 
-def move_z(mm_core, stage_label, position=None, kind=None):
+def move_z_stage(mm_core, stage_label, position=None, kind=None):
     '''
     Convenience method to move a z-stage
     (adapted from Nathan's script)
@@ -194,11 +239,11 @@ def autoexposure(
     autoexposure_did_succeed = True
 
     # move to the bottom of the z-stack
-    current_z_position = move_z(
+    current_z_position = move_z_stage(
         mm_core, 
         stack_settings.stage_label, 
         position=stack_settings.relative_bottom, 
-        kind='relative')
+        kind='absolute')
     
     # keep track of the maximum intensity
     stack_max_intensity = 0
@@ -262,18 +307,18 @@ def autoexposure(
     
         # move to the new z-position 
         # (this is either the next slice or the bottom of the stack)
-        current_z_position = move_z(
+        current_z_position = move_z_stage(
             mm_core, 
             stack_settings.stage_label, 
             position=new_z_position,
             kind='absolute')
 
 
-    # after existing the while-loop, we have traversed the entire stack and either
+    # after exiting the while-loop, either
     # 1) some slices were over-exposed and the exposure is now adjusted, or
     # 2) no slices were over-exposed and we need to check for under-exposure
-    # here, we check for scenario (2) and use stack_max_intensity 
-    # to increase the exposure time if it is too low
+    # here, we check for scenario (2) and use stack_max_intensity to increase
+    # the exposure time if it is too low
     if not overexposure_did_occur:
         intensity_ratio = autoexposure_settings.min_intensity / stack_max_intensity
         if intensity_ratio > 1:

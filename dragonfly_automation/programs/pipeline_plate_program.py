@@ -126,17 +126,18 @@ class PipelinePlateProgram(object):
                (if it is, we will need to run the autoexposure routine)
             4) check if we already have enough FOVs for the current well
                (if we do, we'll skip the position)
-            5) autofocus using the 405 ('DAPI') laser
+            5) autofocus using the 405 ('DAPI') channel
             6) run the confluency test (and skip the position if it fails)
-            7) run the autoexposure routine using the 488 ('GFP') laser
+            7) run the autoexposure routine using the 488 ('GFP') channel,
+               *if* the position is the first position of a new well
             8) acquire the z-stack in 405 and 488 and 'put' the stacks in self.datastore
 
         '''
 
 
         position_list = self.mm_studio.getPositionList()
-        for position_index in range(position_list.getNumberOfPositions()):
-            print('\n-------- Position %d --------' % position_index)
+        for position_ind in range(position_list.getNumberOfPositions()):
+            print('\n-------- Position %d --------' % position_ind)
             
             # -----------------------------------------------------------------
             #
@@ -144,7 +145,7 @@ class PipelinePlateProgram(object):
             #
             # -----------------------------------------------------------------
             # reset the piezo stage
-            operations.move_z(self.mm_core, self.zstage_label, position=0.0, kind='absolute')
+            operations.move_z_stage(self.mm_core, self.zstage_label, position=0.0, kind='absolute')
 
             # reset the channel settings to their default values
             self.settings.dapi_channel.reset()
@@ -153,14 +154,14 @@ class PipelinePlateProgram(object):
             
             # -----------------------------------------------------------------
             #
-            # Move the xystage to the next position
+            # Move the xy stage to the next position
             #
             # -----------------------------------------------------------------
             # Note that `goToPosition` moves only the stage specified in the position list,
             # which should always be the 'XYStage', *not* the 'PiezoZ' stage
             # TODO: think about moving the goToPosition line to after the num FOV check,
             # to prevent needlessly moving the stage itself to any 'extra' positions in a well
-            position = position_list.getPosition(position_index)
+            position = position_list.getPosition(position_ind)
             position.goToPosition(position, self.mm_core)
 
 
@@ -174,22 +175,24 @@ class PipelinePlateProgram(object):
             if new_well_flag:
                 self.num_fovs_acquired_in_current_well = 0
 
-            # if we have already acquired enough FOVs from the current well
+            # check if we have already acquired enough FOVs from the current well
             if self.num_fovs_acquired_in_current_well >= self.settings.MAX_NUM_FOV_PER_WELL:
                 continue
+
 
             # autofocus using DAPI 
             operations.autofocus(self.mm_studio, self.mm_core, self.settings.dapi_channel)    
 
+
             # confluency check
             if not self.confluency_test():
                 continue
-    
+            
 
             # -----------------------------------------------------------------
             #
-            # Autoexposure for the GFP channel
-            # (Only if the current position is the first FOV of a new well)
+            # Autoexposure for the GFP channel if the current position
+            # is the first FOV of a new well
             # (Note that laser power and exposure time are modified in-place)
             #
             # -----------------------------------------------------------------
@@ -202,14 +205,31 @@ class PipelinePlateProgram(object):
                     self.settings.gfp_channel,
                     self.settings.autoexposure_settings)
 
+                if not autoexposure_did_succeed:
+                    # TODO: decide how to handle this situation
+                    print('Warning: autoexposure failure')
+
 
             # -----------------------------------------------------------------
             #
             # Acquire the stacks
             #
             # -----------------------------------------------------------------
-            operations.acquire_stack(self.mm_core, self.datastore, self.settings.dapi_channel)
-            operations.acquire_stack(self.mm_core, self.datastore, self.settings.gfp_channel)
+            channels = [self.settings.dapi_channel, self.settings.gfp_channel]
+            for channel_ind, channel_settings in enumerate(channels):
+
+                operations.acquire_stack(
+                    self.mm_studio,
+                    self.mm_core, 
+                    self.datastore, 
+                    self.settings.stack_settings,
+                    channel_settings,
+                    position_ind=position_ind,
+                    channel_ind=channel_ind)
+
+    
+            # update the FOV count
+            self.num_fovs_acquired_in_current_well += 1
 
 
         self.cleanup()

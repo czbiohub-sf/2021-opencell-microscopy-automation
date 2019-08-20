@@ -146,8 +146,15 @@ class CoreOrStudio(object):
         # hack-ish way to determine whether we're setting the laser power
         if prop_name.startswith('Laser'):
             self.set_laser_power(prop_value)
-        
-        
+
+    def data(self):
+        return DataManager()
+
+
+class DataManager(object):
+    def convertTaggedImage(self, *args):
+        return Image()        
+
 
 class PositionList(object):
 
@@ -157,7 +164,6 @@ class PositionList(object):
     def getNumberOfPositions(self):
         return len(self._position_list)
 
-    
     def getPosition(self, index):
         return Position(self._position_list[index])
     
@@ -174,3 +180,61 @@ class Position(object):
     def goToPosition(self, position, mm_core):
         print("Position.goToPosition(label='%s')" % position.label)
     
+
+class Image(object):
+
+    def __init__(self):
+        self.coords = ImageCoords()
+        self.metadata = ImageMetadata()
+
+    def copyWith(self, coords, metadata):
+        print('Image.copyWith(%s, %s)' % (coords, metadata))
+        return self
+
+    def getCoords(self):
+        return self.coords
+
+    def getMetadata(self):
+        return self.metadata
+
+
+class ImageCoords(object):
+
+    def __repr__(self):
+        return 'ImageCoords(channel_ind=%s, z_ind=%s, stage_position=%s)' % \
+            (self.channel_ind, self.z_ind, self.stage_position)
+
+    def build(self):
+        return self
+
+    def copy(self):
+        return self
+
+    def channel(self, value):
+        self.channel_ind = value
+        return self
+
+    def z(self, value):
+        self.z_ind = value
+        return self
+
+    def stagePosition(self, value):
+        self.stage_position = value
+        return self
+
+
+
+class ImageMetadata(object):
+
+    def __repr__(self):
+        return 'ImageMetadata(position_name=%s)' % self.position_name
+
+    def build(self):
+        return self
+
+    def copy(self):
+        return self
+    
+    def positionName(self, value):
+        self.position_name = value
+        return self
