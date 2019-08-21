@@ -103,7 +103,7 @@ autoexposure_settings = AutoexposureSettings(
 #
 # -----------------------------------------------------------------------------
 
-# the maximum number of FOVs/positions to acquire per well
+# the maximum number of FOVs (z-stacks) to acquire per well
 # (note that if few FOVs pass the confluency test, 
 # we may end up with fewer stacks than this number)
-MAX_NUM_FOV_PER_WELL = 8
+NUM_STACKS_PER_WELL = 8

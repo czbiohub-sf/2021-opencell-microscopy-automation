@@ -101,7 +101,7 @@ class PipelinePlateProgram(object):
         return flag
 
 
-    def confluency_test(self):
+    def confluency_test(self, im):
         return True
 
 
@@ -139,25 +139,15 @@ class PipelinePlateProgram(object):
         for position_ind in range(position_list.getNumberOfPositions()):
             print('\n-------- Position %d --------' % position_ind)
             
+
             # -----------------------------------------------------------------
             #
-            # Initialization
+            # Reset the Piezo z-stage and move the xy-stage to the next position
             #
             # -----------------------------------------------------------------
-            # reset the piezo stage
             operations.move_z_stage(self.mm_core, self.zstage_label, position=0.0, kind='absolute')
 
-            # reset the channel settings to their default values
-            self.settings.dapi_channel.reset()
-            self.settings.gfp_channel.reset()
-
-            
-            # -----------------------------------------------------------------
-            #
-            # Move the xy stage to the next position
-            #
-            # -----------------------------------------------------------------
-            # Note that `goToPosition` moves only the stage specified in the position list,
+            # Here, note that `goToPosition` moves only the stage specified in the position list,
             # which should always be the 'XYStage', *not* the 'PiezoZ' stage
             # TODO: think about moving the goToPosition line to after the num FOV check,
             # to prevent needlessly moving the stage itself to any 'extra' positions in a well
@@ -173,20 +163,24 @@ class PipelinePlateProgram(object):
             # check if the position is the first one in a new well
             new_well_flag = self._is_first_position_in_new_well(position.getLabel())
             if new_well_flag:
-                self.num_fovs_acquired_in_current_well = 0
+                self.num_stacks_from_current_well = 0
+
+                # reset the GFP channel settings to their default values
+                # (the DAPI settings never change)
+                self.settings.gfp_channel.reset()
+
 
             # check if we have already acquired enough FOVs from the current well
-            if self.num_fovs_acquired_in_current_well >= self.settings.MAX_NUM_FOV_PER_WELL:
+            if self.num_stacks_from_current_well >= self.settings.NUM_STACKS_PER_WELL:
                 continue
-
 
             # autofocus using DAPI 
             operations.change_channel(self.mm_core, self.settings.dapi_channel)
             operations.autofocus(self.af_manager, self.mm_core)    
 
-
-            # confluency check
-            if not self.confluency_test():
+            # confluency check (also using DAPI)
+            im = operations.acquire_snap(self.gate, self.mm_studio)
+            if not self.confluency_test(im):
                 continue
             
 
@@ -233,7 +227,7 @@ class PipelinePlateProgram(object):
 
     
             # update the FOV count
-            self.num_fovs_acquired_in_current_well += 1
+            self.num_stacks_from_current_well += 1
 
 
         self.cleanup()
