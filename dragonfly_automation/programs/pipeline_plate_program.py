@@ -149,8 +149,9 @@ class PipelinePlateProgram(object):
 
             # Here, note that `goToPosition` moves only the stage specified in the position list,
             # which should always be the 'XYStage', *not* the 'PiezoZ' stage
-            # TODO: think about moving the goToPosition line to after the num FOV check,
-            # to prevent needlessly moving the stage itself to any 'extra' positions in a well
+            # TODO: think about moving the goToPosition line to after the num FOV check;
+            # this would prevent needlessly moving the stage to any 'extra' positions in a well,
+            # but might introduce dangerously long stage movements when moving to a new well
             position = position_list.getPosition(position_ind)
             position.goToPosition(position, self.mm_core)
 

@@ -243,38 +243,30 @@ def autoexposure(
     # step through the z-stack and check each slice for over-exposure
     while current_z_position <= stack_settings.relative_top:
 
-        # snap an image
+        # snap an image and check the exposure
         mm_core.waitForSystem()
         snap_data = acquire_snap(gate, mm_studio)
 
-        # check the exposure of the slice
-        laser_power, exposure_time, slice_was_overexposed = check_slice_for_overexposure(
-            channel_settings.laser_power, 
-            channel_settings.exposure_time, 
-            snap_data,
-            autoexposure_settings)
+        # note that the 99.9th percentile here corresponds to ~1000 pixels in a 1024x1024 image
+        slice_was_overexposed = np.percentile(snap_data, 99.9) > autoexposure_settings.max_intensity
 
         # if the slice was over-exposed, update the laser power and exposure time,
         # reset stack_max, and go back to the bottom of the z-stack
         if slice_was_overexposed:
             overexposure_did_occur = True
-        
             print('z-slice at %s was overexposed' % current_z_position)
 
-            # break out of the while loop if the exposure has been lowered
-            # as far as it can be and the slice is still over-exposed
-            if laser_power < autoexposure_settings.min_laser_power:
-                autoexposure_did_succeed = False
-                break
+            # lower the exposure time; if it falls below the minimum, turn down the laser instead
+            channel_settings.exposure_time *= autoexposure_settings.relative_exposure_step
+            if channel_settings.exposure_time < autoexposure_settings.min_exposure_time:
+                channel_settings.exposure_time = autoexposure_settings.default_exposure_time
+                channel_settings.laser_power *= autoexposure_settings.relative_exposure_step
         
-            channel_settings.laser_power = laser_power
-            channel_settings.exposure_time = exposure_time
-
-            # update the laser power
-            mm_core.setProperty(
-                channel_settings.laser_line,
-                channel_settings.laser_name,
-                channel_settings.laser_power)
+                # update the laser power
+                mm_core.setProperty(
+                    channel_settings.laser_line,
+                    channel_settings.laser_name,
+                    channel_settings.laser_power)
 
             # update the exposure time
             mm_core.setExposure(
@@ -286,6 +278,12 @@ def autoexposure(
             # reset the max intensity
             stack_max_intensity = 0
 
+            # break out of the while loop if the exposure has been lowered
+            # as far as it can be and the slice is still over-exposed
+            # KC: in practice, I believe this should rarely/never happen
+            if channel_settings.laser_power < autoexposure_settings.min_laser_power:
+                autoexposure_did_succeed = False
+                break
 
         # if the slice was not over-exposued, update stack_max
         # and move to the next z-slice
@@ -313,35 +311,8 @@ def autoexposure(
         if intensity_ratio > 1:
             channel_settings.exposure_time *= intensity_ratio
             if channel_settings.exposure_time > autoexposure_settings.max_exposure_time:
-                print('Warning: maximum exposure time exceeded in autoexposure')
+                print('Warning: stack was under-exposed and maximum exposure time was exceeded')
                 channel_settings.exposure_time = autoexposure_settings.max_exposure_time
 
     return autoexposure_did_succeed
 
-
-
-def check_slice_for_overexposure(laser_power, exposure_time, snap_data, autoexposure_settings):
-    '''
-    Check a single slice for over-exposure, 
-    and lower the exposure time or laser power if it is indeed over-exposed
-
-    Parameters
-    ----------
-    laser_power : the laser power used to acquire the snap
-    exposure_time : the exposure time used to acquire the snap
-    snap_data : the slice image data as a numpy array (assumed to be uint16)
-    autoexposure_settings : an instance of AutoexposureSettings (with min/max/default exposure times etc)
-    '''
-
-    # KC: the 99.9th percentile was empirically determined;
-    # it corresponds to ~1000 pixels in a 1024x1024 image
-    slice_was_overexposed = np.percentile(snap_data, 99.9) > autoexposure_settings.max_intensity
-    if slice_was_overexposed:
-        exposure_time *= autoexposure_settings.relative_exposure_step
-
-        # if the exposure time is now below the minimum, turn down the laser instead
-        if exposure_time < autoexposure_settings.min_exposure_time:
-            exposure_time = autoexposure_settings.default_exposure_time
-            laser_power *= autoexposure_settings.relative_exposure_step
-
-    return laser_power, exposure_time, slice_was_overexposed
