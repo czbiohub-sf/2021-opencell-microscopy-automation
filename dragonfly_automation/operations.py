@@ -216,12 +216,12 @@ def autoexposure(
     ---------------------
     slice check:
         while an over-exposed slice exists:
-            step through z-stack until an over-exposed slice is encountered,
-            and lower the exposure time and/or laser power
+            step through the z-stack until an over-exposed slice is encountered,
+            then lower the exposure time and/or laser power
 
     stack check:
-        one-time check for under-exposure using the overall max intensity:
-            if under-exposed, increase the exposure time up to the maximum
+        if no slices were over-exposed, check for under-exposure using the overall max intensity,
+            and lower the exposure time if necessary
 
     '''
     
@@ -250,8 +250,8 @@ def autoexposure(
         # note that the 99.9th percentile here corresponds to ~1000 pixels in a 1024x1024 image
         slice_was_overexposed = np.percentile(snap_data, 99.9) > autoexposure_settings.max_intensity
 
-        # if the slice was over-exposed, update the laser power and exposure time,
-        # reset stack_max, and go back to the bottom of the z-stack
+        # if the slice was over-exposed, lower the exposure time or the laser power,
+        # reset stack_max_intensity, and go back to the bottom of the z-stack
         if slice_was_overexposed:
             overexposure_did_occur = True
             print('z-slice at %s was overexposed' % current_z_position)
@@ -285,15 +285,14 @@ def autoexposure(
                 autoexposure_did_succeed = False
                 break
 
-        # if the slice was not over-exposued, update stack_max
-        # and move to the next z-slice
+        # if the slice was not over-exposed, 
+        # update stack_max and move to the next z-slice
         else:
-            print('z-slice at %s was not overexposed' % current_z_position)
-            new_z_position = current_z_position + stack_settings.step_size
             stack_max_intensity = max(stack_max_intensity, snap_data.max())
+            new_z_position = current_z_position + stack_settings.step_size
     
         # move to the new z-position 
-        # (this is either the next slice or the bottom of the stack)
+        # (either the next slice or the bottom of the stack)
         current_z_position = move_z_stage(
             mm_core, 
             stack_settings.stage_label, 

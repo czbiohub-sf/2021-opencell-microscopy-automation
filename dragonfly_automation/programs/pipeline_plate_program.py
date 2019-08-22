@@ -3,8 +3,10 @@ import os
 import numpy as np
 from skimage import filters
 
-from dragonfly_automation import operations
-from dragonfly_automation import constants
+from dragonfly_automation import (
+    constants, operations, assessments
+)
+
 from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.programs import pipeline_plate_settings as settings
 
@@ -179,10 +181,16 @@ class PipelinePlateProgram(object):
             operations.change_channel(self.mm_core, self.settings.dapi_channel)
             operations.autofocus(self.af_manager, self.mm_core)    
 
-            # confluency check (also using DAPI)
+            # confluency assessment (also using DAPI)
             im = operations.acquire_snap(self.gate, self.mm_studio)
-            if not self.confluency_test(im):
-                continue
+            confluency_is_good, confluency_label = assessments.assess_confluency(im)
+    
+            if not confluency_is_good:
+                print("Warning: confluency test failed (label='%s')" % confluency_label)
+                if self.env=='dev':
+                    print("Warning: confluency test results are ignored in 'dev' mode")
+                else:
+                    continue
             
 
             # -----------------------------------------------------------------
