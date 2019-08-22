@@ -81,11 +81,7 @@ def acquire_stack(
     for z_ind, z_position in enumerate(z_positions):
 
         # move to the new z-position 
-        move_z_stage(
-            mm_core, 
-            stack_settings.stage_label, 
-            position=z_position,
-            kind='absolute')
+        move_z_stage(mm_core, stack_settings.stage_label, position=z_position, kind='absolute')
 
         # acquire an image
         mm_core.waitForImageSynchro()
@@ -109,6 +105,9 @@ def acquire_stack(
         if datastore:
             datastore.putImage(image)
 
+    # cleanup: reset the piezo stage
+    # TODO: decide if this is necessary
+    move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
 
 
 @log_operation
@@ -308,6 +307,8 @@ def autoexposure(
             if channel_settings.exposure_time > autoexposure_settings.max_exposure_time:
                 print('Warning: stack was under-exposed and maximum exposure time was exceeded')
                 channel_settings.exposure_time = autoexposure_settings.max_exposure_time
-
+    
+    # reset the piezo stage
+    move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
     return autoexposure_did_succeed
 
