@@ -14,21 +14,17 @@ def log_operation(operation):
 
 
 @log_operation
-def autofocus(af_manager, mm_core):
+def autofocus(mm_studio, mm_core):
 
     '''
     Autofocus using a given configuration
-
-    Parameters
-    ----------
-    af_manager :
-    mm_core : 
 
     TODO: optionally specify the autofocus method (either AFC or traditional autofocus)
     
     '''
 
     # get the current AutofocusPlugin being used for autofocusing
+    af_manager = mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()
 
     try:
