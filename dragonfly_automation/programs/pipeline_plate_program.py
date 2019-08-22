@@ -193,6 +193,7 @@ class PipelinePlateProgram(object):
             #
             # -----------------------------------------------------------------
             if new_well_flag:
+                operations.change_channel(self.mm_core, self.settings.gfp_channel)
                 autoexposure_did_succeed = operations.autoexposure(
                     self.gate,
                     self.mm_studio,
