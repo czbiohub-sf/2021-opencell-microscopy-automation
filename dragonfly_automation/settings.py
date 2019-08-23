@@ -6,14 +6,14 @@ from collections import namedtuple
 StackSettings = namedtuple('StackSettings', [
 
     # the name of the stage to use for stepping through the stack
-    # (usually the Piezo stage called 'PiezoZ')
+    # (this should usually be the Piezo stage named 'PiezoZ')
     'stage_label',
 
     # top and bottom of the stack, in um, relative to the AFC point
     'relative_top',
     'relative_bottom',
 
-    # step size (in um)
+    # step size in um
     'step_size',
 ])
 
@@ -26,10 +26,13 @@ AutoexposureSettings = namedtuple('AutoexposureSettings', [
     # min intensity used to define under-exposure
     'min_intensity',
 
-    # min/max/default exposure times 
-    # (laser power is adjusted if exposure time falls below min_exposure_time)
+    # minimum exposure time used to decide when to lower the laser power
     'min_exposure_time',
+
+    # max exposure time used during adjustment for under-exposure
     'max_exposure_time',
+
+    # the initial exposure time used when the laser power is lowered
     'default_exposure_time',
 
     # the minimum laser power (used to define autoexposure failure)
@@ -41,33 +44,46 @@ AutoexposureSettings = namedtuple('AutoexposureSettings', [
 ])
 
 
-class ChannelSettings(object):
+ChannelSettings = namedtuple('ChannelSettings', [
 
-    def __init__(
-        self,
-        config_group,
-        config_name,
-        camera_name,
-        laser_line,
-        laser_name,
-        default_laser_power,
-        default_camera_gain,
-        default_exposure_time):
+    # the name of the channel config group
+    # (to which channel settings/properties are applied)
+    'config_group',
 
-        self.config_group = config_group
-        self.config_name = config_name
-        self.camera_name = camera_name
-        self.laser_line = laser_line
-        self.laser_name = laser_name
-        self.default_laser_power = default_laser_power
-        self.default_camera_gain = default_camera_gain
-        self.default_exposure_time = default_exposure_time
+    # 
+    'config_name',
 
+    # the name (or 'label') of the camera (which is a type of device)
+    'camera_name',
+
+    # the name of the laser line (another type of device)
+    'laser_line',
+
+    # the name of the laser itself (TODO: is this also a device?)
+    'laser_name',
+
+    # default values for exposure settings
+    'default_laser_power',
+    'default_camera_gain',
+    'default_exposure_time'
+])
+
+
+class ChannelSettingsManager(object):
+
+    def __init__(self, channel_settings):
+        '''
+        Manager for a ChannelSettings object
+    
+        Adds mutable attributes for exposure settings and a reset method
+        to reset these settings to their immutable default values
+        '''
+        for key, value in dict(channel_settings._asdict()).items():
+            setattr(self, key, value)
         self.reset()
 
-
     def reset(self):
-        self.laser_power = self.default_laser_power
-        self.camera_gain = self.default_camera_gain
-        self.exposure_time = self.default_exposure_time
+        self.laser_power = self.default_laser_power # pylint: disable=no-member
+        self.camera_gain = self.default_camera_gain # pylint: disable=no-member
+        self.exposure_time = self.default_exposure_time # pylint: disable=no-member
 

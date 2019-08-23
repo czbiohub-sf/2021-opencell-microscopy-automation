@@ -2,11 +2,13 @@
 import os
 import numpy as np
 
+from dragonfly_automation.gateway import gateway_utils
+from dragonfly_automation.settings import ChannelSettingsManager
+
 from dragonfly_automation import (
     operations, assessments
 )
 
-from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.programs import pipeline_plate_settings as settings
 
 
@@ -18,9 +20,23 @@ class PipelinePlateProgram(object):
         self.env = env
         self.data_dirpath = data_dirpath
 
-        # program settings
-        self.settings = settings
+        # create the py4j objects
+        self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(env=env)
 
+        # initialize channel managers
+        self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
+        self.dapi_channel = ChannelSettingsManager(settings.dapi_channel_settings)
+        
+        # copy the autoexposure settings
+        self.autoexposure_settings = settings.autoexposure_settings
+
+        # different stack settings for dev and prod
+        # (just to reduce the number of slices acquired in dev mode)
+        if env=='prod':
+            self.stack_settings = settings.prod_stack_settings
+        if env=='dev':
+            self.stack_settings = settings.dev_stack_settings
+    
         # the maximum number of FOVs (z-stacks) to acquire per well
         # (note that if few FOVs pass the confluency test, 
         # we may end up with fewer than this number of stacks)
@@ -28,17 +44,14 @@ class PipelinePlateProgram(object):
 
         # stage labels for convenience
         self.xystage_label = 'XYStage'
-        self.zstage_label = settings.stack_settings.stage_label
-
-        # create the py4j objects
-        self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(env=env)
+        self.zstage_label = self.stack_settings.stage_label
 
         # initialize/open the multipage TIFF 'store'
         if env=='prod':
             self.datastore = self._initialize_datastore()
-        
+
+        # no mock yet for the datastore object        
         if env=='dev':
-            # no mock yet for the datastore object
             self.datastore = None
 
 
@@ -161,7 +174,7 @@ class PipelinePlateProgram(object):
 
                 # reset the GFP channel settings to their default values
                 # (they will be adjusted later by the autoexposure algorithm)
-                self.settings.gfp_channel.reset()
+                self.gfp_channel.reset()
 
             else:
                 # do not run autoexposure; use existing/current GFP exposure settings
@@ -190,13 +203,15 @@ class PipelinePlateProgram(object):
         3) run the autoexposure method using the GFP channel (if run_autoexposure=True)
         4) acquire a z-stack in DAPI and GFP channels and 'put' the stacks in self.datastore
 
+        TODO: implement explicit error handling
+
         '''
 
         # whether we acquired stacks at this position
         did_acquire_stacks = False
     
         # autofocus using DAPI 
-        operations.change_channel(self.mm_core, self.settings.dapi_channel)
+        operations.change_channel(self.mm_core, self.dapi_channel)
         operations.autofocus(self.mm_studio, self.mm_core)    
 
         # confluency assessment (also using DAPI)
@@ -218,14 +233,14 @@ class PipelinePlateProgram(object):
         #
         # -----------------------------------------------------------------
         if run_autoexposure:
-            operations.change_channel(self.mm_core, self.settings.gfp_channel)
+            operations.change_channel(self.mm_core, self.gfp_channel)
             autoexposure_did_succeed = operations.autoexposure(
                 self.gate,
                 self.mm_studio,
                 self.mm_core,
-                self.settings.stack_settings,
-                self.settings.autoexposure_settings,
-                self.settings.gfp_channel)
+                self.stack_settings,
+                self.autoexposure_settings,
+                self.gfp_channel)
 
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
@@ -236,23 +251,22 @@ class PipelinePlateProgram(object):
         # Acquire the stacks
         #
         # -----------------------------------------------------------------
-        channels = [self.settings.dapi_channel, self.settings.gfp_channel]
-        for channel_ind, channel_settings in enumerate(channels):
+        channels = [self.dapi_channel, self.gfp_channel]
+        for channel_ind, channel in enumerate(channels):
 
             # change the channel
-            operations.change_channel(self.mm_core, channel_settings)
+            operations.change_channel(self.mm_core, channel)
 
             # acquire the stack
             operations.acquire_stack(
                 self.mm_studio,
                 self.mm_core, 
                 self.datastore, 
-                self.settings.stack_settings,
+                self.stack_settings,
                 position_ind=position_ind,
                 channel_ind=channel_ind)
     
         # if we're still here, we assume tha the stacks were acquired successfully
-        # TODO: implement explicit error handling
         did_acquire_stacks = True
         return did_acquire_stacks
 
