@@ -28,6 +28,7 @@ def autofocus(mm_studio, mm_core):
     af_plugin = af_manager.getAutofocusMethod()
 
     try:
+        # TODO: find out whether 'fullFocus' is equivalent to clicking the bincolulars
         af_plugin.fullFocus()
     except Exception as error:
         print('WARNING: AFC failure')

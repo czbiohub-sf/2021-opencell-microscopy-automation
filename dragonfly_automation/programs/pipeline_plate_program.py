@@ -15,7 +15,7 @@ from dragonfly_automation.programs import pipeline_plate_settings as settings
 class PipelinePlateProgram(object):
 
 
-    def __init__(self, data_dirpath=None, env='dev'):
+    def __init__(self, datastore, data_dirpath=None, env='dev'):
 
         self.env = env
         self.data_dirpath = data_dirpath
@@ -48,7 +48,8 @@ class PipelinePlateProgram(object):
 
         # initialize/open the multipage TIFF 'store'
         if env=='prod':
-            self.datastore = self._initialize_datastore()
+            self.datastore = datastore
+            # self._initialize_datastore()
 
         # no mock yet for the datastore object        
         if env=='dev':
@@ -67,13 +68,13 @@ class PipelinePlateProgram(object):
         should_generate_separate_metadata = True
         should_split_positions = True
 
-        datastore = self.mm_studio.data().createMultipageTIFFDatastore(
+        print('Creating datastore at %s' % self.data_dirpath)
+        self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
             self.data_dirpath, 
             should_generate_separate_metadata, 
             should_split_positions)
 
-        self.mm_studio.displays().createDisplay(datastore)
-        return datastore
+        self.mm_studio.displays().createDisplay(self.datastore)
 
 
     def setup(self):
@@ -178,7 +179,8 @@ class PipelinePlateProgram(object):
 
             else:
                 # do not run autoexposure; use existing/current GFP exposure settings
-                run_autoexposure = False
+                # run_autoexposure = False
+                pass
 
             # check if we have already acquired enough FOVs from the current well
             if num_stacks_from_current_well >= self.max_num_stacks_per_well:
@@ -187,6 +189,7 @@ class PipelinePlateProgram(object):
             # assess the position and maybe acquire stacks
             did_acquire_stacks = self.maybe_acquire_stacks(position_ind, run_autoexposure)
             if did_acquire_stacks:
+                run_autoexposure = False
                 num_stacks_from_current_well += 1
 
         self.cleanup()
