@@ -1,7 +1,5 @@
 import os
 import sys
-import cv2
-import tifffile
 import skimage
 import numpy as np
 
@@ -34,7 +32,7 @@ def find_nuclei(im, nucleus_radius):
 
 def analyze_nucleus_positions(positions, image_size):
     '''
-    
+
     '''
 
     # the number of nuclei
