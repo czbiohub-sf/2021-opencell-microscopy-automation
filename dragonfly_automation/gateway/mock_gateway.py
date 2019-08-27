@@ -11,7 +11,7 @@ class Base(object):
 
     def __getattr__(self, name):
         def wrapper(*args):
-            print('%s.%s%s' % (self.name, name, args))
+            pass
         return wrapper
 
     
@@ -106,12 +106,10 @@ class CoreOrStudio(object):
         self.set_laser_power = set_laser_power
         self.set_exposure_time = set_exposure_time
 
-
     def __getattr__(self, name):
         def wrapper(*args):
-            print('%s.%s%s' % (self.kind, name, args))
+            pass
         return wrapper
-
 
     def getAutofocusManager(self):
         return AutofocusManager()
@@ -181,8 +179,9 @@ class Position(object):
         return self.label
 
     def goToPosition(self, position, mm_core):
-        print("Position.goToPosition(label='%s')" % position.label)
-    
+        # print("Position.goToPosition(label='%s')" % position.label)
+        pass
+
 
 class Image(object):
 
@@ -191,7 +190,6 @@ class Image(object):
         self.metadata = ImageMetadata()
 
     def copyWith(self, coords, metadata):
-        print('Image.copyWith(%s, %s)' % (coords, metadata))
         return self
 
     def getCoords(self):
