@@ -278,7 +278,8 @@ class PipelinePlateProgram(object):
                 self.mm_core,
                 self.stack_settings,
                 self.autoexposure_settings,
-                self.gfp_channel)
+                self.gfp_channel,
+                self.logger)
 
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
