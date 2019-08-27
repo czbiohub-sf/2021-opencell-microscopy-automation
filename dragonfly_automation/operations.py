@@ -17,19 +17,22 @@ def log_operation(operation):
 def autofocus(mm_studio, mm_core):
 
     '''
-    Autofocus using a given configuration
+    Very minimal wrapper around the `fullFocus` method
+    of the current/active autofocus plugin
 
-    TODO: optionally specify the autofocus method (either AFC or traditional autofocus)
+    TODO: specify the autofocus plugin to use (e.g., either AFC or traditional autofocus)
     
     '''
 
-    # get the current AutofocusPlugin being used for autofocusing
+    # get the current/active AutofocusPlugin
     af_manager = mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()
 
     try:
-        # TODO: find out whether 'fullFocus' is equivalent to clicking the bincolulars
+        # TODO: find out whether this call to `fullFocus` is equivalent 
+        # to clicking the bincolulars button in MicroManager
         af_plugin.fullFocus()
+
     except Exception as error:
         print('WARNING: AFC failure')
         print(error)
@@ -93,16 +96,21 @@ def acquire_stack(
         tagged_image = mm_core.getTaggedImage()
         image = mm_studio.data().convertTaggedImage(tagged_image)
 
-        # assign metadata to the image
-        # NOTE that the TIFF filename is determined by the value passed to stagePosition 
-        # (which has to be a int)
-        # TODO: see if there is there a way to include the value passed to positionName
-        # (which can be any string) in the TIFF filename
-        image = image.copyWith(
-            image.getCoords().copy().channel(channel_ind).z(z_ind).stagePosition(position_ind).build(),
-            image.getMetadata().copy().positionName(str(position_ind)).build()
-        )
+        # manually construct image coordinates (position, channel, z)
+        # NOTE: the filename of the TIFF stack is determined 
+        # by the value passed to stagePosition (which has to be a int)
+        coords = image.getCoords().copy()
+        coords = coords.z(z_ind)
+        coords = coords.channel(channel_ind)
+        coords = coords.stagePosition(position_ind)
+        coords = coords.build()
 
+        # construct image metadata
+        metadata = image.getMetadata().copy()
+        metadata = metadata.positionName(str(position_ind))
+        metadata = metadata.build()
+
+        image = image.copyWith(coords, metadata)
         if datastore:
             datastore.putImage(image)
 
@@ -173,6 +181,7 @@ def move_z_stage(mm_core, stage_label, position=None, kind=None):
     # move the stage
     if kind=='absolute':
         mm_core.setPosition(stage_label, position)
+
     elif kind=='relative':
         mm_core.setRelativePosition(stage_label, position)
     
@@ -199,14 +208,12 @@ def autoexposure(
     autoexposure_settings : an instance of AutoexposureSettings
     channel_settings : the ChannelSettings instance corresponding to the channel 
         on which to run the autoexposure algorithm
-        NOTE that this method modifies the `laser_power` and `exposure_time` attributes
-
+        NOTE: this method modifies the `laser_power` and `exposure_time` attributes in-place
 
     Returns
     -------
     autoexposure_did_succeed : bool
         Whether the autoexposure algorithm was successful
-
 
     Algorithm description
     ---------------------
@@ -265,8 +272,7 @@ def autoexposure(
                     channel_settings.laser_power)
 
             # update the exposure time
-            mm_core.setExposure(
-                float(channel_settings.exposure_time))
+            mm_core.setExposure(float(channel_settings.exposure_time))
 
             # prepare to return to the bottom of the stack
             new_z_position = stack_settings.relative_bottom
@@ -306,8 +312,8 @@ def autoexposure(
         if intensity_ratio > 1:
             channel_settings.exposure_time *= intensity_ratio
             if channel_settings.exposure_time > autoexposure_settings.max_exposure_time:
-                print('Warning: stack was under-exposed and maximum exposure time was exceeded')
                 channel_settings.exposure_time = autoexposure_settings.max_exposure_time
+                print('Warning: stack was under-exposed and maximum exposure time was exceeded')
     
     # reset the piezo stage
     move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')

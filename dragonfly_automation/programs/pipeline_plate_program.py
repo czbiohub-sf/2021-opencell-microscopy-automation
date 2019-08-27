@@ -164,7 +164,7 @@ class PipelinePlateProgram(object):
             position = position_list.getPosition(position_ind)
             position.goToPosition(position, self.mm_core)
 
-            # check if the position is the first one in a new well
+            # if the position is the first one in a new well
             if self.is_new_well(position.getLabel()):
 
                 # only autoexpose on the first position of a new well
@@ -177,18 +177,15 @@ class PipelinePlateProgram(object):
                 # (they will be adjusted later by the autoexposure algorithm)
                 self.gfp_channel.reset()
 
-            else:
-                # do not run autoexposure; use existing/current GFP exposure settings
-                # run_autoexposure = False
-                pass
-
-            # check if we have already acquired enough FOVs from the current well
+            # keep moving if enough stacks have already been acquired from the current well
             if num_stacks_from_current_well >= self.max_num_stacks_per_well:
                 continue
-            
-            # assess the position and maybe acquire stacks
+
+            # autofocus, maybe autoexpose, assess confluency, and acquire stacks
             did_acquire_stacks = self.maybe_acquire_stacks(position_ind, run_autoexposure)
+
             if did_acquire_stacks:
+                # autoexposure should only be run on the first position imaged in each well
                 run_autoexposure = False
                 num_stacks_from_current_well += 1
 
@@ -203,7 +200,7 @@ class PipelinePlateProgram(object):
 
         1) autofocus using the DAPI channel
         2) run the confluency test
-        3) run the autoexposure method using the GFP channel (if run_autoexposure=True)
+        3) run the autoexposure method using the GFP channel if run_autoexposure is true
         4) acquire a z-stack in DAPI and GFP channels and 'put' the stacks in self.datastore
 
         TODO: implement explicit error handling
@@ -269,7 +266,7 @@ class PipelinePlateProgram(object):
                 position_ind=position_ind,
                 channel_ind=channel_ind)
     
-        # if we're still here, we assume tha the stacks were acquired successfully
+        # if we're still here, we assume that the stacks were acquired successfully
         did_acquire_stacks = True
         return did_acquire_stacks
 
