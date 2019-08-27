@@ -2,18 +2,25 @@
 import numpy as np
 
 
-def log_operation(operation):
+class Operations(object):
 
-    def wrapper(*args, **kwargs):
-        print('\nSTART OPERATION: %s' % operation.__name__)
-        result = operation(*args, **kwargs)
-        print('END OPERATION: %s\n' % operation.__name__)
-        return result
+    def __init__(self, logger):
+        self.logger = logger
 
-    return wrapper
+    
+    def __getattr__(self, name):
+
+        operation = globals()[name]
+        
+        def wrapper(*args, **kwargs):
+            self.logger('OPERATION INFO: Calling %s' % operation.__name__)
+            result = operation(*args, **kwargs)
+            self.logger('OPERATION INFO: Exiting %s' % operation.__name__)
+            return result
+
+        return wrapper
 
 
-@log_operation
 def autofocus(mm_studio, mm_core):
 
     '''
@@ -63,7 +70,6 @@ def acquire_snap(gate, mm_studio):
     return data
 
 
-@log_operation
 def acquire_stack(
     mm_studio, 
     mm_core, 
@@ -119,7 +125,6 @@ def acquire_stack(
     move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
 
 
-@log_operation
 def change_channel(mm_core, channel_settings):
     '''
     Convenience method to set the laser power, exposure time, and camera gain
@@ -191,7 +196,6 @@ def move_z_stage(mm_core, stage_label, position=None, kind=None):
     return actual_position
 
 
-@log_operation
 def autoexposure(
     gate,
     mm_studio,

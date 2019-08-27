@@ -32,11 +32,14 @@ class PipelinePlateProgram(object):
         if os.path.isfile(self.log_file):
             os.remove(self.log_file)
 
-        # create the py4j objects
+        # create the py4j objects (with logger attached)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
             env=self.env, 
             wrap=True, 
             logger=self.logger)
+
+        # create the operations instance (with logger attached)
+        self.operations = operations.Operations(self.logger)
 
         # initialize channel managers
         self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
@@ -244,11 +247,11 @@ class PipelinePlateProgram(object):
         did_acquire_stacks = False
     
         # autofocus using DAPI 
-        operations.change_channel(self.mm_core, self.dapi_channel)
-        operations.autofocus(self.mm_studio, self.mm_core)    
+        self.operations.change_channel(self.mm_core, self.dapi_channel)
+        self.operations.autofocus(self.mm_studio, self.mm_core)    
 
         # confluency assessment (also using DAPI)
-        im = operations.acquire_snap(self.gate, self.mm_studio)
+        im = self.operations.acquire_snap(self.gate, self.mm_studio)
         confluency_is_good, confluency_label = assessments.assess_confluency(im)
 
         if not confluency_is_good:
@@ -268,8 +271,8 @@ class PipelinePlateProgram(object):
         #
         # -----------------------------------------------------------------
         if run_autoexposure:
-            operations.change_channel(self.mm_core, self.gfp_channel)
-            autoexposure_did_succeed = operations.autoexposure(
+            self.operations.change_channel(self.mm_core, self.gfp_channel)
+            autoexposure_did_succeed = self.operations.autoexposure(
                 self.gate,
                 self.mm_studio,
                 self.mm_core,
@@ -291,10 +294,10 @@ class PipelinePlateProgram(object):
         for channel_ind, channel in enumerate(channels):
 
             # change the channel
-            operations.change_channel(self.mm_core, channel)
+            self.operations.change_channel(self.mm_core, channel)
 
             # acquire the stack
-            operations.acquire_stack(
+            self.operations.acquire_stack(
                 self.mm_studio,
                 self.mm_core, 
                 self.datastore, 
