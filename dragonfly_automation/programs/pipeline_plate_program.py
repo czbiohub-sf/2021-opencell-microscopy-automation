@@ -1,5 +1,6 @@
 
 import os
+import datetime
 import numpy as np
 
 from dragonfly_automation.gateway import gateway_utils
@@ -15,28 +16,27 @@ from dragonfly_automation.programs import pipeline_plate_settings as settings
 class PipelinePlateProgram(object):
 
 
-    def __init__(self, datastore, data_dir, env='dev'):
+    def __init__(self, datastore, data_dir, env='dev', verbose=True):
 
         self.env = env
         self.data_dir = data_dir
         self.datastore = datastore
+        self.verbose = verbose
 
         # create the log directory
         self.log_dir = os.path.join(self.data_dir, 'logs')
         os.makedirs(self.log_dir, exist_ok=True)
 
-        # log file for all raw py4j events
-        self.py4j_log_file = os.path.join(self.log_dir, 'py4j.log')
-
-        # log file for manually-logged program events
-        self.program_log_file = os.path.join(self.log_dir, 'program.log')
+        # log file for all events
+        self.log_file = os.path.join(self.log_dir, 'events.log')
+        if os.path.isfile(self.log_file):
+            os.remove(self.log_file)
 
         # create the py4j objects
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
             env=self.env, 
             wrap=True, 
-            verbose=True,
-            log_file=self.py4j_log_file)
+            logger=self.logger)
 
         # initialize channel managers
         self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
@@ -60,6 +60,23 @@ class PipelinePlateProgram(object):
         # stage labels for convenience
         self.xystage_label = 'XYStage'
         self.zstage_label = self.stack_settings.stage_label
+    
+
+    def logger(self, record):
+        '''
+        Write a record to the log
+        '''
+
+        # prepend a timestamp
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        record = '%s %s' % (timestamp, record)
+
+        # write the record
+        with open(self.log_file, 'a') as file:
+            file.write('%s\n' % record)
+        
+        if self.verbose:
+            print(record)
 
 
     def _initialize_datastore(self):
@@ -79,7 +96,9 @@ class PipelinePlateProgram(object):
         should_split_positions = True
         should_generate_separate_metadata = True
 
-        print('Creating datastore at %s' % self.data_dir)
+        record = ('PROGRAM INFO: Creating datastore at %s' % self.data_dir)
+        self.logger(record)
+    
         self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
             self.data_dir, 
             should_generate_separate_metadata, 
@@ -164,7 +183,10 @@ class PipelinePlateProgram(object):
 
         position_list = self.mm_studio.getPositionList()
         for position_ind in range(position_list.getNumberOfPositions()):
-            print('\n-------- Imaging position %d --------' % position_ind)
+            
+            record = 'PROGRAM INFO: Moving to position %d' % position_ind
+            self.logger(record)
+
 
             # Here, note that `goToPosition` moves only the stage specified in the position list,
             # which should always be the 'XYStage', *not* the 'PiezoZ' stage
@@ -230,7 +252,9 @@ class PipelinePlateProgram(object):
         confluency_is_good, confluency_label = assessments.assess_confluency(im)
 
         if not confluency_is_good:
-            print("Warning: confluency test failed (label='%s')" % confluency_label)
+            record = ("PROGRAM WARNING: confluency test failed (label='%s')" % confluency_label)
+            self.logger(record)
+    
             if self.env=='dev':
                 print("Warning: confluency test results are ignored in 'dev' mode")
             else:
@@ -255,7 +279,8 @@ class PipelinePlateProgram(object):
 
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
-                print('Warning: autoexposure failure; continuing anyway')
+                record = ('PROGRAM WARNING: autoexposure failed; attempting to continue')
+                self.logger(record)
 
         # -----------------------------------------------------------------
         #

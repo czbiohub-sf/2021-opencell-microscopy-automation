@@ -1,4 +1,3 @@
-import datetime
 
 from dragonfly_automation.gateway import mock_gateway
 
@@ -16,28 +15,27 @@ class Py4jWrapper(object):
     because py4j objects seem to accept only positional arguments
     '''
 
-    def __init__(self, obj, log_file=None, verbose=True):
+    def __init__(self, obj, logger):
         self.wrapped_obj = obj
-        self.log_file = log_file
-        self.verbose = verbose
+        self.logger = logger
 
 
     def __repr__(self):
         return self.wrapped_obj.__repr__()
-    
+
 
     @staticmethod
     def is_class_instance(obj):
         # TODO: fix this hack-ish and possibly noncanonical logic
         return hasattr(obj, '__dict__')
-        
+
 
     @classmethod
     def prettify_arg(cls, arg):
         if isinstance(arg, Py4jWrapper):
-            return arg.wrapped_obj.__class__.__name__
+            return '<%s>' % arg.wrapped_obj.__class__.__name__
         elif cls.is_class_instance(arg):
-            return arg.__class__.__name__
+            return '<%s>' % arg.__class__.__name__
         return arg
 
 
@@ -45,38 +43,35 @@ class Py4jWrapper(object):
 
         attr = getattr(self.wrapped_obj, name)
 
-        # do nothing if the attribute is not a method
-        # note that the built-in `callable` method seems to be specific to Python 3.3+
+        # ignore calls to non-method attributes
+        # (note that this built-in `callable` method seems to be specific to Python 3.3+)
         if not callable(attr):
             return attr
 
         def wrapper(*args):
             
+            # construct the log record
             pretty_args = tuple([self.prettify_arg(arg) for arg in args])
-            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            record = f'''{timestamp} PY4J: {self.wrapped_obj.__class__.__name__}.{name}{pretty_args}'''
+            record = f'''PY4J: {self.wrapped_obj.__class__.__name__}.{name}{pretty_args}'''
+            
+            # log the record
+            self.logger(record)
 
-            if self.log_file:
-                with open(self.log_file, 'a') as file:
-                    file.write('%s\n' % record)
-
-            if self.verbose:
-                print(record)
-
+            # make the method call and handle the result
             result = attr(*args)
             if result == self.wrapped_obj:
                 return self
 
             elif self.is_class_instance(result):
-                return Py4jWrapper(result, self.log_file, self.verbose)
+                return Py4jWrapper(result, self.logger)
 
             else:
                 return result
 
         return wrapper 
+
     
-    
-def get_gate(env='dev', wrap=False, verbose=False, log_file=None):
+def get_gate(env='dev', wrap=False, logger=None):
 
     if env=='dev' or env=='test':
         gate = mock_gateway.Gate()
@@ -92,8 +87,11 @@ def get_gate(env='dev', wrap=False, verbose=False, log_file=None):
     
     # wrap the py4j objects
     if wrap:
-        gate = Py4jWrapper(gate, log_file, verbose)
-        mm_core = Py4jWrapper(mm_core, log_file, verbose)
-        mm_studio = Py4jWrapper(mm_studio, log_file, verbose)
+        if not logger:
+            raise ValueError('A logger method is required when wrap=True')
+
+        gate = Py4jWrapper(gate, logger)
+        mm_core = Py4jWrapper(mm_core, logger)
+        mm_studio = Py4jWrapper(mm_studio, logger)
 
     return gate, mm_studio, mm_core
