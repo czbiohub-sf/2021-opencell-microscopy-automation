@@ -174,6 +174,9 @@ class Position(object):
     def __init__(self, label):
         self.label = label
 
+    def __repr__(self):
+        return 'Position(label=%s)' % self.label
+
     def getLabel(self):
         return self.label
 
@@ -200,6 +203,9 @@ class Image(object):
 
 class ImageCoords(object):
 
+    def __init__(self):
+        self.channel_ind, self.z_ind, self.stage_position = None, None, None
+    
     def __repr__(self):
         return 'ImageCoords(channel_ind=%s, z_ind=%s, stage_position=%s)' % \
             (self.channel_ind, self.z_ind, self.stage_position)

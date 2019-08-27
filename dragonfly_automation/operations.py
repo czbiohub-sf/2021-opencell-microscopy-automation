@@ -98,11 +98,11 @@ def acquire_stack(
 
         # manually construct image coordinates (position, channel, z)
         # NOTE: the filename of the TIFF stack is determined 
-        # by the value passed to stagePosition (which has to be a int)
+        # by the value passed to stagePosition (which has to be an int)
         coords = image.getCoords().copy()
         coords = coords.z(z_ind)
         coords = coords.channel(channel_ind)
-        coords = coords.stagePosition(position_ind)
+        coords = coords.stagePosition(int(position_ind))
         coords = coords.build()
 
         # construct image metadata

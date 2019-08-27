@@ -15,13 +15,28 @@ from dragonfly_automation.programs import pipeline_plate_settings as settings
 class PipelinePlateProgram(object):
 
 
-    def __init__(self, datastore, data_dirpath=None, env='dev'):
+    def __init__(self, datastore, data_dir, env='dev'):
 
         self.env = env
-        self.data_dirpath = data_dirpath
+        self.data_dir = data_dir
+        self.datastore = datastore
+
+        # create the log directory
+        self.log_dir = os.path.join(self.data_dir, 'logs')
+        os.makedirs(self.log_dir, exist_ok=True)
+
+        # log file for all raw py4j events
+        self.py4j_log_file = os.path.join(self.log_dir, 'py4j.log')
+
+        # log file for manually-logged program events
+        self.program_log_file = os.path.join(self.log_dir, 'program.log')
 
         # create the py4j objects
-        self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(env=env)
+        self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
+            env=self.env, 
+            wrap=True, 
+            verbose=True,
+            log_file=self.py4j_log_file)
 
         # initialize channel managers
         self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
@@ -37,7 +52,7 @@ class PipelinePlateProgram(object):
         if env=='dev':
             self.stack_settings = settings.dev_stack_settings
     
-        # the maximum number of FOVs (z-stacks) to acquire per well
+        # the maximum number of FOVs (that is, z-stacks) to acquire per well
         # (note that if few FOVs pass the confluency test, 
         # we may end up with fewer than this number of stacks)
         self.max_num_stacks_per_well = 8
@@ -46,31 +61,27 @@ class PipelinePlateProgram(object):
         self.xystage_label = 'XYStage'
         self.zstage_label = self.stack_settings.stage_label
 
-        # initialize/open the multipage TIFF 'store'
-        if env=='prod':
-            self.datastore = datastore
-            # self._initialize_datastore()
-
-        # no mock yet for the datastore object        
-        if env=='dev':
-            self.datastore = None
-
-
 
     def _initialize_datastore(self):
+        '''
+        Initialize a datastore object
 
-        if self.data_dirpath is None:
+        TODO: figure out why the call to `createMultipageTIFFDatastore` fails here
+
+        '''
+
+        if self.data_dir is None:
             raise ValueError('A data directory must be provided')
 
-        os.makedirs(self.data_dirpath, exist_ok=True)
+        os.makedirs(self.data_dir, exist_ok=True)
 
         # these arguments for createMultipageTIFFDatastore are copied from Nathan's script
-        should_generate_separate_metadata = True
         should_split_positions = True
+        should_generate_separate_metadata = True
 
-        print('Creating datastore at %s' % self.data_dirpath)
+        print('Creating datastore at %s' % self.data_dir)
         self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
-            self.data_dirpath, 
+            self.data_dir, 
             should_generate_separate_metadata, 
             should_split_positions)
 
