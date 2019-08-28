@@ -6,8 +6,7 @@ import numpy as np
 class Base(object):
 
     def __init__(self, name=None):
-        if name:
-            self.name = name
+        self.name = name
 
     def __getattr__(self, name):
         def wrapper(*args):
@@ -35,21 +34,17 @@ class Gate(object):
         def set_exposure_time(exposure_time):
             self.exposure_time = exposure_time
 
-        self.studio = CoreOrStudio(
-            kind='studio',
-            set_laser_power=lambda _: None,
-            set_exposure_time=lambda _: None)
+        self.mm_studio = MMStudio()
 
-        self.core = CoreOrStudio(
-            kind='core', 
+        self.mm_core = MMCore(
             set_laser_power=set_laser_power,
             set_exposure_time=set_exposure_time)
 
     def getCMMCore(self):
-        return self.core
+        return self.mm_core
 
     def getStudio(self):
-        return self.studio
+        return self.mm_studio
 
     def getLastMeta(self):
         return Meta(self.laser_power, self.exposure_time)
@@ -88,65 +83,63 @@ class Meta(object):
 
 
 class AutofocusManager(Base):
-    name = 'AutofocusManager'
+
     def getAutofocusMethod(self):
         # this is the af_plugin object
         return Base(name='AutofocusMethod')
 
 
 
-class CoreOrStudio(object):
+class MMStudio(Base):
     '''
-    Mock for mm_core and mm_studio
+    Mock for MMStudio
+    See https://valelab4.ucsf.edu/~MM/doc-2.0.0-beta/mmstudio/org/micromanager/Studio.html
     '''
-
-    def __init__(self, kind, set_laser_power, set_exposure_time):
-        self.kind = kind
-        self._current_z_position = 0
-        self.set_laser_power = set_laser_power
-        self.set_exposure_time = set_exposure_time
-
-    def __getattr__(self, name):
-        def wrapper(*args):
-            pass
-        return wrapper
 
     def getAutofocusManager(self):
         return AutofocusManager()
+
+    def getPositionList(self):
+        return PositionList()
+    
+    def live(self):
+        return Base(name='SnapLiveManager')
+
+    def data(self):
+        return DataManager()
+
+
+class MMCore(Base):
+    '''
+    Mock for MMCore
+    See https://valelab4.ucsf.edu/~MM/doc-2.0.0-beta/mmcorej/mmcorej/CMMCore.html
+    '''
+
+    def __init__(self, set_laser_power, set_exposure_time):
+        self._current_z_position = 0
+        self.set_laser_power = set_laser_power
+        self.set_exposure_time = set_exposure_time
 
     def getPosition(self, *args):
         return self._current_z_position
 
     def setPosition(self, zdevice, zposition):
-        self.__getattr__('setPosition')(zdevice, zposition)
         self._current_z_position = zposition
 
     def setRelativePosition(self, zdevice, offset):
-        self.__getattr__('setRelativePosition')(zdevice, offset)
         self._current_z_position += offset
 
-    def getPositionList(self):
-        return PositionList()
-
-    def live(self):
-        return Base(name='live')
-
     def setExposure(self, exposure_time):
-        self.__getattr__('setExposure')(exposure_time)
         self.set_exposure_time(exposure_time)
     
     def setProperty(self, label, prop_name, prop_value):
         '''
         Explicitly mock setProperty in order to intercept laser power
         '''
-        self.__getattr__('setProperty')(label, prop_name, prop_value)
-
         # hack-ish way to determine whether we're setting the laser power
         if prop_name.startswith('Laser'):
             self.set_laser_power(prop_value)
 
-    def data(self):
-        return DataManager()
 
 
 class DataManager(object):
