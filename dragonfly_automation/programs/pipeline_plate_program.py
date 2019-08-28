@@ -3,13 +3,10 @@ import os
 import datetime
 import numpy as np
 
+from dragonfly_automation import operations
+from dragonfly_automation import confluency_assessments
 from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.settings import ChannelSettingsManager
-
-from dragonfly_automation import (
-    operations, assessments
-)
-
 from dragonfly_automation.programs import pipeline_plate_settings as settings
 
 
@@ -252,7 +249,7 @@ class PipelinePlateProgram(object):
 
         # confluency assessment (also using DAPI)
         im = self.operations.acquire_snap(self.gate, self.mm_studio)
-        confluency_is_good, confluency_label = assessments.assess_confluency(im)
+        confluency_is_good, confluency_label = confluency_assessments.assess_confluency(im)
 
         if not confluency_is_good:
             record = ("PROGRAM WARNING: confluency test failed (label='%s')" % confluency_label)
