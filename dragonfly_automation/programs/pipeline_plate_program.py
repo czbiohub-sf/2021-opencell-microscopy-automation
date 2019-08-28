@@ -1,5 +1,6 @@
 
 import os
+import shutil
 import datetime
 import numpy as np
 
@@ -13,32 +14,35 @@ from dragonfly_automation.programs import pipeline_plate_settings as settings
 class PipelinePlateProgram(object):
 
 
-    def __init__(self, datastore, data_dir, env='dev', verbose=True):
+    def __init__(self, datastore, root_dir, env='dev', verbose=True):
 
         self.env = env
-        self.data_dir = data_dir
+        self.root_dir = root_dir
         self.datastore = datastore
         self.verbose = verbose
 
-        # create the log directory
-        self.log_dir = os.path.join(self.data_dir, 'logs')
-        os.makedirs(self.log_dir, exist_ok=True)
+        # create the log and data directories
+        self.log_dir = os.path.join(self.root_dir, 'logs')
+        self.data_dir = os.path.join(self.root_dir, 'data')
 
-        # log file for all events
-        self.log_file = os.path.join(self.log_dir, 'events.log')
-        if os.path.isfile(self.log_file):
+        if os.path.isdir(self.log_dir):
             if env=='prod':
-                raise ValueError('ERROR: A logfile already exists for this experiment')
-            os.remove(self.log_file)
+                raise ValueError('ERROR: data already exists for this experiment')
+            print('WARNING: Removing existing log directory')
+            shutil.rmtree(self.log_dir)
+            os.makedirs(self.log_dir)
+
+        # log file for events
+        self.event_log_file = os.path.join(self.log_dir, 'events.log')
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
             env=self.env, 
             wrap=True, 
-            logger=self.logger)
+            logger=self.event_logger)
 
         # create the operations instance (with logging enabled)
-        self.operations = operations.Operations(self.logger)
+        self.operations = operations.Operations(self.event_logger)
 
         # initialize channel managers
         self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
@@ -64,7 +68,7 @@ class PipelinePlateProgram(object):
         self.zstage_label = self.stack_settings.stage_label
     
 
-    def logger(self, message):
+    def event_logger(self, message):
         '''
         Write a message to the log
 
@@ -83,7 +87,7 @@ class PipelinePlateProgram(object):
         message = '%s %s' % (timestamp, message)
 
         # write the message
-        with open(self.log_file, 'a') as file:
+        with open(self.event_log_file, 'a') as file:
             file.write('%s\n' % message)
         
         if self.verbose:
@@ -94,12 +98,10 @@ class PipelinePlateProgram(object):
         '''
         Initialize a datastore object
 
-        TODO: figure out why the call to `createMultipageTIFFDatastore` fails here
+        *** currently unused because of an unresolved Java error ***
+        TODO: figure out why the call here to `createMultipageTIFFDatastore` fails
 
         '''
-
-        if self.data_dir is None:
-            raise ValueError('A data directory must be provided')
 
         os.makedirs(self.data_dir, exist_ok=True)
 
@@ -107,10 +109,9 @@ class PipelinePlateProgram(object):
         should_split_positions = True
         should_generate_separate_metadata = True
 
-        self.logger('PROGRAM INFO: Creating datastore at %s' % self.data_dir)
-    
+        self.event_logger('PROGRAM INFO: Creating datastore at %s' % self.data_dir)
         self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
-            self.data_dir, 
+            self.data_dir,
             should_generate_separate_metadata, 
             should_split_positions)
 
@@ -197,7 +198,7 @@ class PipelinePlateProgram(object):
             position = position_list.getPosition(position_ind)
             position_label = position.getLabel()
             
-            self.logger("PROGRAM INFO: Moving to a new position (index=%d, label='%s')" % \
+            self.event_logger("PROGRAM INFO: Moving to a new position (index=%d, label='%s')" % \
                 (position_ind, position_label))
 
             # Here, note that `goToPosition` moves only the stages specified in the position list,
@@ -210,7 +211,7 @@ class PipelinePlateProgram(object):
 
             # if the position is the first one in a new well
             if self.is_new_well(position_label):
-                self.logger('PROGRAM INFO: The current position is the first in a new well')
+                self.event_logger('PROGRAM INFO: The current position is the first in a new well')
 
                 # only autoexpose on the first position of a new well
                 run_autoexposure = True
@@ -224,7 +225,7 @@ class PipelinePlateProgram(object):
 
             # keep moving if enough stacks have already been acquired from the current well
             if num_stacks_from_current_well >= self.max_num_stacks_per_well:
-                self.logger('PROGRAM INFO: Position skipped because max_num_stacks_per_well was exceeded')
+                self.event_logger('PROGRAM INFO: Position skipped because max_num_stacks_per_well was exceeded')
                 continue
 
             # autofocus, maybe autoexpose, assess confluency, and acquire stacks
@@ -261,18 +262,21 @@ class PipelinePlateProgram(object):
         self.operations.autofocus(self.mm_studio, self.mm_core)    
 
         # confluency assessment (also using DAPI)
-        im = self.operations.acquire_snap(self.gate, self.mm_studio)
-        confluency_is_good, confluency_label = confluency_assessments.assess_confluency(im)
+        snap = self.operations.acquire_snap(self.gate, self.mm_studio)
+        confluency_is_good, confluency_label = confluency_assessments.assess_confluency(
+            snap,
+            log_dir=self.log_dir,
+            position_label=position_ind)
 
         if not confluency_is_good:
-            self.logger("PROGRAM WARNING: The confluency test failed (label='%s')" % confluency_label)
+            self.event_logger("PROGRAM WARNING: The confluency test failed (label='%s')" % confluency_label)
         
             if self.env=='dev':
                 print("Warning: confluency test results are ignored in 'dev' mode")
             else:
                 return did_acquire_stacks
         else:
-            self.logger("PROGRAM INFO: The confluency test passed")
+            self.event_logger("PROGRAM INFO: The confluency test passed")
 
         # -----------------------------------------------------------------
         #
@@ -290,11 +294,11 @@ class PipelinePlateProgram(object):
                 self.stack_settings,
                 self.autoexposure_settings,
                 self.gfp_channel,
-                self.logger)
+                self.event_logger)
 
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
-                self.logger('PROGRAM ERROR: Autoexposure failed; attempting to continue anyway')
+                self.event_logger('PROGRAM ERROR: Autoexposure failed; attempting to continue anyway')
 
         # -----------------------------------------------------------------
         #

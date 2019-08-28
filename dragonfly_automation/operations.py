@@ -9,7 +9,6 @@ class Operations(object):
 
     
     def __getattr__(self, name):
-
         operation = globals()[name]
         
         def wrapper(*args, **kwargs):
@@ -203,7 +202,7 @@ def autoexposure(
     stack_settings, 
     autoexposure_settings,
     channel_settings,
-    logger):
+    event_logger):
     '''
 
     Parameters
@@ -262,7 +261,7 @@ def autoexposure(
         # reset stack_max_intensity, and go back to the bottom of the z-stack
         if slice_was_overexposed:
             overexposure_did_occur = True
-            logger('AUTOEXPOSURE WARNING: z-slice at %s was overexposed' % current_z_position)
+            event_logger('AUTOEXPOSURE WARNING: z-slice at %s was overexposed' % current_z_position)
 
             # lower the exposure time; if it falls below the minimum, turn down the laser instead
             channel_settings.exposure_time *= autoexposure_settings.relative_exposure_step
@@ -318,7 +317,8 @@ def autoexposure(
             channel_settings.exposure_time *= intensity_ratio
             if channel_settings.exposure_time > autoexposure_settings.max_exposure_time:
                 channel_settings.exposure_time = autoexposure_settings.max_exposure_time
-                logger('AUTOEXPOSURE WARNING: stack was under-exposed and maximum exposure time was exceeded')
+                event_logger(
+                    'AUTOEXPOSURE WARNING: stack was under-exposed and maximum exposure time was exceeded')
     
     # reset the piezo stage
     move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
