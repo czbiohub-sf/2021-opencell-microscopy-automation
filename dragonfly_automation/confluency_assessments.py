@@ -12,7 +12,7 @@ from skimage import morphology
 from dragonfly_automation import utils
 
 
-def assess_confluency(snap, log_dir=None, position_label=None):
+def assess_confluency(snap, log_dir=None, position_ind=None):
     '''
     Assess confluency of a single FOV given a single z-slice
     that is potentially somewhat out-of-focus
@@ -24,9 +24,13 @@ def assess_confluency(snap, log_dir=None, position_label=None):
     log_dir : str, optional
         Local path to the directory in which to save log files
         (if None, no logging is performed)
-    position_label : str, optional
-        The label of the current position (used only for logging)
-
+    position_ind : int, optional (required if log_dir is not none)
+        The index of the current position (used only for logging)
+        Note that we use an index, and not a label, because it's not clear
+        that we can assume that the labels in the position list will always be unique 
+        (e.g., they may not be when the position list is generated manually,
+        rather than by the plate-position plugin)
+        
     Returns
     -------
     confluency_is_good : bool
@@ -79,7 +83,7 @@ def assess_confluency(snap, log_dir=None, position_label=None):
         confluency_is_good = False
     
     # logging only if a log_dir was provided
-    if log_dir:
+    if log_dir is not None:
         
         # computed properties to log
         properties = {
@@ -90,13 +94,13 @@ def assess_confluency(snap, log_dir=None, position_label=None):
         }
 
         # log the properties and the snap itself
-        _log_confluency_data(snap, properties, log_dir, position_label)
+        _log_confluency_data(snap, properties, log_dir, position_ind)
 
     return confluency_is_good, confluency_label
 
 
 
-def _log_confluency_data(snap, properties, log_dir, position_label):
+def _log_confluency_data(snap, properties, log_dir, position_ind):
     '''
     '''
 
@@ -106,25 +110,22 @@ def _log_confluency_data(snap, properties, log_dir, position_label):
     snap_dir = os.path.join(log_dir, 'confluency-snaps')
     os.makedirs(snap_dir, exist_ok=True)
 
+    # filename for the snap itself
+    snap_filename = 'confluency-snap_pos%05d.tif' % position_ind
+
     # create the CSV-like log file if it does not exist
     log_filepath = os.path.join(log_dir, 'confluency-results.csv')
     if not os.path.isfile(log_filepath):
-        columns = ['snap_filename', 'position_label'] + list(properties.keys())
+        columns = ['snap_filename', 'position_ind'] + list(properties.keys())
         with open(log_filepath, 'w') as file:
             file.write('%s\n' % sep.join(columns))
-
-    # if no position label was provided, 
-    # fall back to using a timestamp for the snap filename
-    if position_label is None:
-        position_label = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    snap_filename = '%s_confluency-snap.tif' % position_label
-
+    
     # log the results
     with open(log_filepath, 'a') as file:
-        values = [snap_filename, position_label] + list(properties.values())
+        values = [snap_filename, position_ind] + list(properties.values())
         file.write('%s\n' % sep.join(map(str, values)))
 
-    # save the image
+    # save the snap image itself
     tifffile.imwrite(
         os.path.join(snap_dir, snap_filename), 
         snap.astype('uint16'))
