@@ -1,0 +1,29 @@
+{
+    "POSITIONS": [
+        {
+            "PROPERTIES": {},
+            "LABEL": "B9-Site_0", 
+            "GRID_COL": 0,  // always zero
+            "GRID_ROW": 0,  // always zero
+            "DEFAULT_XY_STAGE": "XYStage", 
+            "DEFAULT_Z_STAGE": "FocusDrive",
+            "DEVICES": [
+                {
+                    "X": 85180, 
+                    "Y": 19040, 
+                    "Z": 0, 
+                    "AXES": 2,
+                    "DEVICE": "XYStage"
+                }, {
+                    "X": 7604.0, 
+                    "Y": 0, 
+                    "Z": 0,
+                    "AXES": 1, 
+                    "DEVICE": "FocusDrive"
+                }
+            ]
+        }
+    ], 
+    "VERSION": 3, 
+    "ID": "Micro-Manager XY-position list"
+}
