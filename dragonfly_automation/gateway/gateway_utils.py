@@ -50,12 +50,12 @@ class Py4jWrapper(object):
 
         def wrapper(*args):
             
-            # construct the log record
+            # construct the log message
             pretty_args = tuple([self.prettify_arg(arg) for arg in args])
-            record = f'''PY4J: {self.wrapped_obj.__class__.__name__}.{name}{pretty_args}'''
+            message = f'''MM2PYTHON: {self.wrapped_obj.__class__.__name__}.{name}{pretty_args}'''
             
-            # log the record
-            self.logger(record)
+            # log the message
+            self.logger(message)
 
             # make the method call and handle the result
             result = attr(*args)

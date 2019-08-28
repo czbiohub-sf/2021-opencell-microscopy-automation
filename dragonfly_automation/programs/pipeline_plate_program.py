@@ -27,15 +27,17 @@ class PipelinePlateProgram(object):
         # log file for all events
         self.log_file = os.path.join(self.log_dir, 'events.log')
         if os.path.isfile(self.log_file):
+            if env=='prod':
+                raise ValueError('ERROR: A logfile already exists for this experiment')
             os.remove(self.log_file)
 
-        # create the py4j objects (with logger attached)
+        # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
             env=self.env, 
             wrap=True, 
             logger=self.logger)
 
-        # create the operations instance (with logger attached)
+        # create the operations instance (with logging enabled)
         self.operations = operations.Operations(self.logger)
 
         # initialize channel managers
@@ -62,21 +64,30 @@ class PipelinePlateProgram(object):
         self.zstage_label = self.stack_settings.stage_label
     
 
-    def logger(self, record):
+    def logger(self, message):
         '''
-        Write a record to the log
+        Write a message to the log
+
+        Note that this method is also passed to, and called from, 
+        - the operations module
+        - the confluency assessment method
+        - the wrappers around the gate, mm_studio, and mm_core objects
+
+        For now, we rely on the correct manual hard-coding of log messages 
+        to identify, in the logfile, which of these contexts this method was called from
+
         '''
 
         # prepend a timestamp
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        record = '%s %s' % (timestamp, record)
+        message = '%s %s' % (timestamp, message)
 
-        # write the record
+        # write the message
         with open(self.log_file, 'a') as file:
-            file.write('%s\n' % record)
+            file.write('%s\n' % message)
         
         if self.verbose:
-            print(record)
+            print(message)
 
 
     def _initialize_datastore(self):
@@ -96,8 +107,7 @@ class PipelinePlateProgram(object):
         should_split_positions = True
         should_generate_separate_metadata = True
 
-        record = ('PROGRAM INFO: Creating datastore at %s' % self.data_dir)
-        self.logger(record)
+        self.logger('PROGRAM INFO: Creating datastore at %s' % self.data_dir)
     
         self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
             self.data_dir, 
@@ -183,22 +193,24 @@ class PipelinePlateProgram(object):
 
         position_list = self.mm_studio.getPositionList()
         for position_ind in range(position_list.getNumberOfPositions()):
+
+            position = position_list.getPosition(position_ind)
+            position_label = position.getLabel()
             
-            record = 'PROGRAM INFO: Moving to position %d' % position_ind
-            self.logger(record)
+            self.logger("PROGRAM INFO: Moving to a new position (index=%d, label='%s')" % \
+                (position_ind, position_label))
 
-
-            # Here, note that `goToPosition` moves only the stage specified in the position list,
-            # which should always be the 'XYStage', *not* the 'PiezoZ' stage
+            # Here, note that `goToPosition` moves only the stages specified in the position list,
+            # which should be the 'XYStage' and 'FocusDrive' devices and *not* the 'PiezoZ' stage
 
             # TODO: think about moving the goToPosition line after the num_stacks check;
             # this would prevent needlessly moving the stage to any 'extra' positions in a well,
             # but might introduce dangerously long stage movements when moving to a new well
-            position = position_list.getPosition(position_ind)
             position.goToPosition(position, self.mm_core)
 
             # if the position is the first one in a new well
-            if self.is_new_well(position.getLabel()):
+            if self.is_new_well(position_label):
+                self.logger('PROGRAM INFO: The current position is the first in a new well')
 
                 # only autoexpose on the first position of a new well
                 run_autoexposure = True
@@ -212,6 +224,7 @@ class PipelinePlateProgram(object):
 
             # keep moving if enough stacks have already been acquired from the current well
             if num_stacks_from_current_well >= self.max_num_stacks_per_well:
+                self.logger('PROGRAM INFO: Position skipped because max_num_stacks_per_well was exceeded')
                 continue
 
             # autofocus, maybe autoexpose, assess confluency, and acquire stacks
@@ -252,13 +265,14 @@ class PipelinePlateProgram(object):
         confluency_is_good, confluency_label = confluency_assessments.assess_confluency(im)
 
         if not confluency_is_good:
-            record = ("PROGRAM WARNING: confluency test failed (label='%s')" % confluency_label)
-            self.logger(record)
-    
+            self.logger("PROGRAM WARNING: The confluency test failed (label='%s')" % confluency_label)
+        
             if self.env=='dev':
                 print("Warning: confluency test results are ignored in 'dev' mode")
             else:
                 return did_acquire_stacks
+        else:
+            self.logger("PROGRAM INFO: The confluency test passed")
 
         # -----------------------------------------------------------------
         #
@@ -280,8 +294,7 @@ class PipelinePlateProgram(object):
 
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
-                record = ('PROGRAM WARNING: autoexposure failed; attempting to continue')
-                self.logger(record)
+                self.logger('PROGRAM ERROR: Autoexposure failed; attempting to continue anyway')
 
         # -----------------------------------------------------------------
         #

@@ -47,7 +47,8 @@ def assess_confluency(im):
     nucleus_positions = _identify_nuclei(im, nucleus_radius)
 
     # calculate some properties of the spatial distribution of nucleus positions
-    num_nuclei, rel_com_offset, eval_ratio = _calculate_features_of_nucleus_positions(nucleus_positions, image_size)
+    num_nuclei, rel_com_offset, eval_ratio = _calculate_features_of_nucleus_positions(
+        nucleus_positions, image_size)
 
     # very rudimentary logic to assess confluency using these properties
     # too many nuclei
@@ -86,7 +87,8 @@ def _identify_nuclei(im, nucleus_radius):
         
     # the indicies of the local maximima in the distance transform
     # correspond roughly to the positions of the nuclei
-    local_max_inds = skimage.feature.peak_local_max(distf, indices=True, min_distance=nucleus_radius, labels=mask)
+    local_max_inds = skimage.feature.peak_local_max(
+        distf, indices=True, min_distance=nucleus_radius, labels=mask)
 
     return local_max_inds
 
