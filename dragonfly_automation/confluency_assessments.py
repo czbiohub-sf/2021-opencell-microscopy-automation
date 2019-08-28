@@ -111,7 +111,7 @@ def _log_confluency_data(snap, properties, log_dir, position_ind):
     os.makedirs(snap_dir, exist_ok=True)
 
     # filename for the snap itself
-    snap_filename = 'confluency-snap_pos%05d.tif' % position_ind
+    snap_filename = 'confluency_snap_pos%05d.tif' % position_ind
 
     # create the CSV-like log file if it does not exist
     log_filepath = os.path.join(log_dir, 'confluency-results.csv')

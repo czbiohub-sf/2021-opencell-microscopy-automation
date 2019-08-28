@@ -7,16 +7,13 @@ class Operations(object):
     def __init__(self, logger):
         self.logger = logger
 
-    
     def __getattr__(self, name):
         operation = globals()[name]
-        
         def wrapper(*args, **kwargs):
             self.logger('OPERATION INFO: Calling %s' % operation.__name__)
             result = operation(*args, **kwargs)
             self.logger('OPERATION INFO: Exiting %s' % operation.__name__)
             return result
-
         return wrapper
 
 
