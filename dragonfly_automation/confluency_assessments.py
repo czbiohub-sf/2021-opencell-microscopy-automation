@@ -29,7 +29,7 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
         Note that we use an index, and not a label, because it's not clear
         that we can assume that the labels in the position list will always be unique 
         (e.g., they may not be when the position list is generated manually,
-        rather than by the plate-position plugin)
+        rather than by the HCS Site Generator plugin)
         
     Returns
     -------

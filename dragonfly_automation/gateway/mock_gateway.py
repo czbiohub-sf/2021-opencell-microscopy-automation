@@ -90,11 +90,17 @@ class RealMeta(Meta):
     from the tests/test-snaps/ directory
     (for testing confluency assessment)
 
-    TODO: use more robust directory path than '../tests/'
     '''
 
     def __init__(self):
-        snap_filepaths = glob.glob('../tests/test-snaps/*.tif')
+
+        # hack-ish way to find the directory of test snaps
+        this_dir = os.path.dirname(__file__)
+        package_dir = os.sep.join(this_dir.split(os.sep)[:-2])
+        snap_dir = os.path.join(package_dir, 'tests', 'test-snaps', '*.tif')
+
+        # randomly select a test snap
+        snap_filepaths = glob.glob(snap_dir)
         ind = np.random.randint(0, len(snap_filepaths), 1)
         im = tifffile.imread(snap_filepaths[int(ind)])
         self._make_memmap(im)
@@ -188,8 +194,9 @@ class DataManager(object):
 class PositionList(object):
 
     def __init__(self):
-        self._position_list = ['Site_%d' % n for n in range(5)]
-        self._position_list += self._position_list
+        sites = ['Site_%d' % n for n in range(5)]
+        self._position_list = ['%s-%s' % ('A1', site) for site in sites]
+        self._position_list += ['%s-%s' % ('B10', site) for site in sites]
 
     def getNumberOfPositions(self):
         return len(self._position_list)
