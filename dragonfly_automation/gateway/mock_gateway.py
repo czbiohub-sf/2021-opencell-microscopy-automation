@@ -194,7 +194,7 @@ class DataManager(object):
 class PositionList(object):
 
     def __init__(self):
-        sites = ['Site_%d' % n for n in range(5)]
+        sites = ['Site_%d' % n for n in range(3)]
         self._position_list = ['%s-%s' % ('A1', site) for site in sites]
         self._position_list += ['%s-%s' % ('B10', site) for site in sites]
 

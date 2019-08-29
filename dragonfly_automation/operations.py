@@ -4,15 +4,15 @@ import numpy as np
 
 class Operations(object):
 
-    def __init__(self, logger):
-        self.logger = logger
+    def __init__(self, event_logger):
+        self.event_logger = event_logger
 
     def __getattr__(self, name):
         operation = globals()[name]
         def wrapper(*args, **kwargs):
-            self.logger('OPERATION INFO: Calling %s' % operation.__name__)
+            self.event_logger('OPERATION INFO: Calling %s' % operation.__name__)
             result = operation(*args, **kwargs)
-            self.logger('OPERATION INFO: Exiting %s' % operation.__name__)
+            self.event_logger('OPERATION INFO: Exiting %s' % operation.__name__)
             return result
         return wrapper
 

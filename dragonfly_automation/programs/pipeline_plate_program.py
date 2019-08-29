@@ -6,6 +6,7 @@ import json
 import shutil
 import datetime
 import numpy as np
+import pandas as pd
 
 from dragonfly_automation import operations
 from dragonfly_automation import confluency_assessments
@@ -63,22 +64,25 @@ class Program(object):
                 shutil.rmtree(self.log_dir)
                 os.makedirs(self.log_dir)
 
-        # log file for events
-        self.event_log_file = os.path.join(self.log_dir, 'events.log')
+        # events log (plaintext)
+        self.event_log_file = os.path.join(self.log_dir, 'all-events.log')
         
-        # JSON log for metadata
-        self.metadata_log_file = os.path.join(self.log_dir, 'metadata.json')
-        self.metadata_logger('root_directory', self.root_dir)
+        # program metadata log (JSON)
+        self.metadata_log_file = os.path.join(self.log_dir, 'program-metadata.json')
+        self.program_metadata_logger('root_directory', self.root_dir)
         
+        # acquisition log (CSV)
+        self.acquisition_log_file = os.path.join(self.log_dir, 'acquisitions.csv')
+
         # log the current commit
         repo = git.Repo('../')
         current_commit = 'unknown'
         if repo:
             current_commit = repo.commit().hexsha
-        self.metadata_logger('git_commit', current_commit)
+        self.program_metadata_logger('git_commit', current_commit)
 
         # log the date and time
-        self.metadata_logger('instantiation_timestamp', self.timestamp())
+        self.program_metadata_logger('instantiation_timestamp', self.timestamp())
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
@@ -97,11 +101,10 @@ class Program(object):
 
     def event_logger(self, message):
         '''
-        Write a message to the log
+        Append a message to the event log
 
         Note that this method is also passed to, and called from, 
-        - the operations module
-        - the confluency assessment method
+        - some methods in the operations module
         - the wrappers around the gate, mm_studio, and mm_core objects
 
         For now, we rely on the correct manual hard-coding of log messages 
@@ -120,9 +123,15 @@ class Program(object):
             print(message)
 
 
-    def metadata_logger(self, key, value):
+    def program_metadata_logger(self, key, value):
         '''
-        Append a field to the metadata JSON log
+        Append a key-value pair to the program-level metadata (which is just a JSON object)
+
+        This log is intended to capture metadata like the name of the program subclass,
+        the name of the imaging experiment, the start and end times of the acquisition itself,
+        the git commit hash of the dragonfly-automation repo when the program was run,
+        and also all of the program-level settings (autoexposure, stack, and default channel settings)
+
         TODO: check for key collisions
         '''
 
@@ -135,6 +144,33 @@ class Program(object):
         metadata[key] = value
         with open(self.metadata_log_file, 'w') as file:
             json.dump(metadata, file)
+
+
+    def acquisition_logger(self, channel_settings, **kwargs):
+        '''
+        Append a row to the acquisitions log
+        
+        This log is intended to contain the channel settings (laser power, exposure time, etc)
+        and position identifiers (index, label, etc) associated with each acquired image/stack
+        
+        For now, kwargs are appended to the row without any validation, 
+        and are intended to include the position identifiers. 
+
+        *** Note that this method must be called *manually* after each call to operations.acquire_stack ***
+        '''
+
+        # construct the row
+        row = channel_settings.__dict__
+        row.update(kwargs)
+
+        # append the row to the CSV
+        if os.path.isfile(self.acquisition_log_file):
+            d = pd.read_csv(self.acquisition_log_file)
+            d = d.append(row, ignore_index=True)
+        else:
+            d = pd.DataFrame([row])
+
+        d.to_csv(self.acquisition_log_file, index=False)
 
 
     def _initialize_datastore(self):
@@ -184,7 +220,7 @@ class Program(object):
             self.datastore.freeze()
 
         # log the time
-        self.metadata_logger('cleanup_timestamp', self.timestamp())
+        self.program_metadata_logger('cleanup_timestamp', self.timestamp())
 
     
 class PipelinePlateProgram(Program):
@@ -202,7 +238,7 @@ class PipelinePlateProgram(Program):
         super().__init__(*args, **kwargs)
 
         # log the name of the program subclass
-        self.metadata_logger('program_name', self.__class__.__name__)
+        self.program_metadata_logger('program_name', self.__class__.__name__)
 
         # initialize channel managers for GFP and DAPI
         self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
@@ -228,19 +264,19 @@ class PipelinePlateProgram(Program):
         self.zstage_label = self.stack_settings.stage_label
     
         # manually log all of the settings
-        self.metadata_logger(
+        self.program_metadata_logger(
             'autoexposure_settings', 
             dict(self.autoexposure_settings._asdict()))
 
-        self.metadata_logger(
+        self.program_metadata_logger(
             'stack_settings', 
             dict(self.stack_settings._asdict()))
     
-        self.metadata_logger(
+        self.program_metadata_logger(
             'dapi_channel',
             self.dapi_channel.__dict__)
 
-        self.metadata_logger(
+        self.program_metadata_logger(
             'gfp_channel',
             self.gfp_channel.__dict__)
     
@@ -332,9 +368,14 @@ class PipelinePlateProgram(Program):
             # determine the well_id (on the *imaging* plate) and the site number
             # (the site number is a per-well count of positions)
             well_id, site_num = self.parse_hcs_position_label(position_label)
+
+            self.current_well_id = well_id
+            self.current_site_num = site_num
+            self.current_position_ind = position_ind
+            self.current_position_label = position_label
             
             # this is how we know whether this is the first position in a new well
-            is_new_well = site_num==0
+            is_new_well = self.current_site_num==0
 
             # Here, note that `goToPosition` moves only the stages specified in the position list,
             # which should be the 'XYStage' and 'FocusDrive' devices and *not* the 'PiezoZ' stage
@@ -350,7 +391,7 @@ class PipelinePlateProgram(Program):
                     'PROGRAM INFO: The current position is the first position in well %s' % well_id)
 
                 # only autoexpose on the first position of a new well
-                run_autoexposure = True
+                should_do_autoexposure = True
 
                 # reset the stack counter
                 num_stacks_from_current_well = 0
@@ -366,17 +407,17 @@ class PipelinePlateProgram(Program):
                 continue
 
             # autofocus, maybe autoexpose, assess confluency, and acquire stacks
-            did_acquire_stacks = self.maybe_acquire_stacks(position_ind, run_autoexposure)
+            did_acquire_stacks = self.maybe_acquire_stacks(should_do_autoexposure)
 
             # autoexposure should only be run on the first *imaged* position in each well
             if did_acquire_stacks:
-                run_autoexposure = False
+                should_do_autoexposure = False
                 num_stacks_from_current_well += 1
 
         self.cleanup()
     
     
-    def maybe_acquire_stacks(self, position_ind, run_autoexposure=False):
+    def maybe_acquire_stacks(self, should_do_autoexposure=False):
         '''
         Attempt to acquire z-stacks at the current position
 
@@ -384,7 +425,7 @@ class PipelinePlateProgram(Program):
 
         1) autofocus using the DAPI channel
         2) do the confluency test; if it fails, return
-        3) call the autoexposure method using the GFP channel if run_autoexposure is true
+        3) call the autoexposure method using the GFP channel if should_do_autoexposure is true
         4) acquire a z-stack in DAPI and GFP channels and 'put' the stacks in self.datastore
 
         '''
@@ -401,7 +442,7 @@ class PipelinePlateProgram(Program):
         confluency_is_good, confluency_label = confluency_assessments.assess_confluency(
             snap,
             log_dir=self.log_dir,
-            position_ind=position_ind)
+            position_ind=self.current_position_ind)
 
         if not confluency_is_good:
             self.event_logger("PROGRAM WARNING: The confluency test failed (label='%s')" % \
@@ -421,7 +462,7 @@ class PipelinePlateProgram(Program):
         # (Note that laser power and exposure time are modified in-place)
         #
         # -----------------------------------------------------------------
-        if run_autoexposure:
+        if should_do_autoexposure:
             self.operations.change_channel(self.mm_core, self.gfp_channel)
             autoexposure_did_succeed = self.operations.autoexposure(
                 self.gate,
@@ -443,10 +484,10 @@ class PipelinePlateProgram(Program):
         #
         # -----------------------------------------------------------------
         channels = [self.dapi_channel, self.gfp_channel]
-        for channel_ind, channel in enumerate(channels):
+        for channel_ind, channel_settings in enumerate(channels):
 
             # change the channel
-            self.operations.change_channel(self.mm_core, channel)
+            self.operations.change_channel(self.mm_core, channel_settings)
 
             # acquire the stack
             self.operations.acquire_stack(
@@ -454,9 +495,16 @@ class PipelinePlateProgram(Program):
                 self.mm_core, 
                 self.datastore, 
                 self.stack_settings,
-                position_ind=position_ind,
-                channel_ind=channel_ind)
-    
+                channel_ind=channel_ind,
+                position_ind=self.current_position_ind)
+            
+            # log the acquisition
+            self.acquisition_logger(
+                channel_settings=channel_settings,
+                position_ind=self.current_position_ind,
+                well_id=self.current_well_id,
+                site_num=self.current_site_num)
+
         # if we're still here, we assume that the stacks were acquired successfully
         did_acquire_stacks = True
         return did_acquire_stacks

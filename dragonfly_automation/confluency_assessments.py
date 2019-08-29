@@ -112,17 +112,19 @@ def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_
     # filename for the snap itself
     snap_filename = 'confluency_snap_pos%05d.tif' % position_ind
 
+    # create the row to append to the logfile
+    row = {'snap_filename': snap_filename, 'position_ind': position_ind}
+    row.update(properties)
+
     # create the CSV-like log file if it does not exist
     log_filepath = os.path.join(log_dir, 'confluency-results.csv')
     if not os.path.isfile(log_filepath):
-        columns = ['snap_filename', 'position_ind'] + list(properties.keys())
         with open(log_filepath, 'w') as file:
-            file.write('%s\n' % sep.join(columns))
-    
-    # log the results
+            file.write('%s\n' % sep.join(row.keys()))
+
+    # append the new row
     with open(log_filepath, 'a') as file:
-        values = [snap_filename, position_ind] + list(properties.values())
-        file.write('%s\n' % sep.join(map(str, values)))
+        file.write('%s\n' % sep.join(map(str, row.values())))
 
     # save the snap image itself
     tifffile.imwrite(
