@@ -1,4 +1,6 @@
 import os
+import glob
+import tifffile
 import tempfile
 import numpy as np
 
@@ -25,6 +27,7 @@ class JavaGateway(object):
 class Gate(object):
 
     def __init__(self):
+        self.mm_studio = MMStudio()
 
         self.laser_power = None
         def set_laser_power(laser_power):
@@ -33,8 +36,6 @@ class Gate(object):
         self.exposure_time = None
         def set_exposure_time(exposure_time):
             self.exposure_time = exposure_time
-
-        self.mm_studio = MMStudio()
 
         self.mm_core = MMCore(
             set_laser_power=set_laser_power,
@@ -47,26 +48,28 @@ class Gate(object):
         return self.mm_studio
 
     def getLastMeta(self):
-        return Meta(self.laser_power, self.exposure_time)
+        '''
+        Returns a Meta object that provides access to the last image (or 'snap')
+        taken by MicroManager (usually via live.snap()) as an numpy memmap
 
+        For an image of noise scaled by laser power and exposure time, use
+        meta = RandomMeta(self.laser_power, self.exposure_time)
+
+        For a 'real' image from the tests/test-snaps/ directory, use
+        meta = RealMeta()
+        '''
+        return RealMeta()
 
 
 class Meta(object):
+    '''
+    Base class for Meta mocks
+    '''
 
-    def __init__(self, laser_power, exposure_time):
-
-        # over-exposed unless laser_power is below 10 and exposure_time is below 40
-        if laser_power >= 10 or exposure_time > 40:
-            rel_max = 1
-        else:
-            rel_max = exposure_time/40
-
-        maxx = int(65535 * min(1, rel_max))
-
-        self.shape = (1024, 1024)
+    def _make_memmap(self, im):
+        self.shape = im.shape
         self.filepath = os.path.join(tempfile.mkdtemp(), 'mock_snap.dat')
-        im = np.random.randint(0, maxx, self.shape, dtype='uint16')
-
+        im = im.astype('uint16')
         fp = np.memmap(self.filepath, dtype='uint16', mode='w+', shape=self.shape)
         fp[:] = im[:]
         del fp
@@ -80,6 +83,41 @@ class Meta(object):
     def getyRange(self):
         return self.shape[1]
 
+
+class RealMeta(Meta):
+    '''
+    Mock for the Meta object that returns a random test snap
+    from the tests/test-snaps/ directory
+    (for testing confluency assessment)
+
+    TODO: use more robust directory path than '../tests/'
+    '''
+
+    def __init__(self):
+        snap_filepaths = glob.glob('../tests/test-snaps/*.tif')
+        ind = np.random.randint(0, len(snap_filepaths), 1)
+        im = tifffile.imread(snap_filepaths[int(ind)])
+        self._make_memmap(im)
+
+
+class RandomMeta(Meta):
+    '''
+    Mock for the Meta object that returns an image consisting of noise
+    scaled by laser power and exposure time
+    (for testing autoexposure algorithms)
+    '''
+    def __init__(self, laser_power, exposure_time):
+
+        # over-exposed unless laser_power is below 10 and exposure_time is below 40
+        if laser_power >= 10 or exposure_time > 40:
+            rel_max = 1
+        else:
+            rel_max = exposure_time/40
+
+        shape = (1024, 1024)
+        maxx = int(65535 * min(1, rel_max))
+        im = np.random.randint(0, maxx, shape, dtype='uint16')
+        self._make_memmap(im)
 
 
 class AutofocusManager(Base):
@@ -150,7 +188,8 @@ class DataManager(object):
 class PositionList(object):
 
     def __init__(self):
-        self._position_list = ['Site_%d' % n for n in range(3)]
+        self._position_list = ['Site_%d' % n for n in range(5)]
+        self._position_list += self._position_list
 
     def getNumberOfPositions(self):
         return len(self._position_list)

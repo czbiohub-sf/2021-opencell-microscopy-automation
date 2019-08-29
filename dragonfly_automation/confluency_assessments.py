@@ -24,7 +24,7 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
     log_dir : str, optional
         Local path to the directory in which to save log files
         (if None, no logging is performed)
-    position_ind : int, optional (required if log_dir is not none)
+    position_ind : int, optional (but required for logging)
         The index of the current position (used only for logging)
         Note that we use an index, and not a label, because it's not clear
         that we can assume that the labels in the position list will always be unique 
@@ -42,8 +42,8 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
 
     # parameters used for decision tree
     # min/max number of nuclei in the FOV
-    min_num_nuclei = 15
-    max_num_nuclei = 50
+    min_num_nuclei = 20
+    max_num_nuclei = 55
 
     # max offset of the center of mass and and max asymmetry (eigenvalue ratio)
     max_rel_com_offset = .3
@@ -56,7 +56,7 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
     image_size = 1024
 
     # default values
-    confluency_label = None
+    confluency_label = 'good'
     confluency_is_good = True
 
     # find the positions of the nuclei in the image
@@ -82,9 +82,8 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
         confluency_label = 'anisotropic'
         confluency_is_good = False
     
-    # logging only if a log_dir was provided
     if log_dir is not None:
-        
+
         # computed properties to log
         properties = {
             'num_nuclei': num_nuclei,
@@ -93,14 +92,14 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
             'confluency_label': confluency_label,
         }
 
-        # log the properties and the snap itself
-        _log_confluency_data(snap, properties, log_dir, position_ind)
+        _log_confluency_data(
+            snap, properties, nucleus_positions, log_dir, position_ind)
 
     return confluency_is_good, confluency_label
 
 
 
-def _log_confluency_data(snap, properties, log_dir, position_ind):
+def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_ind):
     '''
     '''
 
@@ -129,6 +128,19 @@ def _log_confluency_data(snap, properties, log_dir, position_ind):
     tifffile.imwrite(
         os.path.join(snap_dir, snap_filename), 
         snap.astype('uint16'))
+    
+    # crudely annotate the snap image by marking the positions of the nuclei
+    width = 3
+    maxx = snap.max()
+    shape = snap.shape
+    for pos in nucleus_positions:
+        snap[
+            int(max(0, pos[0]-width)):int(min(shape[0], pos[0]+width)), 
+            int(max(0, pos[1]-width)):int(min(shape[1], pos[1]+width))] = maxx
+        tifffile.imwrite(
+            os.path.join(snap_dir, snap_filename.replace('.tif', '_ANT.tif')),
+            snap.astype('uint16'))
+        
 
 
 
