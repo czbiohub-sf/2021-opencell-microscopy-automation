@@ -1,21 +1,27 @@
 import os
+import re
 import sys
 import json
 import skimage
+import datetime
 import numpy as np
 
 from scipy import interpolate
 
 
-def interpolate_stage_positions(positions_filepath, region_shape, corner_positions, num_positions_per_well):
+def interpolate_stage_positions(
+    position_list_filepath, 
+    region_shape, 
+    corner_positions, 
+    num_positions_per_well):
     '''
     This method refactors the 'StageTiltDragonfly.py' script
 
     Parameters
     ----------
-    positions_filepath: str
-        Local path to a JSON list of positions; assumed to have been exported from
-        the plate-position plugin for MicroManager
+    position_list_filepath: str
+        Local path to a JSON list of positions; assumed to have been exported
+        from the plate-position plugin for MicroManager
     region_shape: tuple
         The shape of the plate 'region' to be imaged,
         as a tuple of (num_rows, num_columns)
@@ -42,7 +48,7 @@ def interpolate_stage_positions(positions_filepath, region_shape, corner_positio
     z = np.array(corner_positions).flatten()
     interpolator = interpolate.interp2d(rows, cols, z, kind='linear')
 
-    with open(positions_filepath) as file:
+    with open(position_list_filepath) as file:
         position_list = json.load(file)
 
     # loop over each well in the region
@@ -71,12 +77,18 @@ def interpolate_stage_positions(positions_filepath, region_shape, corner_positio
                 'DEVICE': 'FocusDrive',
             }
 
-            # copy the interpolated position into the position_list
+            # copy the FocusDrive config into the position_list
             # at each position of the current well
             for pos_ind in range(num_positions_per_well):
                 ind = num_positions_per_well * (row_ind * num_cols + col_ind) + pos_ind
                 position_list['POSITIONS'][ind]['DEVICES'].append(focus_drive_config)
     
+    # save the new position_list
+    ext = position_list_filepath.split('.')[-1]
+    new_filepath = re.sub('.%s$' % ext, '_INTERPOLATED.%s' % ext, position_list_filepath)
+    with open(new_filepath, 'w') as file:
+        json.dump(position_list, file)
+
     return position_list
 
 

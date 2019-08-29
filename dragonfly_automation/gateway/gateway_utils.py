@@ -40,7 +40,6 @@ class Py4jWrapper(object):
 
 
     def __getattr__(self, name):
-
         attr = getattr(self.wrapped_obj, name)
 
         # ignore calls to non-method attributes
