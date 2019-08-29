@@ -1,6 +1,8 @@
 
 import os
 import re
+import git
+import json
 import shutil
 import datetime
 import numpy as np
@@ -12,11 +14,37 @@ from dragonfly_automation.settings import ChannelSettingsManager
 from dragonfly_automation.programs import pipeline_plate_settings as settings
 
 
-class PipelinePlateProgram(object):
+class Program(object):
+    '''
+    Base class for programs
 
+    Public methods
+    --------------
+    event_logger : 
+
+
+    Public attributes
+    -----------------
+    env : 
+    datastore : 
+    verbose : 
+    operations : 
+    gate, mm_studio, mm_core : the py4j objects exposed by mm2python
+
+    '''
 
     def __init__(self, datastore, root_dir, env='dev', verbose=True):
+        '''
+        Program instantiation
 
+        datastore : py4j datastore object
+            passed explicitly here to avoid an unusual py4j error
+        root_dir : the imaging experiment directory 
+            (usually ends with a directory of the form 'ML0000_20190823')
+        env : 'prod' or 'dev'
+        verbose : whether to print log messages
+
+        '''
         self.env = env
         self.root_dir = root_dir
         self.datastore = datastore
@@ -25,16 +53,32 @@ class PipelinePlateProgram(object):
         # create the log and data directories
         self.log_dir = os.path.join(self.root_dir, 'logs')
         self.data_dir = os.path.join(self.root_dir, 'data')
-
+        
+        # check whether data/logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
             if env=='prod':
                 raise ValueError('ERROR: data already exists for this experiment')
-            print('WARNING: Removing existing log directory')
-            shutil.rmtree(self.log_dir)
-            os.makedirs(self.log_dir)
+            if env=='dev':
+                print('WARNING: Removing existing log directory')
+                shutil.rmtree(self.log_dir)
+                os.makedirs(self.log_dir)
 
         # log file for events
         self.event_log_file = os.path.join(self.log_dir, 'events.log')
+        
+        # JSON log for metadata
+        self.metadata_log_file = os.path.join(self.log_dir, 'metadata.json')
+        self.metadata_logger('root_directory', self.root_dir)
+        
+        # log the current commit
+        repo = git.Repo('../')
+        current_commit = 'unknown'
+        if repo:
+            current_commit = repo.commit().hexsha
+        self.metadata_logger('git_commit', current_commit)
+
+        # log the date and time
+        self.metadata_logger('instantiation_timestamp', self.timestamp())
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
@@ -45,29 +89,11 @@ class PipelinePlateProgram(object):
         # create the operations instance (with logging enabled)
         self.operations = operations.Operations(self.event_logger)
 
-        # initialize channel managers
-        self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
-        self.dapi_channel = ChannelSettingsManager(settings.dapi_channel_settings)
-        
-        # copy the autoexposure settings
-        self.autoexposure_settings = settings.autoexposure_settings
 
-        # different stack settings for dev and prod
-        # (just to reduce the number of slices acquired in dev mode)
-        if env=='prod':
-            self.stack_settings = settings.prod_stack_settings
-        if env=='dev':
-            self.stack_settings = settings.dev_stack_settings
-    
-        # the maximum number of FOVs (that is, z-stacks) to acquire per well
-        # (note that if few FOVs pass the confluency test, 
-        # we may end up with fewer than this number of stacks)
-        self.max_num_stacks_per_well = 8
+    @staticmethod
+    def timestamp():
+        return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        # stage labels for convenience
-        self.xystage_label = 'XYStage'
-        self.zstage_label = self.stack_settings.stage_label
-    
 
     def event_logger(self, message):
         '''
@@ -84,8 +110,7 @@ class PipelinePlateProgram(object):
         '''
 
         # prepend a timestamp
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        message = '%s %s' % (timestamp, message)
+        message = '%s %s' % (self.timestamp(), message)
 
         # write the message
         with open(self.event_log_file, 'a') as file:
@@ -95,13 +120,29 @@ class PipelinePlateProgram(object):
             print(message)
 
 
+    def metadata_logger(self, key, value):
+        '''
+        Append a field to the metadata JSON log
+        TODO: check for key collisions
+        '''
+
+        if os.path.isfile(self.metadata_log_file):
+            with open(self.metadata_log_file, 'r') as file:
+                metadata = json.load(file)
+        else:
+            metadata = {}
+        
+        metadata[key] = value
+        with open(self.metadata_log_file, 'w') as file:
+            json.dump(metadata, file)
+
+
     def _initialize_datastore(self):
         '''
         Initialize a datastore object
 
         *** currently unused because of an unresolved Java error ***
         TODO: figure out why the call here to `createMultipageTIFFDatastore` fails
-
         '''
 
         os.makedirs(self.data_dir, exist_ok=True)
@@ -117,21 +158,101 @@ class PipelinePlateProgram(object):
             should_split_positions)
 
         self.mm_studio.displays().createDisplay(self.datastore)
-
-
+        
+    
     def setup(self):
         '''
-        Generic microscope setup
-        set the autofocus mode and run the `mm_core.assignImageSynchro` calls
-
+        Commands to execute before the acquisition begins
+        e.g., setting the autofocus mode, camera mode, various synchronization commands
         '''
+        raise NotImplementedError
+
+    def run(self):
+        '''
+        The main acquisition workflow
+        '''
+        raise NotImplementedError
+
+    def cleanup(self):
+        '''
+        Commands that should be executed after the acquisition is complete
+        (that is, after self.run)
+        '''
+
+        # freeze the datastore
+        if self.datastore:
+            self.datastore.freeze()
+
+        # log the time
+        self.metadata_logger('cleanup_timestamp', self.timestamp())
+
+    
+class PipelinePlateProgram(Program):
+    '''
+    This program is a re-implementation of Nathan's pipeline plate acquisition script
+
+    It acquires DAPI and GFP z-stacks at some number of positions
+    in some number of wells on a 96-well plate.
+
+    See the comments in self.run for more details
+
+    '''
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # log the name of the program subclass
+        self.metadata_logger('program_name', self.__class__.__name__)
+
+        # initialize channel managers for GFP and DAPI
+        self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
+        self.dapi_channel = ChannelSettingsManager(settings.dapi_channel_settings)
+        
+        # copy the autoexposure settings
+        self.autoexposure_settings = settings.autoexposure_settings
+
+        # different stack settings for dev and prod
+        # (just to reduce the number of slices acquired in dev mode)
+        if self.env=='prod':
+            self.stack_settings = settings.prod_stack_settings
+        if self.env=='dev':
+            self.stack_settings = settings.dev_stack_settings
+    
+        # the maximum number of FOVs (that is, z-stacks) to acquire per well
+        # (note that if few FOVs pass the confluency test, 
+        # we may end up with fewer than this number of stacks)
+        self.max_num_stacks_per_well = 8
+
+        # stage labels for convenience
+        self.xystage_label = 'XYStage'
+        self.zstage_label = self.stack_settings.stage_label
+    
+        # manually log all of the settings
+        self.metadata_logger(
+            'autoexposure_settings', 
+            dict(self.autoexposure_settings._asdict()))
+
+        self.metadata_logger(
+            'stack_settings', 
+            dict(self.stack_settings._asdict()))
+    
+        self.metadata_logger(
+            'dapi_channel',
+            self.dapi_channel.__dict__)
+
+        self.metadata_logger(
+            'gfp_channel',
+            self.gfp_channel.__dict__)
+    
+
+    def setup(self):
 
         # change the autofocus mode to AFC
         af_manager = self.mm_studio.getAutofocusManager()
         af_manager.setAutofocusMethodByName("Adaptive Focus Control")
 
         # these `assignImageSynchro` calls are copied directly from Nathan's script
-        # TODO: check with Bryant if these are necessary
+        # TODO: determine whether they are necessary
         self.mm_core.assignImageSynchro(self.zstage_label)
         self.mm_core.assignImageSynchro(self.xystage_label)
         self.mm_core.assignImageSynchro(self.mm_core.getShutterDevice())
@@ -144,12 +265,10 @@ class PipelinePlateProgram(object):
 
     def cleanup(self):
         '''
-        Commands that should be run after the acquisition is complete
-        (that is, at the very end of self.run)
+        TODO: are there other commands that should be executed here
+        to ensure the microscope is returned to a 'safe' state?
         '''
-
-        if self.datastore:
-            self.datastore.freeze()
+        super().cleanup()
 
 
     def parse_hcs_position_label(self, label):
@@ -183,13 +302,13 @@ class PipelinePlateProgram(object):
         *** We assume that these positions were generated by the HCS Site Generator plugin ***
 
         In particular, we assume that the list of positions corresponds 
-        to some number of FOVs in some number of distinct wells,
-        and that all of the FOVs in each well appear together.
+        to some number of positions (or 'sites') in some number of distinct wells,
+        and that all of the positions in each well appear sequentially together.
 
         At each position, the following steps are performed:
 
-            1) move to the new position (this moves the xy-stage and the FocusDrive z-stage)
-            3) check if the new position is the first position of a new well
+            1) move to the new position (using the xy-stage and the FocusDrive z-stage)
+            3) check if the new position is the first position in a new well
                (if it is, we will need to run the autoexposure method)
             4) check if we have already acquired enough FOVs/stacks for the current well
                (if we do, we'll skip the position)
@@ -259,16 +378,14 @@ class PipelinePlateProgram(object):
     
     def maybe_acquire_stacks(self, position_ind, run_autoexposure=False):
         '''
-        Attempt to acquire z-stacks at the current x-y position
+        Attempt to acquire z-stacks at the current position
 
         Performs the following steps:
 
         1) autofocus using the DAPI channel
-        2) run the confluency test
-        3) run the autoexposure method using the GFP channel if run_autoexposure is true
+        2) do the confluency test; if it fails, return
+        3) call the autoexposure method using the GFP channel if run_autoexposure is true
         4) acquire a z-stack in DAPI and GFP channels and 'put' the stacks in self.datastore
-
-        TODO: implement explicit error handling
 
         '''
 
