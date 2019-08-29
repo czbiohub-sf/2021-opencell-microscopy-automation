@@ -69,7 +69,6 @@ class Program(object):
         
         # program metadata log (JSON)
         self.metadata_log_file = os.path.join(self.log_dir, 'program-metadata.json')
-        self.program_metadata_logger('root_directory', self.root_dir)
         
         # acquisition log (CSV)
         self.acquisition_log_file = os.path.join(self.log_dir, 'acquisitions.csv')
@@ -81,8 +80,8 @@ class Program(object):
             current_commit = repo.commit().hexsha
         self.program_metadata_logger('git_commit', current_commit)
 
-        # log the date and time
-        self.program_metadata_logger('instantiation_timestamp', self.timestamp())
+        # log the experiment root directory
+        self.program_metadata_logger('root_directory', self.root_dir)
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
@@ -201,7 +200,8 @@ class Program(object):
         Commands to execute before the acquisition begins
         e.g., setting the autofocus mode, camera mode, various synchronization commands
         '''
-        raise NotImplementedError
+        self.program_metadata_logger('setup_timestamp', self.timestamp())
+
 
     def run(self):
         '''
@@ -209,12 +209,12 @@ class Program(object):
         '''
         raise NotImplementedError
 
+
     def cleanup(self):
         '''
         Commands that should be executed after the acquisition is complete
         (that is, after self.run)
         '''
-
         # freeze the datastore
         if self.datastore:
             self.datastore.freeze()
@@ -282,6 +282,7 @@ class PipelinePlateProgram(Program):
     
 
     def setup(self):
+        super().setup()
 
         # change the autofocus mode to AFC
         af_manager = self.mm_studio.getAutofocusManager()
@@ -301,7 +302,7 @@ class PipelinePlateProgram(Program):
 
     def cleanup(self):
         '''
-        TODO: are there other commands that should be executed here
+        TODO: are there commands that should be executed here
         to ensure the microscope is returned to a 'safe' state?
         '''
         super().cleanup()
