@@ -34,7 +34,7 @@ class Program(object):
 
     '''
 
-    def __init__(self, datastore, root_dir, env='dev', verbose=True):
+    def __init__(self, root_dir, env='dev', verbose=True):
         '''
         Program instantiation
 
@@ -48,21 +48,22 @@ class Program(object):
         '''
         self.env = env
         self.root_dir = root_dir
-        self.datastore = datastore
         self.verbose = verbose
 
         # create the log and data directories
         self.log_dir = os.path.join(self.root_dir, 'logs')
         self.data_dir = os.path.join(self.root_dir, 'data')
-        
+
         # check whether data/logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
-            if env=='prod':
+            if env == 'prod':
                 raise ValueError('ERROR: data already exists for this experiment')
-            if env=='dev':
+            if env == 'dev':
                 print('WARNING: Removing existing log directory')
                 shutil.rmtree(self.log_dir)
                 os.makedirs(self.log_dir)
+        else:
+            os.makedirs(self.log_dir)
 
         # events log (plaintext)
         self.event_log_file = os.path.join(self.log_dir, 'all-events.log')
@@ -91,6 +92,9 @@ class Program(object):
 
         # create the operations instance (with logging enabled)
         self.operations = operations.Operations(self.event_logger)
+
+        # create the datastore
+        self._initialize_datastore()
 
 
     @staticmethod
@@ -176,11 +180,8 @@ class Program(object):
         '''
         Initialize a datastore object
 
-        *** currently unused because of an unresolved Java error ***
-        TODO: figure out why the call here to `createMultipageTIFFDatastore` fails
+        TODO: check that self.data_dir does *not* exist
         '''
-
-        os.makedirs(self.data_dir, exist_ok=True)
 
         # these arguments for createMultipageTIFFDatastore are copied from Nathan's script
         should_split_positions = True
@@ -216,6 +217,7 @@ class Program(object):
         (that is, after self.run)
         '''
         # freeze the datastore
+        # TODO: figure out why freeze() throws a py4j error
         if self.datastore:
             self.datastore.freeze()
 
@@ -249,9 +251,9 @@ class PipelinePlateProgram(Program):
 
         # different stack settings for dev and prod
         # (just to reduce the number of slices acquired in dev mode)
-        if self.env=='prod':
+        if self.env == 'prod':
             self.stack_settings = settings.prod_stack_settings
-        if self.env=='dev':
+        if self.env == 'dev':
             self.stack_settings = settings.dev_stack_settings
     
         # the maximum number of FOVs (that is, z-stacks) to acquire per well
@@ -376,7 +378,7 @@ class PipelinePlateProgram(Program):
             self.current_position_label = position_label
             
             # this is how we know whether this is the first position in a new well
-            is_new_well = self.current_site_num==0
+            is_new_well = self.current_site_num == 0
 
             # Here, note that `goToPosition` moves only the stages specified in the position list,
             # which should be the 'XYStage' and 'FocusDrive' devices and *not* the 'PiezoZ' stage
@@ -434,7 +436,8 @@ class PipelinePlateProgram(Program):
         # whether we acquired stacks at this position
         did_acquire_stacks = False
     
-        # autofocus using DAPI 
+        # autofocus using DAPI
+        # TODO: error handling for AFC failure
         self.operations.change_channel(self.mm_core, self.dapi_channel)
         self.operations.autofocus(self.mm_studio, self.mm_core)    
 
@@ -449,7 +452,7 @@ class PipelinePlateProgram(Program):
             self.event_logger("PROGRAM WARNING: The confluency test failed (label='%s')" % \
                 confluency_label)
         
-            if self.env=='dev':
+            if self.env == 'dev' or self.env == 'prod':
                 print("Warning: confluency test results are ignored in 'dev' mode")
             else:
                 return did_acquire_stacks

@@ -4,6 +4,7 @@ tests/output/
 .DS_Store
 
 .vscode/
+.idea/
 ignore/
 
 # Byte-compiled / optimized / DLL files

@@ -23,6 +23,7 @@ def autofocus(mm_studio, mm_core):
     Very minimal wrapper around the `fullFocus` method
     of the current/active autofocus plugin
 
+    TODO: add error handling (Py4JJavaError is raised if AFC times out)
     TODO: specify the autofocus plugin to use (e.g., either AFC or traditional autofocus)
     
     '''
@@ -33,7 +34,7 @@ def autofocus(mm_studio, mm_core):
 
     try:
         # TODO: find out whether this call to `fullFocus` is equivalent 
-        # to clicking the bincolulars button in MicroManager
+        # to clicking the binoculars button in MicroManager
         af_plugin.fullFocus()
 
     except Exception as error:
