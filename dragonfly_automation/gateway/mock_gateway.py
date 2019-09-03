@@ -151,6 +151,9 @@ class MMStudio(Base):
 
     def data(self):
         return DataManager()
+    
+    def displays(self):
+        return Base(name='DisplayManager')
 
 
 class MMCore(Base):
@@ -187,6 +190,12 @@ class MMCore(Base):
 
 
 class DataManager(object):
+    '''
+    This object is returned by MMStudio.data()
+    '''
+    def createMultipageTIFFDatastore(self, *args):
+        return Base(name='Datastore')
+
     def convertTaggedImage(self, *args):
         return Image()        
 

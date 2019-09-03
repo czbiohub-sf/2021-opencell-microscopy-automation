@@ -50,20 +50,18 @@ class Program(object):
         self.root_dir = root_dir
         self.verbose = verbose
 
-        # create the log and data directories
         self.log_dir = os.path.join(self.root_dir, 'logs')
         self.data_dir = os.path.join(self.root_dir, 'data')
 
-        # check whether data/logs already exist for the root_dir
+        # check whether data and/or logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
             if env == 'prod':
-                raise ValueError('ERROR: data already exists for this experiment')
+                raise ValueError('The experiment directory %s is not empty' % self.root_dir)
             if env == 'dev':
-                print('WARNING: Removing existing log directory')
-                shutil.rmtree(self.log_dir)
-                os.makedirs(self.log_dir)
-        else:
-            os.makedirs(self.log_dir)
+                print('WARNING: Removing existing experiment directory')
+                shutil.rmtree(self.root_dir)
+        
+        os.makedirs(self.log_dir, exist_ok=True)
 
         # events log (plaintext)
         self.event_log_file = os.path.join(self.log_dir, 'all-events.log')
@@ -179,9 +177,11 @@ class Program(object):
     def _initialize_datastore(self):
         '''
         Initialize a datastore object
-
-        TODO: check that self.data_dir does *not* exist
         '''
+
+        # the datastore can only be initialized if the data directory does not exist
+        if os.path.isdir(self.data_dir):
+            raise ValueError('Data directory already exists at %s' % self.data_dir)
 
         # these arguments for createMultipageTIFFDatastore are copied from Nathan's script
         should_split_positions = True
@@ -215,6 +215,9 @@ class Program(object):
         '''
         Commands that should be executed after the acquisition is complete
         (that is, after self.run)
+
+        TODO: are there close/shutdown methods that should be called on the py4j objects?
+
         '''
         # freeze the datastore
         # TODO: figure out why freeze() throws a py4j error
