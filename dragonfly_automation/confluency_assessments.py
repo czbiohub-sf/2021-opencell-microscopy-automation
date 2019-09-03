@@ -92,6 +92,7 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
             'confluency_label': confluency_label,
         }
 
+        log_dir = os.path.join(log_dir, 'confluency-check')
         _log_confluency_data(
             snap, properties, nucleus_positions, log_dir, position_ind)
 
@@ -117,7 +118,7 @@ def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_
     row.update(properties)
 
     # create the CSV-like log file if it does not exist
-    log_filepath = os.path.join(log_dir, 'confluency-results.csv')
+    log_filepath = os.path.join(log_dir, 'confluency-check-log.csv')
     if not os.path.isfile(log_filepath):
         with open(log_filepath, 'w') as file:
             file.write('%s\n' % sep.join(row.keys()))

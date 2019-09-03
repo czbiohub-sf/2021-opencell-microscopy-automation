@@ -11,8 +11,9 @@ class Py4jWrapper(object):
     '''
     Intercept and log calls to method attributes of a py4j object
 
-    Note that we do not allow keyword arguments,
-    because py4j objects seem to accept only positional arguments
+    Note that the wrapper does not accept keyword arguments
+    because py4j objects themselves do not accept them
+    (see the definition of JavaMember.__call__ in py4j.java_gateway)
     '''
 
     def __init__(self, obj, logger):

@@ -46,9 +46,16 @@ class Program(object):
         verbose : whether to print log messages
 
         '''
+
+        # strip trailing slashes
+        root_dir = re.sub(f'{os.sep}+$', '', root_dir)
+
         self.env = env
         self.root_dir = root_dir
         self.verbose = verbose
+
+        # the name of the experiment is the name of the directory
+        self.experiment_name = os.path.split(self.root_dir)[-1]
 
         self.log_dir = os.path.join(self.root_dir, 'logs')
         self.data_dir = os.path.join(self.root_dir, 'data')
@@ -64,19 +71,19 @@ class Program(object):
         os.makedirs(self.log_dir, exist_ok=True)
 
         # events log (plaintext)
-        self.event_log_file = os.path.join(self.log_dir, 'all-events.log')
+        self.event_log_file = os.path.join(self.log_dir, '%s_events-log.log' % self.experiment_name)
         
         # program metadata log (JSON)
-        self.metadata_log_file = os.path.join(self.log_dir, 'program-metadata.json')
+        self.metadata_log_file = os.path.join(self.log_dir, '%s_metadata-log.json' % self.experiment_name)
         
         # acquisition log (CSV)
-        self.acquisition_log_file = os.path.join(self.log_dir, 'acquisitions.csv')
+        self.acquisition_log_file = os.path.join(self.log_dir, '%s_acquisitions-log.csv' % self.experiment_name)
 
         # log the current commit
         repo = git.Repo('../')
-        current_commit = 'unknown'
-        if repo:
-            current_commit = repo.commit().hexsha
+        if not repo:
+            raise ValueError('This script cannot be run outside of a git repo')
+        current_commit = repo.commit().hexsha
         self.program_metadata_logger('git_commit', current_commit)
 
         # log the experiment root directory
@@ -287,6 +294,8 @@ class PipelinePlateProgram(Program):
     
 
     def setup(self):
+        self.event_logger('PROGRAM INFO: Calling setup method')
+
         super().setup()
 
         # change the autofocus mode to AFC
@@ -303,6 +312,7 @@ class PipelinePlateProgram(Program):
         # turn on auto shutter mode 
         # (this means that the shutter automatically opens and closes when an image is acquired)
         self.mm_core.setAutoShutter(True)
+        self.event_logger('PROGRAM INFO: Exiting setup method')
 
 
     def cleanup(self):
@@ -310,7 +320,9 @@ class PipelinePlateProgram(Program):
         TODO: are there commands that should be executed here
         to ensure the microscope is returned to a 'safe' state?
         '''
+        self.event_logger('PROGRAM INFO: Calling cleanup method')
         super().cleanup()
+        self.event_logger('PROGRAM INFO: Exiting cleanup method')
 
 
     def parse_hcs_position_label(self, label):
@@ -326,7 +338,7 @@ class PipelinePlateProgram(Program):
         pattern = r'^([A-H][0-9]{1,2})-Site_([0-9]+)$'
         result = re.findall(pattern, label)
         if not result:
-            self.event_logger('PROGRAM ERROR: Unexpected site label %s' % label)
+            self.event_logger('PROGRAM CRITICAL: Unexpected site label %s' % label)
         
         well_id, site_num = result[0]
         site_num = int(site_num)
@@ -439,23 +451,26 @@ class PipelinePlateProgram(Program):
         # whether we acquired stacks at this position
         did_acquire_stacks = False
     
-        # autofocus using DAPI
-        # TODO: error handling for AFC failure
-        self.operations.change_channel(self.mm_core, self.dapi_channel)
-        self.operations.autofocus(self.mm_studio, self.mm_core)    
+        # attempt to autofocus (using AFC)
+        autofocus_did_succeed = self.operations.autofocus(self.mm_studio, self.mm_core)    
+        if not autofocus_did_succeed:
+            self.event_logger(
+                'PROGRAM WARNING: AFC failed and stacks will not be acquired')
+            return did_acquire_stacks
 
-        # confluency assessment (also using DAPI)
+        # confluency assessment (using the DAPI channel)
+        self.operations.change_channel(self.mm_core, self.dapi_channel)
         snap = self.operations.acquire_snap(self.gate, self.mm_studio)
         confluency_is_good, confluency_label = confluency_assessments.assess_confluency(
             snap,
             log_dir=self.log_dir,
             position_ind=self.current_position_ind)
-
-        if not confluency_is_good:
-            self.event_logger("PROGRAM WARNING: The confluency test failed (label='%s')" % \
-                confluency_label)
         
-            if self.env == 'dev' or self.env == 'prod':
+        # if the confluency test fails, we should not acquire the stacks
+        if not confluency_is_good:
+            self.event_logger("PROGRAM INFO: The confluency test failed (label='%s')" % \
+                confluency_label)        
+            if self.env == 'dev':
                 print("Warning: confluency test results are ignored in 'dev' mode")
             else:
                 return did_acquire_stacks
@@ -483,7 +498,7 @@ class PipelinePlateProgram(Program):
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
                 self.event_logger(
-                    'PROGRAM ERROR: Autoexposure failed; attempting to continue anyway')
+                    'PROGRAM WARNING: Autoexposure failed, but stacks will be acquired anyway')
 
         # -----------------------------------------------------------------
         #

@@ -1,4 +1,5 @@
 
+import py4j
 import numpy as np
 
 
@@ -20,29 +21,26 @@ class Operations(object):
 def autofocus(mm_studio, mm_core):
 
     '''
-    Very minimal wrapper around the `fullFocus` method
-    of the current/active autofocus plugin
+    Minimal wrapper around the `fullFocus` method
+    of the active autofocus plugin
 
-    TODO: add error handling (Py4JJavaError is raised if AFC times out)
-    TODO: specify the autofocus plugin to use (e.g., either AFC or traditional autofocus)
+    TODO: specify the autofocus plugin to use 
+    (e.g., either AFC or 'traditional' autofocus)
     
     '''
+    autofocus_did_succeed = True
 
-    # get the current/active AutofocusPlugin
+    # get the active AutofocusPlugin
     af_manager = mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()
 
     try:
-        # TODO: find out whether this call to `fullFocus` is equivalent 
-        # to clicking the binoculars button in MicroManager
         af_plugin.fullFocus()
+    except py4j.protocol.Py4JJavaError:
+        autofocus_did_succeed = False
 
-    except Exception as error:
-        print('WARNING: AFC failure')
-        print(error)
-
-    # just to be safe
     mm_core.waitForSystem()
+    return autofocus_did_succeed
 
 
 def acquire_snap(gate, mm_studio):

@@ -1,9 +1,18 @@
 import os
+import py4j
 import glob
 import tifffile
 import tempfile
 import numpy as np
 
+
+class JavaException(object):
+    '''
+    mock for py4j java_exception object expected by py4j.protocol.Py4JJavaError    
+    '''
+    _target_id = 'target_id'
+    _gateway_client = '_gateway_client'
+    
 
 class Base(object):
 
@@ -127,11 +136,22 @@ class RandomMeta(Meta):
 
 
 class AutofocusManager(Base):
-
     def getAutofocusMethod(self):
         # this is the af_plugin object
-        return Base(name='AutofocusMethod')
+        return AutofocusMethod()
 
+
+class AutofocusMethod(Base):
+    def fullFocus(self):
+        # error expected if AFC times out
+        py4j_error = py4j.protocol.Py4JJavaError('Mocked Py4JJavaError', JavaException())
+
+        # TODO: programmatically specify this flag
+        mock_afc_timeout = False
+        if mock_afc_timeout:
+            raise py4j_error
+        else:
+            return
 
 
 class MMStudio(Base):
