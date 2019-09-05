@@ -60,10 +60,10 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
     confluency_is_good = True
 
     # find the positions of the nuclei in the image
-    nucleus_positions = _identify_nuclei(snap, nucleus_radius)
+    nucleus_positions = _find_nucleus_positions(snap, nucleus_radius)
 
     # calculate some properties of the spatial distribution of nucleus positions
-    num_nuclei, rel_com_offset, eval_ratio = _calculate_features_of_nucleus_positions(
+    num_nuclei, rel_com_offset, eval_ratio = _calculate_nucleus_position_features(
         nucleus_positions, image_size)
 
     # very rudimentary logic to assess confluency using these properties
@@ -146,31 +146,36 @@ def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_
         
 
 
-
-def _identify_nuclei(im, nucleus_radius):
+def _generate_background_mask(im):
     '''
-
     '''
-    
     # smooth the raw image
     imf = skimage.filters.gaussian(im, sigma=5)
-    
-    # background mask
+
+    # background mask from minimum cross-entropy
     mask = imf > skimage.filters.threshold_li(imf)
+    return mask
+
+
+def _find_nucleus_positions(im, nucleus_radius):
+    '''
+
+    '''
     
+    mask = _generate_background_mask(im)
+
     # smoothed distance transform
     dist = ndimage.distance_transform_edt(mask)
     distf = skimage.filters.gaussian(dist, sigma=1)
         
-    # the indicies of the local maximima in the distance transform
-    # correspond roughly to the positions of the nuclei
+    # the positions of the local maximima in the distance transform
+    # correspond roughly to the centers of mass of the individual nuclei
     local_max_inds = skimage.feature.peak_local_max(
         distf, indices=True, min_distance=nucleus_radius, labels=mask)
-
     return local_max_inds
 
 
-def _calculate_features_of_nucleus_positions(positions, image_size):
+def _calculate_nucleus_position_features(positions, image_size):
     '''
 
     '''
