@@ -1,14 +1,15 @@
 # dragonfly-automation
-This repo contains a Python package, `dragonfly_automation`, that provides a framework for writing automation scripts written using the MicroManager API exposed by `mm2python` to control the spinning disk confocal microscope (nicknamed 'dragonfly'). 
+This is a Python package that organizes, and provides a framework for writing, automation scripts that use `mm2python` to control the spinning disk confocal microscope (nicknamed 'dragonfly'). 
 
-## Example
+
+## Usage example
 
 ```python
-from dragonfly_automation.programs import PipelinePlateProgram
+from dragonfly_automation.programs.pipeline_plate_program import PipelinePlateProgram
 
-program = PipelinePlateProgram(data_dirpath='/local/path/to/data/', env='dev')
+program = PipelinePlateProgram('path/to/experiment/directory/', env='prod', verbose=True)
 
-# setup datastore and initial microscope settings
+# setup the datastore and apply initial/global microscope settings
 program.setup()
 
 # run the acquisition script itself
@@ -19,11 +20,14 @@ program.cleanup()
 
 ```
 
+## (Aspirational) features
+* Modular and reusable methods for common tasks (e.g., autofocusing, adjusting exposures, acquiring z-stacks)
+* Methods for less trivial tasks (e.g., dynamic field-of-view selection)
+* Built-in metadata and event logging
+* Flexible and robust error handling
+
+
 ## Requirements
-py4j, numpy, scipy, skimage
-
-
-
-## Development
+py4j, mm2python, numpy, scipy, skimage
 
 
