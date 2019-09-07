@@ -111,10 +111,11 @@ def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_
     os.makedirs(snap_dir, exist_ok=True)
 
     # filename for the snap itself
-    snap_filename = 'confluency_snap_pos%05d.tif' % position_ind
+    def snap_filename(tag):
+        return 'confluency_snap_pos%05d_%s.tif' % (position_ind, tag)
 
     # create the row to append to the logfile
-    row = {'snap_filename': snap_filename, 'position_ind': position_ind}
+    row = {'snap_filename': snap_filename('RAW'), 'position_ind': position_ind}
     row.update(properties)
 
     # create the CSV-like log file if it does not exist
@@ -127,23 +128,47 @@ def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_
     with open(log_filepath, 'a') as file:
         file.write('%s\n' % sep.join(map(str, row.values())))
 
-    # save the snap image itself
-    tifffile.imwrite(
-        os.path.join(snap_dir, snap_filename), 
-        snap.astype('uint16'))
+    # save the raw snap image
+    tifffile.imwrite(os.path.join(snap_dir, snap_filename('RAW')), snap.astype('uint16'))
     
+    # save an autogained version of the snap (to facilitate previewing the image)
+    snap = _to_uint8(snap)
+    tifffile.imwrite(os.path.join(snap_dir, snap_filename('UINT8')), snap)
+
     # crudely annotate the snap image by marking the positions of the nuclei
     width = 3
     maxx = snap.max()
     shape = snap.shape
+
+    # lower the brightness of the autogained snap
+    snap = (snap/2).astype('uint8')
+
     for pos in nucleus_positions:
         snap[
-            int(max(0, pos[0]-width)):int(min(shape[0], pos[0]+width)), 
-            int(max(0, pos[1]-width)):int(min(shape[1], pos[1]+width))] = maxx
-        tifffile.imwrite(
-            os.path.join(snap_dir, snap_filename.replace('.tif', '_ANT.tif')),
-            snap.astype('uint16'))
-        
+            int(max(0, pos[0] - width)):int(min(shape[0], pos[0] + width)), 
+            int(max(0, pos[1] - width)):int(min(shape[1], pos[1] + width))] = maxx
+
+        tifffile.imwrite(os.path.join(snap_dir, snap_filename('ANT')), snap)
+
+
+def _to_uint8(im):
+
+    dtype = 'uint8'
+    max_value = 255
+
+    im = im.copy().astype(float)
+
+    percentile = 1
+    minn, maxx = np.percentile(im, (percentile, 100 - percentile))
+    if minn==maxx:
+        return (im * 0).astype(dtype)
+
+    im = im - minn
+    im[im < minn] = 0
+    im = im/(maxx - minn)
+    im[im > 1] = 1
+    im = (im * max_value).astype(dtype)
+    return im
 
 
 def _generate_background_mask(im):
