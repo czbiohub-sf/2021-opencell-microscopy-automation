@@ -34,7 +34,7 @@ class Program(object):
 
     '''
 
-    def __init__(self, root_dir, env='dev', verbose=True):
+    def __init__(self, root_dir, confluency_classifier, env='dev', verbose=True):
         '''
         Program instantiation
 
@@ -49,10 +49,11 @@ class Program(object):
 
         # strip trailing slashes
         root_dir = re.sub(f'{os.sep}+$', '', root_dir)
+        self.root_dir = root_dir
 
         self.env = env
-        self.root_dir = root_dir
         self.verbose = verbose
+        self.confluency_classifier = confluency_classifier
 
         # the name of the experiment is the name of the directory
         self.experiment_name = os.path.split(self.root_dir)[-1]
@@ -165,9 +166,14 @@ class Program(object):
         and position identifiers (index, label, etc) associated with each acquired image/stack
         
         For now, kwargs are appended to the row without any validation, 
-        and are intended to include the position identifiers. 
+        and are intended to be used for position identifiers 
+        (e.g., well_id, site_num, position_ind)
 
-        *** Note that this method must be called *manually* after each call to operations.acquire_stack ***
+        *** 
+        Note that this method must be called _manually_ 
+        after each call to operations.acquire_stack 
+        ***
+    
         '''
 
         # construct the row
@@ -180,7 +186,6 @@ class Program(object):
             d = d.append(row, ignore_index=True)
         else:
             d = pd.DataFrame([row])
-
         d.to_csv(self.acquisition_log_file, index=False)
 
 
@@ -453,7 +458,10 @@ class PipelinePlateProgram(Program):
         did_acquire_stacks = False
     
         # attempt to autofocus (using AFC)
-        autofocus_did_succeed = self.operations.autofocus(self.mm_studio, self.mm_core)    
+        autofocus_did_succeed = self.operations.autofocus(self.mm_studio, self.mm_core)
+
+        # errors during autofocusing are usually due to AFC timing out
+        # TODO: log the error message itself
         if not autofocus_did_succeed:
             self.event_logger(
                 'PROGRAM WARNING: AFC failed and stacks will not be acquired')
@@ -462,21 +470,28 @@ class PipelinePlateProgram(Program):
         # confluency assessment (using the DAPI channel)
         self.operations.change_channel(self.mm_core, self.dapi_channel)
         snap = self.operations.acquire_snap(self.gate, self.mm_studio)
-        confluency_is_good, confluency_label = confluency_assessments.assess_confluency(
+
+        confluency_is_good, assessment_did_succeed = confluency_assessments.assess_confluency(
             snap,
+            self.confluency_classifier,
             log_dir=self.log_dir,
             position_ind=self.current_position_ind)
-        
-        # if the confluency test fails, we should not acquire the stacks
+
+        # note that if there was an error during confluency assessment, 
+        # confluency_is_good will still be False
+        if not assessment_did_succeed:
+            self.event_logger('PROGRAM WARNING: an error occurred during confluency assessment')
+    
+        # if the confluency is not good, we should not acquire the stacks
         if not confluency_is_good:
-            self.event_logger("PROGRAM INFO: The confluency test failed (label='%s')" % \
-                confluency_label)        
+            self.event_logger("PROGRAM INFO: The confluency test failed")
             if self.env == 'dev':
-                print("Warning: confluency test results are ignored in 'dev' mode")
+                print("Warning: The confluency test failed but this is ignored in 'dev' mode")
             else:
                 return did_acquire_stacks
         else:
             self.event_logger("PROGRAM INFO: The confluency test passed")
+
 
         # -----------------------------------------------------------------
         #
@@ -498,6 +513,8 @@ class PipelinePlateProgram(Program):
 
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
+                # (autoexposure fails when the GFP signal is so bright
+                # that the stack is overexposed even at the minimum laser power)
                 self.event_logger(
                     'PROGRAM WARNING: Autoexposure failed, but stacks will be acquired anyway')
 

@@ -5,7 +5,7 @@ import sklearn
 import tifffile
 import datetime
 import numpy as np
-
+import pandas as pd
 from scipy import ndimage
 from sklearn import cluster
 from sklearn import metrics
@@ -16,7 +16,7 @@ from matplotlib import pyplot as plt
 from dragonfly_automation import utils
 
 
-def assess_confluency(snap, log_dir=None, position_ind=None):
+def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
     '''
     Assess confluency of a single FOV given a single z-slice
     that is potentially somewhat out-of-focus
@@ -29,7 +29,7 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
         Local path to the directory in which to save log files
         (if None, no logging is performed)
     position_ind : int, optional (but required for logging)
-        The index of the current position (used only for logging)
+        The index of the current position
         Note that we use an index, and not a label, because it's not clear
         that we can assume that the labels in the position list will always be unique 
         (e.g., they may not be when the position list is generated manually,
@@ -44,72 +44,59 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
         'good', 'low', 'high', 'anisotropic'
     '''
 
-    # parameters used for decision tree
-    # min/max number of nuclei in the FOV
-    min_num_nuclei = 20
-    max_num_nuclei = 55
-
-    # max offset of the center of mass and and max asymmetry (eigenvalue ratio)
-    max_rel_com_offset = .3
-    max_eval_ratio = 1.0
-
     # hard-coded approximate nucleus radius
     nucleus_radius = 15
 
     # hard-coded image dimensions
     image_size = 1024
 
-    # default values
-    confluency_label = 'good'
-    confluency_is_good = True
-
     # find the positions of the nuclei in the image
     mask = _generate_background_mask(snap)
     nucleus_positions = _find_nucleus_positions(mask, nucleus_radius)
 
-    # calculate some properties of the spatial distribution of nucleus positions
-    num_nuclei, rel_com_offset, eval_ratio = _calculate_nucleus_position_features(
-        nucleus_positions, image_size)
+    # default values
+    error_has_occurred = False
+    confluency_is_good = False
+    feature_calculation_error = None
+    classifier_error = None
 
-    # very rudimentary logic to assess confluency using these properties
-    # too many nuclei
-    if num_nuclei > max_num_nuclei:
-        confluency_label = 'high'
-        confluency_is_good = False
+    # attempt to calculate the features
+    try:
+        features = _calculate_all_features(nucleus_positions, image_size)
+    except Exception as exception:
+        error_has_occurred = True
+        feature_calculation_error = str(exception)
 
-    # too few nuclei
-    elif num_nuclei < min_num_nuclei:
-        confluency_label = 'low'
-        confluency_is_good = False
+    # attempt to call the classifier
+    if not error_has_occurred:
+        ordered_features = _order_features(features)
+        X = np.array(ordered_features)[None, :]
+        try:
+            confluency_is_good = classifier.predict(X)[0]
+        except Exception as exception:
+            error_has_occurred = True
+            classifier_error = str(exception)
 
-    # distribution of nuclei is not isotropic
-    elif rel_com_offset > max_rel_com_offset or eval_ratio > max_eval_ratio:
-        confluency_label = 'anisotropic'
-        confluency_is_good = False
-    
+    # log the image, features, and errors
     if log_dir is not None:
-
-        # computed properties to log
         properties = {
-            'num_nuclei': num_nuclei,
-            'rel_com_offset': rel_com_offset,
-            'eval_ratio': eval_ratio,
-            'confluency_label': confluency_label,
+            'confluency_is_good': confluency_is_good, 
+            'classifier_error': classifier_error,
+            'feature_calculation_error': feature_calculation_error
         }
+        properties.update(features)
 
         log_dir = os.path.join(log_dir, 'confluency-check')
-        _log_confluency_data(
-            snap, properties, nucleus_positions, log_dir, position_ind)
-
-    return confluency_is_good, confluency_label
+        _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_ind)
+    
+    assessment_did_succeed = not error_has_occurred
+    return confluency_is_good, assessment_did_succeed
 
 
 
 def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_ind):
     '''
     '''
-
-    sep = ','
 
     # make the directory for the snaps
     snap_dir = os.path.join(log_dir, 'confluency-snaps')
@@ -123,37 +110,40 @@ def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_
     row = {'snap_filename': snap_filename('RAW'), 'position_ind': position_ind}
     row.update(properties)
 
-    # create the CSV-like log file if it does not exist
+    # create the log file if it does not exist
     log_filepath = os.path.join(log_dir, 'confluency-check-log.csv')
-    if not os.path.isfile(log_filepath):
-        with open(log_filepath, 'w') as file:
-            file.write('%s\n' % sep.join(row.keys()))
 
-    # append the new row
-    with open(log_filepath, 'a') as file:
-        file.write('%s\n' % sep.join(map(str, row.values())))
+    # append the row to the log file
+    if os.path.isfile(log_filepath):
+        d = pd.read_csv(log_filepath)
+        d = d.append(row, ignore_index=True)
+    else:
+        d = pd.DataFrame([row])
+    d.to_csv(log_filepath, index=False, float_format='%0.2f')
 
     # save the raw snap image
-    tifffile.imwrite(os.path.join(snap_dir, snap_filename('RAW')), snap.astype('uint16'))
+    tifffile.imsave(os.path.join(snap_dir, snap_filename('RAW')), snap.astype('uint16'))
     
     # save an autogained version of the snap (to facilitate previewing the image)
     snap = _to_uint8(snap)
-    tifffile.imwrite(os.path.join(snap_dir, snap_filename('UINT8')), snap)
+    tifffile.imsave(os.path.join(snap_dir, snap_filename('UINT8')), snap)
 
-    # crudely annotate the snap image by marking the positions of the nuclei
+    # crudely annotate the (uint8) snap image
+    # by marking the nucleus positions with white squares
     width = 3
-    maxx = snap.max()
+    white = 255
     shape = snap.shape
 
-    # lower the brightness of the autogained snap
+    # lower the brightness of the autogained snap so that the squares are easier to see
     snap = (snap/2).astype('uint8')
-
+    
+    # draw a square on the image at each nucleus position
     for pos in nucleus_positions:
         snap[
             int(max(0, pos[0] - width)):int(min(shape[0], pos[0] + width)), 
-            int(max(0, pos[1] - width)):int(min(shape[1], pos[1] + width))] = maxx
+            int(max(0, pos[1] - width)):int(min(shape[1], pos[1] + width))] = white
 
-        tifffile.imwrite(os.path.join(snap_dir, snap_filename('ANT')), snap)
+    tifffile.imsave(os.path.join(snap_dir, snap_filename('ANT')), snap)
 
 
 def _to_uint8(im):
@@ -253,7 +243,11 @@ def _calculate_nucleus_position_features(positions, image_size):
     # the ratio of eigenvalues is a measure of asymmetry 
     eval_ratio = (max(evals) - min(evals))/min(evals)
 
-    return num_nuclei, rel_com_offset, eval_ratio
+    return {
+        'num_nuclei': num_nuclei, 
+        'rel_com_offset': rel_com_offset, 
+        'eval_ratio': eval_ratio,
+    }
 
 
 def _calculate_mask_features(positions, image_size, nucleus_radius):
@@ -280,7 +274,12 @@ def _calculate_mask_features(positions, image_size, nucleus_radius):
     median_region_area = np.median([p.area for p in props])
     max_distance = ndimage.distance_transform_edt(~mask).max()
 
-    return num_regions, total_area, median_region_area, max_distance
+    return {
+        'num_regions': num_regions, 
+        'total_area': total_area, 
+        'median_region_area': median_region_area, 
+        'max_distance': max_distance
+    }
 
 
 def _calculate_nucleus_cluster_features(positions, image_size):
@@ -308,4 +307,50 @@ def _calculate_nucleus_cluster_features(positions, image_size):
     else:
         sil_score, db_score, ch_score = None, None, None
 
-    return num_clusters, num_unclustered, sil_score, db_score, ch_score
+    return {
+        'num_clusters': num_clusters, 
+        'num_unclustered': num_unclustered, 
+        'sil_score': sil_score, 
+        'db_score': db_score, 
+        'ch_score': ch_score
+    }
+
+
+def _calculate_all_features(positions, image_size):
+    '''
+    '''
+
+    position_features = _calculate_nucleus_position_features(positions, image_size)
+
+    # note that cluster features can be None if none or one clusters was found
+    cluster_features = _calculate_nucleus_cluster_features(positions, image_size)
+
+    # the nucleus radius here was selected empirically
+    mask_features = _calculate_mask_features(positions, image_size, nucleus_radius=50)
+
+    # concat features
+    features = {}
+    features.update(position_features)
+    features.update(mask_features)
+    features.update(cluster_features)
+    return features
+
+
+def _order_features(features):
+
+    order = (
+        'num_nuclei',
+        'rel_com_offset',
+        'eval_ratio',
+        'num_regions',
+        'total_area',
+        'median_region_area',
+        'max_distance',
+        'num_clusters',
+        'num_unclustered',
+        'sil_score',
+        'db_score',
+        'ch_score'
+    )
+
+    return tuple([features.get(key) for key in order])
