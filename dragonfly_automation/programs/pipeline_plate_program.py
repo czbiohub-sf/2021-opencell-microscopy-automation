@@ -131,7 +131,7 @@ class Program(object):
         with open(self.event_log_file, 'a') as file:
             file.write('%s\n' % message)
         
-        if self.verbose:
+        if self.verbose and 'MM2PYTHON' not in message:
             print(message)
 
 

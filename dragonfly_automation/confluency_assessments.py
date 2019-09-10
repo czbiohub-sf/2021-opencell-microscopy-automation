@@ -61,6 +61,7 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
     classifier_error = None
 
     # attempt to calculate the features
+    features = None
     try:
         features = _calculate_all_features(nucleus_positions, image_size)
     except Exception as exception:
@@ -84,7 +85,8 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
             'classifier_error': classifier_error,
             'feature_calculation_error': feature_calculation_error
         }
-        properties.update(features)
+        if features is not None:
+            properties.update(features)
 
         log_dir = os.path.join(log_dir, 'confluency-check')
         _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_ind)
