@@ -1,13 +1,17 @@
 import os
 import json
 import skimage
+import sklearn
 import tifffile
 import datetime
 import numpy as np
 
 from scipy import ndimage
+from sklearn import cluster
+from sklearn import metrics
 from skimage import feature
 from skimage import morphology
+from matplotlib import pyplot as plt
 
 from dragonfly_automation import utils
 
@@ -60,7 +64,8 @@ def assess_confluency(snap, log_dir=None, position_ind=None):
     confluency_is_good = True
 
     # find the positions of the nuclei in the image
-    nucleus_positions = _find_nucleus_positions(snap, nucleus_radius)
+    mask = _generate_background_mask(snap)
+    nucleus_positions = _find_nucleus_positions(mask, nucleus_radius)
 
     # calculate some properties of the spatial distribution of nucleus positions
     num_nuclei, rel_com_offset, eval_ratio = _calculate_nucleus_position_features(
@@ -179,25 +184,55 @@ def _generate_background_mask(im):
 
     # background mask from minimum cross-entropy
     mask = imf > skimage.filters.threshold_li(imf)
+
+    # remove regions that are too small to be nuclei
+    min_region_area = 1000
+    mask_label = skimage.measure.label(mask)
+    props = skimage.measure.regionprops(mask_label)
+    for prop in props:
+        if prop.area < min_region_area:
+            mask[mask_label==prop.label] = False
+
     return mask
 
 
-def _find_nucleus_positions(im, nucleus_radius):
+def _find_nucleus_positions(mask, nucleus_radius):
     '''
 
     '''
-    
-    mask = _generate_background_mask(im)
-
     # smoothed distance transform
     dist = ndimage.distance_transform_edt(mask)
     distf = skimage.filters.gaussian(dist, sigma=1)
-        
+
     # the positions of the local maximima in the distance transform
     # correspond roughly to the centers of mass of the individual nuclei
     local_max_inds = skimage.feature.peak_local_max(
         distf, indices=True, min_distance=nucleus_radius, labels=mask)
+
     return local_max_inds
+
+
+def _show_nucleus_positions(positions, im=None, ax=None):
+    '''
+    Plot the nucleus positions, 
+    optionally overlaid on the image itself and the background mask
+    '''
+    
+    if ax is None:
+        plt.figure(figsize=(10, 10))
+        ax = plt.gca()
+
+    # show the image and the background mask
+    if im is not None:
+        mask = _generate_background_mask(im)
+        ax.imshow(
+            skimage.color.label2rgb(~mask, image=_to_uint8(im), colors=('black', 'yellow')))
+
+    # plot the positions themselves
+    ax.scatter(positions[:, 1], positions[:, 0], color='red')
+    ax.set_xlim([0, 1024])
+    ax.set_ylim([0, 1024])
+    ax.set_aspect('equal')
 
 
 def _calculate_nucleus_position_features(positions, image_size):
@@ -209,14 +244,68 @@ def _calculate_nucleus_position_features(positions, image_size):
     num_nuclei = positions.shape[0]
     
     # the distance of the center of mass from the center of the image
-    # (relative to the size of the image)
-    rel_com_offset = ((positions.mean(axis=0) - (image_size/2))**2).sum()**.5 / (image_size/2)
+    com_offset = ((positions.mean(axis=0) - (image_size/2))**2).sum()**.5
+    rel_com_offset = com_offset / image_size
 
     # eigenvalues of the covariance matrix
     evals, evecs = np.linalg.eig(np.cov(positions.transpose()))
 
     # the ratio of eigenvalues is a measure of asymmetry 
     eval_ratio = (max(evals) - min(evals))/min(evals)
-    
+
     return num_nuclei, rel_com_offset, eval_ratio
 
+
+def _calculate_mask_features(positions, image_size, nucleus_radius):
+    '''
+    Calculate properties of a simulated nucleus mask
+    (obtained by thresholding the distance transform of the nucleus positions)
+
+    Note that it is necessary to simulate a nucleus mask,
+    rather than use the mask returned by _generate_background_mask, 
+    because the area of the foreground regions in the generated mask
+    depends on the focal plane.
+
+    '''
+
+    position_mask = np.zeros((image_size, image_size))
+    for position in positions:
+        position_mask[position[0], position[1]] = 1
+
+    mask = ndimage.distance_transform_edt(~position_mask.astype(bool)) > nucleus_radius
+    props = skimage.measure.regionprops(skimage.measure.label(mask))
+
+    num_regions = len(props)
+    total_area = mask.sum() / (mask.shape[0]*mask.shape[1])
+    median_region_area = np.median([p.area for p in props])
+    max_distance = ndimage.distance_transform_edt(~mask).max()
+
+    return num_regions, total_area, median_region_area, max_distance
+
+
+def _calculate_nucleus_cluster_features(positions, image_size):
+    '''
+    Cluster positions using DBSCAN 
+    and calculate various measures of cluster homogeneity
+    '''
+    
+    # empirically-selected parameters for dbscan
+    eps = 0.1
+    min_samples = 3
+
+    dbscan = sklearn.cluster.DBSCAN(eps=eps, min_samples=min_samples, metric='euclidean')
+    dbscan.fit(positions/image_size)
+    labels = dbscan.labels_
+
+    cluster_labels = set(labels)
+    num_clusters = len(cluster_labels)
+    num_unclustered = (labels==-1).sum()
+
+    if num_clusters > 1:
+        sil_score = sklearn.metrics.silhouette_score(positions, labels)
+        db_score = sklearn.metrics.davies_bouldin_score(positions, labels)
+        ch_score = sklearn.metrics.calinski_harabasz_score(positions, labels)
+    else:
+        sil_score, db_score, ch_score = None, None, None
+
+    return num_clusters, num_unclustered, sil_score, db_score, ch_score
