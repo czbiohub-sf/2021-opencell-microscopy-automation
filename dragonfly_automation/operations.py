@@ -70,11 +70,29 @@ def acquire_stack(
     mm_core, 
     datastore, 
     stack_settings, 
+    channel_ind,
     position_ind, 
-    channel_ind):
+    position_name):
     '''
     Acquire a z-stack using the given settings
     and 'put' it in the datastore object
+
+    This method results in the creation (via datastore.putImage)
+    of a single TIFF stack with a filename of the form
+    'MMSTack_{position_name}.ome.tif'
+
+    Parameters
+    ----------
+    mm_studio, mm_core : 
+    datastore : 
+    stack_settings : 
+    channel_ind : int
+        a position-unique channel index
+    position_ind : int
+        an experiment-unique position index
+    position_name : str
+        an arbitrary but experiment-unique name for the current position; 
+        used to determine the filename of the TIFF stack
     '''
 
     # generate a list of the z positions to visit
@@ -98,17 +116,19 @@ def acquire_stack(
         image = mm_studio.data().convertTaggedImage(tagged_image)
 
         # manually construct image coordinates (position, channel, z)
-        # NOTE: the filename of the TIFF stack is determined 
-        # by the value passed to stagePosition (which has to be an int)
+        # NOTE: a new TIFF stack will be created whenever a new and unique value
+        # is passed to coords.stagePosition (which must be an int)
         coords = image.getCoords().copy()
         coords = coords.z(z_ind)
         coords = coords.channel(channel_ind)
-        coords = coords.stagePosition(int(position_ind))
+        coords = coords.stagePosition(position_ind)
         coords = coords.build()
 
         # construct image metadata
+        # NOTE: the filename of the TIFF stack is determined *only* by the value
+        # passed to metadata.positionName (which can be any string)
         metadata = image.getMetadata().copy()
-        metadata = metadata.positionName(str(position_ind))
+        metadata = metadata.positionName(position_name)
         metadata = metadata.build()
 
         image = image.copyWith(coords, metadata)

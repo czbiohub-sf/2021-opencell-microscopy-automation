@@ -399,8 +399,11 @@ class PipelinePlateProgram(Program):
             self.current_well_id = well_id
             self.current_site_num = site_num
             self.current_position_ind = position_ind
-            self.current_position_label = position_label
-            
+
+            # construct a human-readable and unique name for the current position
+            # (used in acquire_stack to determine the name of the TIFF file)
+            self.current_position_name = f'{position_ind}-{well_id}-{site_num}'
+
             # use the site number to determine whether this is the first position in a new well
             is_new_well = self.current_site_num == 0
 
@@ -536,7 +539,8 @@ class PipelinePlateProgram(Program):
                 self.datastore, 
                 self.stack_settings,
                 channel_ind=channel_ind,
-                position_ind=self.current_position_ind)
+                position_ind=self.current_position_ind,
+                position_name=self.current_position_name)
             
             # log the acquisition
             self.acquisition_logger(
