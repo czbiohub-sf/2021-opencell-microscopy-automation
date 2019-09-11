@@ -51,10 +51,15 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
     image_size = 1024
 
     # empirical hard-coded absolute minimum intensity
-    # (used to determine if no nuclei are present in the image)
+    # (used to determine if there are no nuclei present in the FOV)
     min_absolute_intensity = 1000
 
-    # check whether there are any nuclei in the FOV at all
+    # conservative empirical thresholds on the number of nuclei
+    # in a candidate 'good' FOV
+    min_num_nuclei = 20
+    max_num_nuclei = 80
+
+    # crude check for whether there are any nuclei in the FOV at all
     thresh = skimage.filters.threshold_li(snap)
     if thresh < min_absolute_intensity:
         # TODO: how to handle and log this
@@ -63,6 +68,16 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
     # find the positions of the nuclei in the image
     mask = _generate_background_mask(snap)
     nucleus_positions = _find_nucleus_positions(mask, nucleus_radius)
+
+    # check whether there are way too few or way too many 'nuclei' in the FOV
+    # this will occur if either
+    # 1) there are very few or very many real nuclei in the FOV, or
+    # 2) there are _no_ real nuclei in the FOV,
+    #    and the nucleus positions correspond to noise, dust, etc
+    num_positions = nucleus_positions.shape[0]
+    if num_positions < min_num_nuclei or num_positions > max_num_nuclei:
+        # TODO: how to handle and log this
+        pass
 
     # default values
     error_has_occurred = False
@@ -186,6 +201,10 @@ def _generate_background_mask(im):
 
     # background mask from minimum cross-entropy
     mask = imf > skimage.filters.threshold_li(imf)
+
+    # erode once to eliminate isolated pixels in the mask
+    # (a defense against thresholding noise)
+    mask = skimage.morphology.erosion(mask)
 
     # remove regions that are too small to be nuclei
     min_region_area = 1000
