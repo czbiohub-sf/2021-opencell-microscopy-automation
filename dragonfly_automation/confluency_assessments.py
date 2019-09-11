@@ -39,16 +39,26 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
     -------
     confluency_is_good : bool
         whether the confluency looks 'good'
-    confluency_label : str
-        details about the confluency
-        'good', 'low', 'high', 'anisotropic'
+    assessment_did_succeed : bool
+        whether any errors occurred 
+        (if they did, confluency_is_good will be False)
     '''
 
-    # hard-coded approximate nucleus radius
+    # empirical hard-coded approximate nucleus radius
     nucleus_radius = 15
 
     # hard-coded image dimensions
     image_size = 1024
+
+    # empirical hard-coded absolute minimum intensity
+    # (used to determine if no nuclei are present in the image)
+    min_absolute_intensity = 1000
+
+    # check whether there are any nuclei in the FOV at all
+    thresh = skimage.filters.threshold_li(snap)
+    if thresh < min_absolute_intensity:
+        # TODO: how to handle and log this
+        pass
 
     # find the positions of the nuclei in the image
     mask = _generate_background_mask(snap)
