@@ -271,10 +271,11 @@ def autoexposure(
         image = acquire_image(gate, mm_studio)
 
         # note that the 99.9th percentile here corresponds to ~1000 pixels in a 1024x1024 image
-        slice_was_overexposed = np.percentile(image, 99.9) > autoexposure_settings.max_intensity
+        slice_max_intensity = np.percentile(image, 99.9)
 
         # if the slice was over-exposed, lower the exposure time or the laser power,
         # reset stack_max_intensity, and go back to the bottom of the z-stack
+        slice_was_overexposed = slice_max_intensity > autoexposure_settings.max_intensity
         if slice_was_overexposed:
             overexposure_did_occur = True
             event_logger('AUTOEXPOSURE WARNING: z-slice at %s was overexposed' % current_z_position)
@@ -310,7 +311,7 @@ def autoexposure(
         # if the slice was not over-exposed, 
         # update stack_max and move to the next z-slice
         else:
-            stack_max_intensity = max(stack_max_intensity, image.max())
+            stack_max_intensity = max(stack_max_intensity, slice_max_intensity)
             new_z_position = current_z_position + stack_settings.step_size
     
         # move to the new z-position 
@@ -320,7 +321,6 @@ def autoexposure(
             stack_settings.stage_label, 
             position=new_z_position,
             kind='absolute')
-
 
     # after exiting the while-loop, either
     # 1) some slices were over-exposed and the exposure is now adjusted, or
