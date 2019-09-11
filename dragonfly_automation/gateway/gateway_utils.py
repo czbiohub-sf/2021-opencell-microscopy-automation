@@ -85,7 +85,6 @@ def get_gate(env='dev', wrap=False, logger=None):
     mm_core = gate.getCMMCore()
     mm_studio = gate.getStudio()
     
-    # wrap the py4j objects
     if wrap:
         if not logger:
             raise ValueError('A logger method is required when wrap=True')

@@ -73,16 +73,22 @@ class Program(object):
         os.makedirs(self.log_dir, exist_ok=True)
 
         # events log (plaintext)
-        self.event_log_file = os.path.join(
-            self.log_dir, '%s_events-log.log' % self.experiment_name)
+        self.all_events_log_file = os.path.join(
+            self.log_dir, '%s_all-events.log' % self.experiment_name)
+
+        self.error_events_log_file = os.path.join(
+            self.log_dir, '%s_error-events.log' % self.experiment_name)
+
+        self.important_events_log_file = os.path.join(
+            self.log_dir, '%s_important-events.log' % self.experiment_name)
         
         # program metadata log (JSON)
         self.metadata_log_file = os.path.join(
-            self.log_dir, '%s_metadata-log.json' % self.experiment_name)
+            self.log_dir, '%s_experiment-metadata.json' % self.experiment_name)
         
         # acquisition log (CSV)
         self.acquisition_log_file = os.path.join(
-            self.log_dir, '%s_acquisitions-log.csv' % self.experiment_name)
+            self.log_dir, '%s_acquired-images.csv' % self.experiment_name)
 
         # log the current commit
         repo = git.Repo('../')
@@ -120,14 +126,28 @@ class Program(object):
 
         '''
 
-        # prepend a timestamp
-        message = '%s %s' % (utils.timestamp(), message)
+        log_filepaths = [self.all_events_log_file]
 
-        # write the message
-        with open(self.event_log_file, 'a') as file:
-            file.write('%s\n' % message)
+        # prepend a timestamp to the message
+        message = '%s %s' % (utils.timestamp(), message)
+ 
+        # 'important' events are simply all events
+        # except for those originated by gateway_utils.Py4jWrapper instances
+        message_is_important = 'MM2PYTHON' not in message
+        if message_is_important:
+            log_filepaths.append(self.important_events_log_file)
         
-        if self.verbose and 'MM2PYTHON' not in message:
+        message_is_error = 'ERROR' in message
+        if message_is_error:
+            log_filepaths.append(self.error_events_log_file)
+
+        # write the message to the appropriate logs
+        for filepath in log_filepaths:
+            with open(filepath, 'a') as file:
+                file.write('%s\n' % message)
+        
+        # finally, print the message
+        if self.verbose and message_is_important:
             print(message)
 
 
