@@ -8,6 +8,7 @@ import datetime
 import numpy as np
 import pandas as pd
 
+from dragonfly_automation import utils
 from dragonfly_automation import operations
 from dragonfly_automation import confluency_assessments
 from dragonfly_automation.gateway import gateway_utils
@@ -106,11 +107,6 @@ class Program(object):
         self._initialize_datastore()
 
 
-    @staticmethod
-    def timestamp():
-        return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-
     def event_logger(self, message):
         '''
         Append a message to the event log
@@ -125,7 +121,7 @@ class Program(object):
         '''
 
         # prepend a timestamp
-        message = '%s %s' % (self.timestamp(), message)
+        message = '%s %s' % (utils.timestamp(), message)
 
         # write the message
         with open(self.event_log_file, 'a') as file:
@@ -177,7 +173,8 @@ class Program(object):
         '''
 
         # construct the row
-        row = channel_settings.__dict__
+        row = {'timestamp': utils.timestamp()}
+        row.update(channel_settings.__dict__)
         row.update(kwargs)
 
         # append the row to the CSV
@@ -216,7 +213,7 @@ class Program(object):
         Commands to execute before the acquisition begins
         e.g., setting the autofocus mode, camera mode, various synchronization commands
         '''
-        self.program_metadata_logger('setup_timestamp', self.timestamp())
+        self.program_metadata_logger('setup_timestamp', utils.timestamp())
 
 
     def run(self):
@@ -240,7 +237,7 @@ class Program(object):
             self.datastore.freeze()
 
         # log the time
-        self.program_metadata_logger('cleanup_timestamp', self.timestamp())
+        self.program_metadata_logger('cleanup_timestamp', utils.timestamp())
 
     
 class PipelinePlateProgram(Program):

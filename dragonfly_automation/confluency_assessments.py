@@ -134,7 +134,11 @@ def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_
         return 'confluency_snap_pos%05d_%s.tif' % (position_ind, tag)
 
     # create the row to append to the logfile
-    row = {'snap_filename': snap_filename('RAW'), 'position_ind': position_ind}
+    row = {
+        'timestamp': utils.timestamp(),
+        'position_ind': position_ind,
+        'snap_filename': snap_filename('RAW'), 
+    }
     row.update(properties)
 
     # create the log file if it does not exist
@@ -325,8 +329,8 @@ def _calculate_nucleus_cluster_features(positions, image_size):
 
     dbscan = sklearn.cluster.DBSCAN(eps=eps, min_samples=min_samples, metric='euclidean')
     dbscan.fit(positions/image_size)
-    labels = dbscan.labels_
 
+    labels = dbscan.labels_
     cluster_labels = set(labels)
     num_clusters = len(cluster_labels)
     num_unclustered = (labels==-1).sum()

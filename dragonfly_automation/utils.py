@@ -9,6 +9,10 @@ import numpy as np
 from scipy import interpolate
 
 
+def timestamp():
+    return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
 def interpolate_stage_positions(
     position_list_filepath, 
     region_shape, 
