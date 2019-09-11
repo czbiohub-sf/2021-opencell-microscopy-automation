@@ -16,14 +16,14 @@ from matplotlib import pyplot as plt
 from dragonfly_automation import utils
 
 
-def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
+def classify_fov(image, classifier, log_dir=None, position_ind=None):
     '''
-    Assess confluency of a single FOV given a single z-slice
-    that is potentially somewhat out-of-focus
+    Assess confluency and spread of a single FOV given a single z-slice
+    that may be somewhat out-of-focus
 
     Parameters
     ----------
-    snap : numpy array
+    image : numpy array
         an image of the current z-slice (assumed to be 2D and uint16)
     log_dir : str, optional
         Local path to the directory in which to save log files
@@ -37,11 +37,11 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
         
     Returns
     -------
-    confluency_is_good : bool
-        whether the confluency looks 'good'
+    fov_is_good : bool
+        whether the FOV was classified as a 'good' FOV
     assessment_did_succeed : bool
         whether any errors occurred 
-        (if they did, confluency_is_good will be False)
+        (if they did, fov_is_good will be False)
     '''
 
     # empirical hard-coded approximate nucleus radius
@@ -60,13 +60,13 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
     max_num_nuclei = 80
 
     # crude check for whether there are any nuclei in the FOV at all
-    thresh = skimage.filters.threshold_li(snap)
+    thresh = skimage.filters.threshold_li(image)
     if thresh < min_absolute_intensity:
         # TODO: how to handle and log this
         pass
 
     # find the positions of the nuclei in the image
-    mask = _generate_background_mask(snap)
+    mask = _generate_background_mask(image)
     nucleus_positions = _find_nucleus_positions(mask, nucleus_radius)
 
     # check whether there are way too few or way too many 'nuclei' in the FOV
@@ -80,8 +80,8 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
         pass
 
     # default values
+    fov_is_good = False
     error_has_occurred = False
-    confluency_is_good = False
     feature_calculation_error = None
     classifier_error = None
 
@@ -98,7 +98,7 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
         ordered_features = _order_features(features)
         X = np.array(ordered_features)[None, :]
         try:
-            confluency_is_good = classifier.predict(X)[0]
+            fov_is_good = classifier.predict(X)[0]
         except Exception as exception:
             error_has_occurred = True
             classifier_error = str(exception)
@@ -106,43 +106,44 @@ def assess_confluency(snap, classifier, log_dir=None, position_ind=None):
     # log the image, features, and errors
     if log_dir is not None:
         properties = {
-            'confluency_is_good': confluency_is_good, 
+            'fov_is_good': fov_is_good, 
             'classifier_error': classifier_error,
             'feature_calculation_error': feature_calculation_error
         }
         if features is not None:
             properties.update(features)
 
-        log_dir = os.path.join(log_dir, 'confluency-check')
-        _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_ind)
+        log_dir = os.path.join(log_dir, 'fov-assessment')
+        _log_fov_assessment(image, properties, nucleus_positions, log_dir, position_ind)
     
     assessment_did_succeed = not error_has_occurred
-    return confluency_is_good, assessment_did_succeed
+    return fov_is_good, assessment_did_succeed
 
 
 
-def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_ind):
+def _log_fov_assessment(image, properties, nucleus_positions, log_dir, position_ind):
     '''
     '''
 
-    # make the directory for the snaps
-    snap_dir = os.path.join(log_dir, 'confluency-snaps')
-    os.makedirs(snap_dir, exist_ok=True)
+    # make the directory for the images
+    image_dir = os.path.join(log_dir, 'fov-images')
+    os.makedirs(image_dir, exist_ok=True)
 
-    # filename for the snap itself
-    def snap_filename(tag):
-        return 'confluency_snap_pos%05d_%s.tif' % (position_ind, tag)
+    # filename for the image itself
+    def image_filename(tag):
+        return 'FOV_%05d_%s.tif' % (position_ind, tag)
 
     # create the row to append to the logfile
     row = {
         'timestamp': utils.timestamp(),
         'position_ind': position_ind,
-        'snap_filename': snap_filename('RAW'), 
+        'image_filename': image_filename('RAW'), 
     }
     row.update(properties)
 
+    
     # create the log file if it does not exist
-    log_filepath = os.path.join(log_dir, 'confluency-check-log.csv')
+    log_filepath = os.path.join(log_dir, 'fov-assessment.csv')
 
     # append the row to the log file
     if os.path.isfile(log_filepath):
@@ -152,29 +153,28 @@ def _log_confluency_data(snap, properties, nucleus_positions, log_dir, position_
         d = pd.DataFrame([row])
     d.to_csv(log_filepath, index=False, float_format='%0.2f')
 
-    # save the raw snap image
-    tifffile.imsave(os.path.join(snap_dir, snap_filename('RAW')), snap.astype('uint16'))
+    # save the raw image
+    tifffile.imsave(os.path.join(image_dir, image_filename('RAW')), image.astype('uint16'))
     
-    # save an autogained version of the snap (to facilitate previewing the image)
-    snap = _to_uint8(snap)
-    tifffile.imsave(os.path.join(snap_dir, snap_filename('UINT8')), snap)
+    # save an autogained version of the image (for Windows preview)
+    image = _to_uint8(image)
+    tifffile.imsave(os.path.join(image_dir, image_filename('UINT8')), image)
 
-    # crudely annotate the (uint8) snap image
-    # by marking the nucleus positions with white squares
+    # crudely annotate the image by marking the nucleus positions with white squares
     width = 3
     white = 255
-    shape = snap.shape
+    shape = image.shape
 
-    # lower the brightness of the autogained snap so that the squares are easier to see
-    snap = (snap/2).astype('uint8')
-    
+    # lower the brightness of the autogained image so that the squares are easier to see
+    image = (image/2).astype('uint8')
+
     # draw a square on the image at each nucleus position
     for pos in nucleus_positions:
-        snap[
+        image[
             int(max(0, pos[0] - width)):int(min(shape[0], pos[0] + width)), 
             int(max(0, pos[1] - width)):int(min(shape[1], pos[1] + width))] = white
 
-    tifffile.imsave(os.path.join(snap_dir, snap_filename('ANT')), snap)
+    tifffile.imsave(os.path.join(image_dir, image_filename('ANT')), image)
 
 
 def _to_uint8(im):

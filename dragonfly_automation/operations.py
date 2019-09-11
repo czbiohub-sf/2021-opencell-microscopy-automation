@@ -43,7 +43,7 @@ def autofocus(mm_studio, mm_core):
     return autofocus_did_succeed
 
 
-def acquire_snap(gate, mm_studio):
+def acquire_image(gate, mm_studio):
     '''
     Acquire an image using the current laser/camera/exposure settings
     and return the image data as a numpy memmap
@@ -266,12 +266,12 @@ def autoexposure(
     # step through the z-stack and check each slice for over-exposure
     while current_z_position <= stack_settings.relative_top:
 
-        # snap an image and check the exposure
+        # acquire an image and check the exposure
         mm_core.waitForSystem()
-        snap_data = acquire_snap(gate, mm_studio)
+        image = acquire_image(gate, mm_studio)
 
         # note that the 99.9th percentile here corresponds to ~1000 pixels in a 1024x1024 image
-        slice_was_overexposed = np.percentile(snap_data, 99.9) > autoexposure_settings.max_intensity
+        slice_was_overexposed = np.percentile(image, 99.9) > autoexposure_settings.max_intensity
 
         # if the slice was over-exposed, lower the exposure time or the laser power,
         # reset stack_max_intensity, and go back to the bottom of the z-stack
@@ -310,7 +310,7 @@ def autoexposure(
         # if the slice was not over-exposed, 
         # update stack_max and move to the next z-slice
         else:
-            stack_max_intensity = max(stack_max_intensity, snap_data.max())
+            stack_max_intensity = max(stack_max_intensity, image.max())
             new_z_position = current_z_position + stack_settings.step_size
     
         # move to the new z-position 

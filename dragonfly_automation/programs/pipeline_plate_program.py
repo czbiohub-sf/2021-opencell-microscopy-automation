@@ -10,7 +10,7 @@ import pandas as pd
 
 from dragonfly_automation import utils
 from dragonfly_automation import operations
-from dragonfly_automation import confluency_assessments
+from dragonfly_automation import fov_assessment
 from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.settings import ChannelSettingsManager
 from dragonfly_automation.programs import pipeline_plate_settings as settings
@@ -35,7 +35,7 @@ class Program(object):
 
     '''
 
-    def __init__(self, root_dir, confluency_classifier, env='dev', verbose=True):
+    def __init__(self, root_dir, fov_classifier, env='dev', verbose=True):
         '''
         Program instantiation
 
@@ -54,7 +54,7 @@ class Program(object):
 
         self.env = env
         self.verbose = verbose
-        self.confluency_classifier = confluency_classifier
+        self.fov_classifier = fov_classifier
 
         # the name of the experiment is the name of the directory
         self.experiment_name = os.path.split(self.root_dir)[-1]
@@ -72,13 +72,11 @@ class Program(object):
         
         os.makedirs(self.log_dir, exist_ok=True)
 
-        # events log (plaintext)
+        # event logs (plaintext)
         self.all_events_log_file = os.path.join(
             self.log_dir, '%s_all-events.log' % self.experiment_name)
-
         self.error_events_log_file = os.path.join(
             self.log_dir, '%s_error-events.log' % self.experiment_name)
-
         self.important_events_log_file = os.path.join(
             self.log_dir, '%s_important-events.log' % self.experiment_name)
         
@@ -292,8 +290,8 @@ class PipelinePlateProgram(Program):
             self.stack_settings = settings.dev_stack_settings
     
         # the maximum number of FOVs (that is, z-stacks) to acquire per well
-        # (note that if few FOVs pass the confluency test, 
-        # we may end up with fewer than this number of stacks)
+        # (note that if few FOVs are accepted during the FOV assessment, 
+        # we may end up with fewer than this number of stacks for some wells)
         self.max_num_stacks_per_well = 8
 
         # stage labels for convenience
@@ -389,9 +387,9 @@ class PipelinePlateProgram(Program):
             1) move to the new position (using the xy-stage and the FocusDrive z-stage)
             3) check if the new position is the first position in a new well
                (if it is, we will need to run the autoexposure method)
-            4) check if we have already acquired enough FOVs/stacks for the current well
+            4) check if we have already acquired enough stacks for the current well
                (if we do, we'll skip the position)
-            5) run autofocus, run autoexposure, assess confluency, and acquire the stacks 
+            5) run autofocus, run autoexposure, assess the FOV, and acquire the stacks 
                (see self.maybe_acquire_stacks)
 
         '''
@@ -450,7 +448,7 @@ class PipelinePlateProgram(Program):
             # which should be the 'XYStage' and 'FocusDrive' devices and *not* the 'PiezoZ' stage
             position.goToPosition(position, self.mm_core)
 
-            # autofocus, autoexpose if necessary, assess confluency, and acquire stacks
+            # autofocus, autoexpose if necessary, assess the FOV, and acquire stacks
             did_acquire_stacks = self.maybe_acquire_stacks(should_do_autoexposure)
 
             # autoexposure should only be run on the first *imaged* position in each well
@@ -468,7 +466,7 @@ class PipelinePlateProgram(Program):
         Performs the following steps:
 
         1) autofocus using the DAPI channel
-        2) do the confluency test; if it fails, return
+        2) do the FOV assessment; if it fails, return
         3) call the autoexposure method using the GFP channel if should_do_autoexposure is true
         4) acquire a z-stack in DAPI and GFP channels and 'put' the stacks in self.datastore
 
@@ -487,30 +485,31 @@ class PipelinePlateProgram(Program):
                 'PROGRAM WARNING: AFC failed and stacks will not be acquired')
             return did_acquire_stacks
 
-        # confluency assessment (using the DAPI channel)
+        # acquire an image of the DAPI signal for the FOV assessment
         self.operations.change_channel(self.mm_core, self.dapi_channel)
-        snap = self.operations.acquire_snap(self.gate, self.mm_studio)
+        image = self.operations.acquire_image(self.gate, self.mm_studio)
 
-        confluency_is_good, assessment_did_succeed = confluency_assessments.assess_confluency(
-            snap,
-            self.confluency_classifier,
+        # do the FOV assessment (currently, this is a simple good/bad classification)
+        fov_is_good, assessment_did_succeed = fov_assessment.classify_fov(
+            image,
+            self.fov_classifier,
             log_dir=self.log_dir,
             position_ind=self.current_position_ind)
 
-        # note that if there was an error during confluency assessment, 
-        # confluency_is_good will still be False
+        # note that if there was an error during the FOV assessment, 
+        # fov_is_good will still be False
         if not assessment_did_succeed:
-            self.event_logger('PROGRAM WARNING: an error occurred during confluency assessment')
+            self.event_logger('PROGRAM WARNING: an error occurred during FOV assessment')
     
-        # if the confluency is not good, we should not acquire the stacks
-        if not confluency_is_good:
-            self.event_logger("PROGRAM INFO: The confluency test failed")
+        # if the FOV is not good, we should not acquire the stacks
+        if not fov_is_good:
+            self.event_logger("PROGRAM INFO: The FOV was rejected")
             if self.env == 'dev':
-                print("Warning: The confluency test failed but this is ignored in 'dev' mode")
+                print("Warning: The FOV was rejected but this is ignored in 'dev' mode")
             else:
                 return did_acquire_stacks
         else:
-            self.event_logger("PROGRAM INFO: The confluency test passed")
+            self.event_logger("PROGRAM INFO: The FOV was accepted")
 
 
         # -----------------------------------------------------------------
