@@ -73,9 +73,8 @@ class Py4jWrapper(object):
     
 def get_gate(env='dev', wrap=False, logger=None):
 
-    if env=='dev' or env=='test':
+    if env in ['dev', 'test']:
         gate = mock_gateway.Gate()
-
     elif env=='prod':
         gateway = JavaGateway()
         gate = gateway.entry_point

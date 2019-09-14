@@ -56,8 +56,8 @@ def classify_fov(image, classifier, log_dir=None, position_ind=None):
 
     # conservative empirical thresholds on the number of nuclei
     # in a candidate 'good' FOV
-    min_num_nuclei = 20
-    max_num_nuclei = 80
+    min_num_nuclei = 10
+    max_num_nuclei = 100
 
     # crude check for whether there are any nuclei in the FOV at all
     thresh = skimage.filters.threshold_li(image)
