@@ -43,35 +43,7 @@ class FOVClassifier(object):
         Cache/save the training dataset, 
         trained sklearn classifier instance, and cross-validation results
 
-        Intended for use only after a model has been trained when mode='train'
-        '''
-        pass
-
-
-    def classify(self, image):
-        '''
-        Classify a candidate FOV
-        Assumes that self.model exists
-        (e.g., that either mode='train' or we instantiated from a cached trained model)
-        '''
-        pass
-
-
-    def train(self, label):
-        '''
-        Train and cross-validate a classifier to predict the given label
-    
-        dataset: a pd.DataFrame with all feature and label columns
-        label : the label to predict (must be a boolean column in the dataset)
-        '''
-
-        # generate X from the dataset DataFrame (requires ordering features)
-        # generate y - should be something like `y = dataset[label]`
-    
-
-    def log_prod_error(self, message):
-        '''
-        Log an error during production
+        Intended for use only after a model has been trained when mode == 'train'
         '''
         pass
 
@@ -103,4 +75,33 @@ class FOVClassifier(object):
         '''
         '''
         pass
+
+
+    def train(self, label):
+        '''
+        Train and cross-validate a classifier to predict the given label
+    
+        dataset: a pd.DataFrame with all feature and label columns
+        label : the label to predict (must be a boolean column in the dataset)
+        '''
+
+        # generate X from the dataset DataFrame (requires ordering features)
+        # generate y - should be something like `y = dataset[label]`
+    
+
+    def classify(self, image):
+        '''
+        Classify a candidate FOV
+        Assumes that self.model exists
+        (e.g., that either mode='train' or we instantiated from a cached trained model)
+        '''
+        pass
+
+
+    def log_prod_error(self, message):
+        '''
+        Log an error during production
+        '''
+        pass
+
 

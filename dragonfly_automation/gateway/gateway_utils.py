@@ -20,16 +20,13 @@ class Py4jWrapper(object):
         self.wrapped_obj = obj
         self.logger = logger
 
-
     def __repr__(self):
         return self.wrapped_obj.__repr__()
-
 
     @staticmethod
     def is_class_instance(obj):
         # TODO: fix this hack-ish and possibly noncanonical logic
         return hasattr(obj, '__dict__')
-
 
     @classmethod
     def prettify_arg(cls, arg):
@@ -38,7 +35,6 @@ class Py4jWrapper(object):
         elif cls.is_class_instance(arg):
             return '<%s>' % arg.__class__.__name__
         return arg
-
 
     def __getattr__(self, name):
         attr = getattr(self.wrapped_obj, name)
@@ -50,21 +46,17 @@ class Py4jWrapper(object):
 
         def wrapper(*args):
             
-            # construct the log message
+            # construct and log the message
             pretty_args = tuple([self.prettify_arg(arg) for arg in args])
             message = f'''MM2PYTHON: {self.wrapped_obj.__class__.__name__}.{name}{pretty_args}'''
-            
-            # log the message
             self.logger(message)
 
             # make the method call and handle the result
             result = attr(*args)
             if result == self.wrapped_obj:
                 return self
-
             elif self.is_class_instance(result):
                 return Py4jWrapper(result, self.logger)
-
             else:
                 return result
 
@@ -75,7 +67,7 @@ def get_gate(env='dev', wrap=False, logger=None):
 
     if env in ['dev', 'test']:
         gate = mock_gateway.Gate()
-    elif env=='prod':
+    elif env == 'prod':
         gateway = JavaGateway()
         gate = gateway.entry_point
     else:

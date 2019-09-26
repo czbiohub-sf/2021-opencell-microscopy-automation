@@ -89,7 +89,7 @@ class Program(object):
             self.log_dir, '%s_acquired-images.csv' % self.experiment_name)
 
         # log the current commit
-        repo = git.Repo('../')
+        repo = git.Repo('..')
         if not repo:
             raise ValueError('This script cannot be run outside of a git repo')
         current_commit = repo.commit().hexsha

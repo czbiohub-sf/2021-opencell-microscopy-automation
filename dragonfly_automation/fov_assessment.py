@@ -280,7 +280,7 @@ def _calculate_nucleus_position_features(positions, image_size):
 
     return {
         'num_nuclei': num_nuclei, 
-        'rel_com_offset': rel_com_offset, 
+        'com_offset': rel_com_offset, 
         'eval_ratio': eval_ratio,
     }
 
@@ -301,18 +301,12 @@ def _calculate_mask_features(positions, image_size, nucleus_radius):
     for position in positions:
         position_mask[position[0], position[1]] = 1
 
-    mask = ndimage.distance_transform_edt(~position_mask.astype(bool)) > nucleus_radius
-    props = skimage.measure.regionprops(skimage.measure.label(mask))
-
-    num_regions = len(props)
-    total_area = mask.sum() / (mask.shape[0]*mask.shape[1])
-    median_region_area = np.median([p.area for p in props])
-    max_distance = ndimage.distance_transform_edt(~mask).max()
+    dt = ndimage.distance_transform_edt(~position_mask.astype(bool))
+    total_area = (dt < nucleus_radius).sum() / (image_size*image_size)
+    max_distance = dt.max()
 
     return {
-        'num_regions': num_regions, 
         'total_area': total_area, 
-        'median_region_area': median_region_area, 
         'max_distance': max_distance
     }
 
@@ -323,31 +317,23 @@ def _calculate_nucleus_cluster_features(positions, image_size):
     and calculate various measures of cluster homogeneity
     '''
     
-    # empirically-selected parameters for dbscan
+    # empirically-selected neighborhood size relative to the image size
+    # (e.g., 0.1 corresponds to about 100 pixels or 20um)
     eps = 0.1
+
+    # note that min_samples = 3 is the minimum required for non-trivial clustering
     min_samples = 3
 
     dbscan = sklearn.cluster.DBSCAN(eps=eps, min_samples=min_samples, metric='euclidean')
     dbscan.fit(positions/image_size)
 
     labels = dbscan.labels_
-    cluster_labels = set(labels)
-    num_clusters = len(cluster_labels)
+    num_clusters = len(set(labels))
     num_unclustered = (labels==-1).sum()
-
-    if num_clusters > 1:
-        sil_score = sklearn.metrics.silhouette_score(positions, labels)
-        db_score = sklearn.metrics.davies_bouldin_score(positions, labels)
-        ch_score = sklearn.metrics.calinski_harabasz_score(positions, labels)
-    else:
-        sil_score, db_score, ch_score = None, None, None
 
     return {
         'num_clusters': num_clusters, 
         'num_unclustered': num_unclustered, 
-        'sil_score': sil_score, 
-        'db_score': db_score, 
-        'ch_score': ch_score
     }
 
 
@@ -375,17 +361,12 @@ def _order_features(features):
 
     order = (
         'num_nuclei',
-        'rel_com_offset',
+        'com_offset',
         'eval_ratio',
-        'num_regions',
         'total_area',
-        'median_region_area',
         'max_distance',
         'num_clusters',
         'num_unclustered',
-        'sil_score',
-        'db_score',
-        'ch_score'
     )
 
     return tuple([features.get(key) for key in order])
