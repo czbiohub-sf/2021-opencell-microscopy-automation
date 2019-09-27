@@ -69,7 +69,7 @@ ChannelSettings = namedtuple('ChannelSettings', [
 ])
 
 
-class ChannelSettingsManager(object):
+class ChannelSettingsManager:
 
     def __init__(self, channel_settings):
         '''

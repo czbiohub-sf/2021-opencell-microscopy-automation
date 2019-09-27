@@ -7,7 +7,7 @@ except ImportError:
     print("Warning: py4j is not installed - 'prod' mode will not work")
 
 
-class Py4jWrapper(object):
+class Py4jWrapper:
     '''
     Intercept and log calls to method attributes of a py4j object
 

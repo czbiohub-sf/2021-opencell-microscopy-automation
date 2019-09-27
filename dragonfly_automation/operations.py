@@ -3,7 +3,7 @@ import py4j
 import numpy as np
 
 
-class Operations(object):
+class Operations:
 
     def __init__(self, event_logger):
         self.event_logger = event_logger

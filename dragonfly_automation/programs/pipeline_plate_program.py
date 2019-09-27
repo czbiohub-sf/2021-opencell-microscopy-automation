@@ -16,7 +16,7 @@ from dragonfly_automation.settings import ChannelSettingsManager
 from dragonfly_automation.programs import pipeline_plate_settings as settings
 
 
-class Program(object):
+class Program:
     '''
     Base class for programs
 

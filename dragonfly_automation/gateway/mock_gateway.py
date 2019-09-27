@@ -6,7 +6,7 @@ import tempfile
 import numpy as np
 
 
-class JavaException(object):
+class JavaException:
     '''
     mock for py4j java_exception object expected by py4j.protocol.Py4JJavaError    
     '''
@@ -14,7 +14,7 @@ class JavaException(object):
     _gateway_client = '_gateway_client'
     
 
-class Base(object):
+class Base:
 
     def __init__(self, name=None):
         self.name = name
@@ -26,14 +26,14 @@ class Base(object):
 
     
 
-class JavaGateway(object):
+class JavaGateway:
 
     def __init__(self):
         self.entry_point = Gate()
 
 
 
-class Gate(object):
+class Gate:
 
     def __init__(self):
         self.mm_studio = MMStudio()
@@ -70,7 +70,7 @@ class Gate(object):
         return RealMeta()
 
 
-class Meta(object):
+class Meta:
     '''
     Base class for Meta mocks
     '''
@@ -209,7 +209,7 @@ class MMCore(Base):
 
 
 
-class DataManager(object):
+class DataManager:
     '''
     This object is returned by MMStudio.data()
     '''
@@ -220,7 +220,7 @@ class DataManager(object):
         return Image()        
 
 
-class PositionList(object):
+class PositionList:
 
     def __init__(self):
         sites = ['Site_%d' % n for n in range(3)]
@@ -235,7 +235,7 @@ class PositionList(object):
     
 
 
-class Position(object):
+class Position:
 
     def __init__(self, label):
         self.label = label
@@ -251,7 +251,7 @@ class Position(object):
         pass
 
 
-class Image(object):
+class Image:
 
     def __init__(self):
         self.coords = ImageCoords()
@@ -267,7 +267,7 @@ class Image(object):
         return self.metadata
 
 
-class ImageCoords(object):
+class ImageCoords:
 
     def __init__(self):
         self.channel_ind, self.z_ind, self.stage_position = None, None, None
@@ -296,7 +296,7 @@ class ImageCoords(object):
 
 
 
-class ImageMetadata(object):
+class ImageMetadata:
 
     def __repr__(self):
         return 'ImageMetadata(position_name=%s)' % self.position_name
