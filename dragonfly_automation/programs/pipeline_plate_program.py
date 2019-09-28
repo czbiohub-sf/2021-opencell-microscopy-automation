@@ -489,18 +489,17 @@ class PipelinePlateProgram(Program):
         self.operations.change_channel(self.mm_core, self.dapi_channel)
         image = self.operations.acquire_image(self.gate, self.mm_studio)
 
-        # do the FOV assessment (currently, this is a simple good/bad classification)
-        fov_is_good, assessment_did_succeed = fov_assessment.classify_fov(
-            image,
-            self.fov_classifier,
-            log_dir=self.log_dir,
-            position_ind=self.current_position_ind)
+        # classify the FOV
+        # note that, given all of the error handling in FOVClassifier, 
+        # the try-catch is a last line of defense that should never be needed
+        try:
+            self.fov_classifier.classify_raw_fov(image)
+            fov_is_good = self.fov_classifier.decision_flag
+        except Exception as error:
+            fov_is_good = False
+            self.event_logger(
+                'PROGRAM ERROR: an uncaught exception occured during FOV classification: %s' % error)
 
-        # note that if there was an error during the FOV assessment, 
-        # fov_is_good will still be False
-        if not assessment_did_succeed:
-            self.event_logger('PROGRAM WARNING: an error occurred during FOV assessment')
-    
         # if the FOV is not good, we should not acquire the stacks
         if not fov_is_good:
             self.event_logger("PROGRAM INFO: The FOV was rejected")
