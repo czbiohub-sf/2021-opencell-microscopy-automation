@@ -75,8 +75,10 @@ class Program:
         # event logs (plaintext)
         self.all_events_log_file = os.path.join(
             self.log_dir, '%s_all-events.log' % self.experiment_name)
+
         self.error_events_log_file = os.path.join(
             self.log_dir, '%s_error-events.log' % self.experiment_name)
+
         self.important_events_log_file = os.path.join(
             self.log_dir, '%s_important-events.log' % self.experiment_name)
         

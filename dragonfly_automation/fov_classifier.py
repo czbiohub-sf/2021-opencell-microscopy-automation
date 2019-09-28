@@ -10,6 +10,7 @@ import pandas as pd
 from scipy import ndimage
 from sklearn import cluster
 from sklearn import metrics
+from sklearn import ensemble
 from skimage import feature
 from skimage import morphology
 from matplotlib import pyplot as plt
@@ -20,20 +21,44 @@ def printr(s):
     sys.stdout.write('\r%s' % s)
 
 
-def log_errors(fn):
+def catch_errors(method):
+    '''
+    Wrapper for instance methods called in self.classify_raw_fov
+    that catches and logs *all* exceptions and, if an exception occurs,
+    calls self.make_decision
+
+    '''
+
+    method_name = method.__name__
+
     def wrapper(self, *args, **kwargs):
-        try:
-            result = fn(self, *args, **kwargs)
+        
+        # only wrap in 'prediction' mode
+        if self.mode == 'training':
+            return method(self, *args, **kwargs)
+
+        # do not call the method if an error has already occured
+        result = None
+        if self.error_has_occured or self.decision_has_been_made:
             return result
+
+        # attempt the method call
+        try:
+            result = method(self, *args, **kwargs)
         except Exception as error:
-            self.log_error('Error calling %s: %s' % (fn.__name__, error))
-        return None
+            self.error_logger(method_name=method_name, error_message=str(error))
+            self.make_decision(
+                decision=False, 
+                reason=("Error in method `FOVClassifier.%s`" % method_name))
+            self.error_has_occured = True
+        return result
+
     return wrapper
 
 
 class FOVClassifier:
 
-    def __init__(self, cache_dir=None, mode='training'):
+    def __init__(self, cache_dir=None, mode=None):
         '''
         cache_dir : str
             location to which to save the training data, if in training mode, 
@@ -42,6 +67,8 @@ class FOVClassifier:
         '''
 
         self.mode = mode
+        if mode not in ['training', 'prediction']:
+            raise ValueError("`mode` must be either 'training' or 'prediction'")
 
         self.cache_dir = cache_dir
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -191,6 +218,7 @@ class FOVClassifier:
         self.current_validation_results = validation_results
 
 
+    @catch_errors
     def predict(self, features):
         '''
         Use the pre-trained model to make a prediction
@@ -213,74 +241,55 @@ class FOVClassifier:
             attempt to calculate features (continue, error)
             attempt to make the prediction (yes, no, error)
 
+
+        Poorly documented failure modes:
+        If the image is random noise, then we usually get 'not a candidate'
+        If there is some giant but uniform artifact that doesn't break the thresholding
+        (e.g., some large region is uniformly zero), we'll never know
+
         Parameters
         ----------
-        image : numpy.ndarray
-            The raw field of view to classify; must be uint16
+        image : numpy.ndarray (2D and uint16)
+            The raw field of view to classify
 
         '''
 
         # reset the error flag and decision flag
         # TODO: more robust way of resetting and flagging when the decision has been made
-        self.decision_has_been_made = False
         self.decision_flag = False
+        self.decision_has_been_made = False
         self.error_has_occured = False
 
-        # check that the image is uint16
-        if not isinstance(image, np.ndarray) or image.dtype != 'uint16':
-            self.make_decision(decision=False, reason='Image data is not uint16')
+        # validate the image itself 
+        # (note that we allow for the possibility of an error in validate_raw_fov, 
+        # so we have to check that the validation_result is not None)
+        validation_result = self.validate_raw_fov(image)
+        if validation_result is not None and not validation_result.get('flag'):
+            self.make_decision(decision=False, reason=validation_result.get('message'))
 
-        # attempt to check if there are any nuclei in the FOV
-        nuclei_in_fov = self.catch_errors(self.are_nuclei_in_fov)(image)
+        # check if there are any nuclei in the FOV
+        nuclei_in_fov = self.are_nuclei_in_fov(image)
         if not nuclei_in_fov:
             self.make_decision(decision=False, reason='No nuclei in the FOV')
 
-        # attempt to calculate the background mask
-        mask = self.catch_errors(self.generate_background_mask)(image)
+        # calculate the background mask
+        mask = self.generate_background_mask(image)
 
-        # attempt to calculate the nucleus positions from the mask
-        positions = self.catch_errors(self.find_nucleus_positions)(mask)
+        # calculate the nucleus positions from the mask
+        positions = self.find_nucleus_positions(mask)
 
-        # attempt to determine if the FOV is a candidate
-        fov_is_candidate = self.catch_errors(self.is_fov_candidate)(positions)
+        # determine if the FOV is a candidate
+        fov_is_candidate = self.is_fov_candidate(positions)
         if not fov_is_candidate:
             self.make_decision(decision=False, reason='FOV is not a candidate')
 
-        # attempt to calculate features from the positions
-        features = self.catch_errors(self.calculate_features)(positions)
+        # calculate features from the positions
+        features = self.calculate_features(positions)
 
-        # finally, attempt to use the trained model to generate a prediction
+        # finally, use the trained model to generate a prediction
         # (True if the FOV is 'good')
-        model_prediction = self.catch_errors(self.predict)(features)
+        model_prediction = self.predict(features)
         self.make_decision(decision=model_prediction, reason='Model prediction')
-
-
-
-    def catch_errors(self, fn):
-        '''
-        Wrapper for instance methods called in self.classification_workflow
-        that catches and logs *all* exceptions and, if an exception occurs,
-        calls self.make_decision
-        '''
-        method_name = fn.__name__
-
-        def wrapper(*args, **kwargs):
-            
-            result = None
-
-            # if an error has already occured, do nothing
-            if self.error_has_occured or self.decision_has_been_made:
-                return result
-
-            # attempt the method call
-            try:
-                result = fn(*args, **kwargs)
-            except Exception as error:
-                self.error_logger(method_name=method_name, error_message=str(error))
-                self.make_decision(decision=False, reason=("Error in method `FOVClassifier.%s`" % method_name))
-                self.error_has_occured = True
-            return result
-        return wrapper
 
 
     def make_decision(self, decision, reason):
@@ -299,9 +308,29 @@ class FOVClassifier:
 
 
     def decision_logger(self, decision, reason):
-        print("Classification decision made: %s for reason '%s'" % (decision, reason))
+        print("Classification decision: %s (reason: '%s')" % (decision, reason))
 
 
+    @catch_errors
+    def validate_raw_fov(self, image):
+        
+        flag = False
+        message = None
+        if not isinstance(image, np.ndarray):
+            message = 'Image is not an np.ndarray'
+        elif image.dtype != 'uint16':
+            message = 'Image is not uint16'
+        elif image.ndim != 2:
+            message = 'Image is not 2D'
+        elif image.shape[0] != self.image_size or image.shape[1] != self.image_size:
+            message = 'Image shape is not (%s, %s)' % (self.image_size, self.image_size)
+        else:
+            flag = True
+        
+        return dict(flag=flag, message=message)
+
+
+    @catch_errors
     def are_nuclei_in_fov(self, image):
         '''
         Check whether there are *any* real nuclei in the image
@@ -320,6 +349,7 @@ class FOVClassifier:
         return nuclei_in_fov
 
 
+    @catch_errors
     def is_fov_candidate(self, positions):
         '''
         Check whether there are way too few or way too many 'nuclei' in the FOV
@@ -342,6 +372,7 @@ class FOVClassifier:
         return is_candidate
 
 
+    @catch_errors
     def generate_background_mask(self, image):
 
         # smooth the raw image
@@ -365,6 +396,7 @@ class FOVClassifier:
         return mask
 
 
+    @catch_errors
     def find_nucleus_positions(self, mask):
         '''
 
@@ -384,6 +416,7 @@ class FOVClassifier:
         return positions    
 
 
+    @catch_errors
     def calculate_features(self, positions):
         '''
         '''
