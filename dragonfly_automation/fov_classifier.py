@@ -25,7 +25,7 @@ def catch_errors(method):
     '''
     Wrapper for instance methods called in self.classify_raw_fov
     that catches and logs *all* exceptions and, if an exception occurs,
-    calls self.make_decision
+    calls self.make_decision to classify the FOV as 'not good'
 
     '''
 
@@ -37,7 +37,8 @@ def catch_errors(method):
         if self.mode == 'training':
             return method(self, *args, **kwargs)
 
-        # do not call the method if an error has already occured
+        # do not call the method if an error has already occured,
+        # or if the decision has already been made (if, e.g., the FOV was not a candidate)
         result = None
         if self.error_has_occured or self.decision_has_been_made:
             return result
@@ -45,12 +46,20 @@ def catch_errors(method):
         # attempt the method call
         try:
             result = method(self, *args, **kwargs)
+
         except Exception as error:
-            self.error_logger(method_name=method_name, error_message=str(error))
+            error_info = dict(method_name=method_name, error_message=str(error))
+            
+            # make the classification decision, since we do not attempt any error recovery
             self.make_decision(
                 decision=False, 
-                reason=("Error in method `FOVClassifier.%s`" % method_name))
+                reason=("Error in method `FOVClassifier.%s`" % method_name),
+                error_info=error_info)
+
+            # this breaks us out of the classification workflow by preventing
+            # the execution of subsequent wrapped method calls (see above)
             self.error_has_occured = True
+
         return result
 
     return wrapper
@@ -58,24 +67,34 @@ def catch_errors(method):
 
 class FOVClassifier:
 
-    def __init__(self, cache_dir=None, mode=None):
+    def __init__(self, cache_dir, log_dir=None, mode=None):
         '''
-        cache_dir : str
+        cache_dir : str, required
             location to which to save the training data, if in training mode, 
             or from which to load existing training data, if in prediction mode
+        log_dir : str, optional
+            path to a local directory in which to save logfiles
         mode : 'training' or 'prediction'
         '''
 
-        self.mode = mode
         if mode not in ['training', 'prediction']:
             raise ValueError("`mode` must be either 'training' or 'prediction'")
+        self.mode = mode
 
+        os.makedirs(cache_dir, exist_ok=True)
         self.cache_dir = cache_dir
-        os.makedirs(self.cache_dir, exist_ok=True)
+
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        self.log_dir = log_dir
         
+        # optional external event logger assigned after instantiation
+        self.external_event_logger = None
+
         # hard-coded image size
         self.image_size = 1024
 
+        # hard-coded feature order for the classifier
         self.feature_order = (
             'num_nuclei',
             'com_offset',
@@ -230,44 +249,60 @@ class FOVClassifier:
         return prediction
 
 
-    def classify_raw_fov(self, image):
+    def classify_raw_fov(self, image, position_ind=None):
         '''
         Classify a raw, uncurated FOV from the microscope itself
 
         Steps:
-            attempt to check that there are nuclei in the image (yes, no, error)
-            attempt to generate the mask and find positions (continue, error)
+            validate the image object (yes, no, error)
+            check that there are nuclei in the image (yes, no, error)
+            generate the mask and find positions (continue, error)
             check the number of nuclei (yes, no, error)
-            attempt to calculate features (continue, error)
-            attempt to make the prediction (yes, no, error)
-
+            calculate features (continue, error)
+            make the prediction (yes, no, error)
 
         Poorly documented failure modes:
-        If the image is random noise, then we usually get 'not a candidate'
-        If there is some giant but uniform artifact that doesn't break the thresholding
-        (e.g., some large region is uniformly zero), we'll never know
+          - if the image is random noise, then we usually get 'not a candidate'
+          - if there is some giant but uniform artifact that doesn't break the thresholding
+            (e.g., some large region is uniformly zero), we'll never know
 
         Parameters
         ----------
         image : numpy.ndarray (2D and uint16)
             The raw field of view to classify
-
+        position_ind : int, optional (but required for logging)
+            The index of the current position
+            Note that we use an index, and not a label, because it's not clear
+            that we can assume that the labels in the position list will always be unique 
+            (e.g., they may not be when the position list is generated manually,
+            rather than by the HCS Site Generator plugin)
+        
         '''
 
-        # reset the error flag and decision flag
-        # TODO: more robust way of resetting and flagging when the decision has been made
-        self.decision_flag = False
-        self.decision_has_been_made = False
+        # reset the 'state' of the decision-making logic
+        # TODO: more robust way of defining and resetting this 'state'
         self.error_has_occured = False
+        self.decision_has_been_made = False
 
-        # validate the image itself 
-        # (note that we allow for the possibility of an error in validate_raw_fov, 
-        # so we have to check that the validation_result is not None)
+        # reset the log info
+        # note that this dict is modified in this method *and* in self.make_decision
+        self.log_info = {
+            'position_ind': position_ind
+        }
+
+        # validate the image: check that it's a 2D uint16 ndarray
+        # note that, because validate_raw_fov is wrapped by the catch_errors method,
+        # we must check that the validation_result is not None before accessing the 'flag' key.
+        # also note that we only include the image in self.log_info if it passes validation
+        # (otherwise, errors may result when the image is later saved)
         validation_result = self.validate_raw_fov(image)
-        if validation_result is not None and not validation_result.get('flag'):
-            self.make_decision(decision=False, reason=validation_result.get('message'))
-
-        # check if there are any nuclei in the FOV
+        if validation_result is not None:
+            if validation_result.get('flag'):
+                self.log_info['raw_image'] = image
+            else:
+                self.make_decision(decision=False, reason=validation_result.get('message'))
+    
+        # check whether there are any nuclei in the FOV
         nuclei_in_fov = self.are_nuclei_in_fov(image)
         if not nuclei_in_fov:
             self.make_decision(decision=False, reason='No nuclei in the FOV')
@@ -277,6 +312,7 @@ class FOVClassifier:
 
         # calculate the nucleus positions from the mask
         positions = self.find_nucleus_positions(mask)
+        self.log_info['positions'] = positions
 
         # determine if the FOV is a candidate
         fov_is_candidate = self.is_fov_candidate(positions)
@@ -285,30 +321,128 @@ class FOVClassifier:
 
         # calculate features from the positions
         features = self.calculate_features(positions)
+        self.log_info['features'] = features
 
         # finally, use the trained model to generate a prediction
         # (True if the FOV is 'good')
         model_prediction = self.predict(features)
         self.make_decision(decision=model_prediction, reason='Model prediction')
 
+        # log everything we've accumulated in self.log_info
+        self.log_classification_info()
+        return self.decision_flag
 
-    def make_decision(self, decision, reason):
 
+    def make_decision(self, decision, reason, error_info=None):
+        '''
+        '''
         # if an error has already occured, do nothing
         if self.error_has_occured or self.decision_has_been_made:
             return
 
         self.decision_flag = decision
         self.decision_has_been_made = True
-        self.decision_logger(decision, reason)
+
+        # update the log
+        self.log_info['error_info'] = error_info
+        self.log_info['decision'] = decision
+        self.log_info['reason'] = reason
 
 
-    def error_logger(self, method_name, error_message):
-        print("Error during classification in method `%s`: '%s'" % (method_name, error_message))
+    def log_classification_info(self):
+        '''
+        '''
+        
+        log_info = self.log_info
+        position_ind = log_info.get('position_ind')
+        error_info = log_info.get('error_info')
+        raw_image = log_info.get('raw_image')
+        positions = log_info.get('positions')
+        features = log_info.get('features')
 
+        # if there's no log dir, we fall back to printing the decision and error (if any)
+        if self.log_dir is None:
+            if error_info is not None:
+                print("Error during classification in method `%s`: '%s'" % \
+                    (error_info.get('method_name'), error_info.get('error_message')))
 
-    def decision_logger(self, decision, reason):
-        print("Classification decision: %s (reason: '%s')" % (decision, reason))
+            print("Classification decision: %s (reason: '%s')" % \
+                (log_info.get('decision'), log_info.get('reason')))
+            return
+
+        # if there's an external event logger (presumably assigned by a program instance)
+        if self.external_event_logger is not None:
+            if log_info.get('decision'):
+                message = "CLASSIFIER INFO: The FOV was accepted"
+            else:
+                message = "CLASSIFIER INFO: The FOV was rejected (reason: '%s')" % log_info.get('reason')
+            self.external_event_logger(message)
+
+        # if we're still here, we need a position_ind
+        if position_ind is None:
+            raise ValueError('A position_ind must be provided to log classification info')
+        
+        # directory and filepaths for logged images
+        image_dir = os.path.join(self.log_dir, 'fov-images')
+        os.makedirs(image_dir, exist_ok=True)
+        def logged_image_filepath(tag):
+            return os.path.join(image_dir, 'FOV_%05d_%s.tif' % (position_ind, tag))
+        
+        # construct the CSV log row
+        row = {
+            'position_ind': position_ind,
+            'decision': log_info.get('decision'),
+            'reason': log_info.get('reason'),
+            'timestamp': utils.timestamp(),
+            'image_filepath': logged_image_filepath('RAW'),
+        }
+
+        if error_info is not None:
+            row.update(error_info)
+
+        if features is not None:
+            row.update(features)
+
+        # append the row to the log file
+        log_filepath = os.path.join(self.log_dir, 'fov-assessment.csv')
+        if os.path.isfile(log_filepath):
+            d = pd.read_csv(log_filepath)
+            d = d.append(row, ignore_index=True)
+        else:
+            d = pd.DataFrame([row])
+        d.to_csv(log_filepath, index=False, float_format='%0.2f')
+
+        # log the raw image itself
+        if raw_image is not None:
+            tifffile.imsave(logged_image_filepath('RAW'), raw_image)
+
+            # create a uint8 version 
+            # (uint16 images can't be opened in Windows image preview)
+            scaled_image = utils.to_uint8(raw_image)
+            tifffile.imsave(logged_image_filepath('UINT8'), scaled_image)
+
+            # create and save the annotated image
+            # (in which nucleus positions are marked with white squares)
+            if positions is not None:
+                
+                # spot width and whitepoint intensity
+                width = 3
+                white = 255
+                sz = scaled_image.shape
+
+                # lower the brightness of the autogained image 
+                # so that the squares are easier to see
+                ant_image = (scaled_image/2).astype('uint8')
+
+                # draw a square on the image at each nucleus position
+                for pos in positions:
+                    ant_image[
+                        int(max(0, pos[0] - width)):int(min(sz[0] - 1, pos[0] + width)), 
+                        int(max(0, pos[1] - width)):int(min(sz[1] - 1, pos[1] + width))
+                    ] = white
+
+                tifffile.imsave(logged_image_filepath('ANT'), ant_image)
+
 
 
     @catch_errors

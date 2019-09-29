@@ -13,6 +13,25 @@ def timestamp():
     return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
+def to_uint8(im):
+
+    dtype = 'uint8'
+    max_value = 255
+    im = im.copy().astype(float)
+
+    percentile = 1
+    minn, maxx = np.percentile(im, (percentile, 100 - percentile))
+    if minn==maxx:
+        return (im * 0).astype(dtype)
+
+    im = im - minn
+    im[im < minn] = 0
+    im = im/(maxx - minn)
+    im[im > 1] = 1
+    im = (im * max_value).astype(dtype)
+    return im
+
+
 def interpolate_stage_positions(
     position_list_filepath, 
     region_shape, 

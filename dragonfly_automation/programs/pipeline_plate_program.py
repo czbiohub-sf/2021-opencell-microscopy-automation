@@ -62,6 +62,10 @@ class Program:
         self.log_dir = os.path.join(self.root_dir, 'logs')
         self.data_dir = os.path.join(self.root_dir, 'raw_data')
 
+        # assign the log_dir and event logger to the fov_classifier instance
+        fov_classifier.log_dir = self.log_dir
+        fov_classifier.external_event_logger = self.event_logger
+
         # check whether data and/or logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
             if env == 'prod':
@@ -484,7 +488,7 @@ class PipelinePlateProgram(Program):
         # TODO: log the error message itself
         if not autofocus_did_succeed:
             self.event_logger(
-                'PROGRAM WARNING: AFC failed and stacks will not be acquired')
+                'PROGRAM ERROR: AFC failed and stacks will not be acquired')
             return did_acquire_stacks
 
         # acquire an image of the DAPI signal for the FOV assessment
@@ -495,8 +499,8 @@ class PipelinePlateProgram(Program):
         # note that, given all of the error handling in FOVClassifier, 
         # the try-catch is a last line of defense that should never be needed
         try:
-            self.fov_classifier.classify_raw_fov(image)
-            fov_is_good = self.fov_classifier.decision_flag
+            fov_is_good = self.fov_classifier.classify_raw_fov(
+                image, position_ind=self.current_position_ind)
         except Exception as error:
             fov_is_good = False
             self.event_logger(
@@ -504,14 +508,10 @@ class PipelinePlateProgram(Program):
 
         # if the FOV is not good, we should not acquire the stacks
         if not fov_is_good:
-            self.event_logger("PROGRAM INFO: The FOV was rejected")
             if self.env == 'dev':
                 print("Warning: The FOV was rejected but this is ignored in 'dev' mode")
             else:
                 return did_acquire_stacks
-        else:
-            self.event_logger("PROGRAM INFO: The FOV was accepted")
-
 
         # -----------------------------------------------------------------
         #
@@ -536,7 +536,7 @@ class PipelinePlateProgram(Program):
                 # (autoexposure fails when the GFP signal is so bright
                 # that the stack is overexposed even at the minimum laser power)
                 self.event_logger(
-                    'PROGRAM WARNING: Autoexposure failed, but stacks will be acquired anyway')
+                    'PROGRAM ERROR: Autoexposure failed, but stacks will be acquired anyway')
 
         # -----------------------------------------------------------------
         #
