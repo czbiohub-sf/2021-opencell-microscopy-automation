@@ -165,8 +165,7 @@ def change_channel(mm_core, channel_settings):
         channel_settings.laser_power)
 
     # exposure time
-    mm_core.setExposure(
-        float(channel_settings.exposure_time))
+    mm_core.setExposure(float(channel_settings.exposure_time))
 
     # camera gain
     prop_name = 'Gain'

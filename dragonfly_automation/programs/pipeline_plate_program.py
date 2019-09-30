@@ -63,7 +63,7 @@ class Program:
         self.data_dir = os.path.join(self.root_dir, 'raw_data')
 
         # assign the log_dir and event logger to the fov_classifier instance
-        fov_classifier.log_dir = self.log_dir
+        fov_classifier.log_dir = os.path.join(self.log_dir, 'fov-classification')
         fov_classifier.external_event_logger = self.event_logger
 
         # check whether data and/or logs already exist for the root_dir
@@ -124,6 +124,7 @@ class Program:
         Note that this method is also passed to, and called from, 
         - some methods in the operations module
         - the wrappers around the gate, mm_studio, and mm_core objects
+        - the logging method of the FOVClassifier instance at self.fov_classifier
 
         For now, we rely on the correct manual hard-coding of log messages 
         to identify, in the logfile, which of these contexts this method was called from
@@ -135,9 +136,10 @@ class Program:
         # prepend a timestamp to the message
         message = '%s %s' % (utils.timestamp(), message)
  
-        # 'important' events are simply all events
-        # except for those originated by gateway_utils.Py4jWrapper instances
-        message_is_important = 'MM2PYTHON' not in message
+        # 'important' events are program- and classifier-level events
+        # (and not operation enter/exit events or events originated 
+        # by gateway_utils.Py4jWrapper instances)
+        message_is_important = 'PROGRAM INFO' in message or 'CLASSIFIER INFO' in message
         if message_is_important:
             log_filepaths.append(self.important_events_log_file)
         
@@ -256,7 +258,6 @@ class Program:
 
         '''
         # freeze the datastore
-        # TODO: figure out why freeze() throws a py4j error
         if self.datastore:
             self.datastore.freeze()
 
@@ -508,7 +509,7 @@ class PipelinePlateProgram(Program):
 
         # if the FOV is not good, we should not acquire the stacks
         if not fov_is_good:
-            if self.env == 'dev':
+            if False: # self.env == 'dev':
                 print("Warning: The FOV was rejected but this is ignored in 'dev' mode")
             else:
                 return did_acquire_stacks

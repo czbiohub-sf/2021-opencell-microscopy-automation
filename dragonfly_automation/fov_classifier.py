@@ -70,7 +70,7 @@ class FOVClassifier:
             location to which to save the training data, if in training mode, 
             or from which to load existing training data, if in prediction mode
         log_dir : str, optional
-            path to a local directory in which to save logfiles
+            path to a local directory in which to save log files
         mode : 'training' or 'prediction'
         '''
 
@@ -89,8 +89,9 @@ class FOVClassifier:
             os.makedirs(log_dir, exist_ok=True)
         self.log_dir = log_dir
         
-        # optional external event logger assigned after instantiation
-        self.external_event_logger = None
+        # an optional external event logger assigned after instantiation
+        def dummy_event_logger(*args, **kwargs): pass
+        self.external_event_logger = dummy_event_logger
 
         # hard-coded image size
         self.image_size = 1024
@@ -387,7 +388,7 @@ class FOVClassifier:
         self.make_decision(decision=model_prediction, reason='Model prediction')
 
         # log everything we've accumulated in self.log_info
-        self.log_classification_info()
+        self.save_log_info()
         return self.decision_flag
 
 
@@ -407,7 +408,7 @@ class FOVClassifier:
         self.log_info['reason'] = reason
 
 
-    def log_classification_info(self):
+    def save_log_info(self):
         '''
         '''
         
@@ -418,14 +419,14 @@ class FOVClassifier:
         positions = log_info.get('positions')
         features = log_info.get('features')
 
-        # if there's an external event logger (presumably assigned by a program instance)
-        if self.external_event_logger is not None:
-            if log_info.get('decision'):
-                message = "CLASSIFIER INFO: The FOV was accepted"
-            else:
-                message = "CLASSIFIER INFO: The FOV was rejected (reason: '%s')" % \
-                    log_info.get('reason')
-            self.external_event_logger(message)
+        # message for the external event logger 
+        # (presumably assigned by a program instance)
+        if log_info.get('decision'):
+            message = "CLASSIFIER INFO: The FOV was accepted"
+        else:
+            message = "CLASSIFIER INFO: The FOV was rejected (reason: '%s')" % \
+                log_info.get('reason')
+        self.external_event_logger(message)
 
         # if there's no log dir, we fall back to printing the decision and error (if any)
         if self.log_dir is None:
@@ -463,7 +464,7 @@ class FOVClassifier:
             row.update(features)
 
         # append the row to the log file
-        log_filepath = os.path.join(self.log_dir, 'fov-assessment.csv')
+        log_filepath = os.path.join(self.log_dir, 'fov-classification-log.csv')
         if os.path.isfile(log_filepath):
             d = pd.read_csv(log_filepath)
             d = d.append(row, ignore_index=True)
