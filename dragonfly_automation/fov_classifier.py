@@ -327,7 +327,7 @@ class FOVClassifier:
         Parameters
         ----------
         image : numpy.ndarray (2D and uint16)
-            The raw field of view to classify
+            The raw field of view to classify; assumed to be close to in-focus
         position_ind : int, optional (but required for logging)
             The index of the current position
             Note that we use an index, and not a label, because it's not clear
@@ -700,5 +700,25 @@ class FOVClassifier:
         return features
 
 
+    def show_nucleus_positions(self, positions, im=None, ax=None):
+        '''
+        Convenience method to visualize the nucleus positions, 
+        optionally overlaid on the image itself and the background mask
+        '''
+    
+        if ax is None:
+            plt.figure(figsize=(10, 10))
+            ax = plt.gca()
 
+        # show the image and the background mask
+        if im is not None:
+            mask = self.generate_background_mask(im)
+            ax.imshow(
+                skimage.color.label2rgb(~mask, image=utils.to_uint8(im), colors=('black', 'yellow')))
+
+        # plot the positions themselves
+        ax.scatter(positions[:, 1], positions[:, 0], color='red')
+        ax.set_xlim([0, 1024])
+        ax.set_ylim([0, 1024])
+        ax.set_aspect('equal')
 
