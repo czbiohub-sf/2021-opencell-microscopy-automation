@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import json
 import skimage
@@ -33,14 +34,13 @@ def catch_errors(method):
 
     def wrapper(self, *args, **kwargs):
         
-        # only wrap in 'prediction' mode
-        if self.mode == 'training':
+        if self.allow_errors:
             return method(self, *args, **kwargs)
 
-        # do not call the method if an error has already occured,
-        # or if the decision has already been made (if, e.g., the FOV was not a candidate)
+        # do not call the method if a decision has already been made
+        # (which includes decisions made because an error already ocurred)
         result = None
-        if self.error_has_occured or self.decision_has_been_made:
+        if self.decision_has_been_made:
             return result
 
         # attempt the method call
@@ -51,17 +51,14 @@ def catch_errors(method):
             error_info = dict(method_name=method_name, error_message=str(error))
             
             # make the classification decision, since we do not attempt any error recovery
+            # note that this sets the decision_has_been_made flag, which will prevent
+            # the execution of all subsequent catch_errors-wrapped methods
             self.make_decision(
                 decision=False, 
                 reason=("Error in method `FOVClassifier.%s`" % method_name),
                 error_info=error_info)
 
-            # this breaks us out of the classification workflow by preventing
-            # the execution of subsequent wrapped method calls (see above)
-            self.error_has_occured = True
-
         return result
-
     return wrapper
 
 
@@ -76,6 +73,10 @@ class FOVClassifier:
             path to a local directory in which to save logfiles
         mode : 'training' or 'prediction'
         '''
+
+        # whether the methods wrapped by catch_errors
+        # can raise errors or not (explicitly set to False in self.classify_raw_fov)
+        self.allow_errors = True
 
         if mode not in ['training', 'prediction']:
             raise ValueError("`mode` must be either 'training' or 'prediction'")
@@ -115,41 +116,45 @@ class FOVClassifier:
     def training_data_filepath(self):
         return os.path.join(self.cache_dir, 'training_data.csv')
 
-    def validation_results_filepath(self):
-        return os.path.join(self.cache_dir, 'validation_results.json')
+    def training_metadata_filepath(self):
+        return os.path.join(self.cache_dir, 'training_metadata.json')
 
 
     def load(self):
         '''
-        Load existing training data and validation results
+        Load existing training data and metadata
 
         Steps
-        1) load the training dataset and the cached cross-validation results
+        1) load the training dataset and the cached metadata 
+           (including cross-validation results)
         2) train the classifier (self.model)
         3) verify that the cross-validation results are comparable to the cached results
         '''
 
         # reset the current validation results
-        self.current_validation_results = None
+        self.current_training_metadata = None
     
         # load the training data        
         self.training_data = pd.read_csv(self.training_data_filepath())
 
         # load the cached validation results
-        with open(self.validation_results_filepath(), 'r') as file:
-            self.cached_validation_results = json.load(file)
+        if os.path.isfile(self.training_metadata_filepath()):
+            with open(self.training_metadata_filepath(), 'r') as file:
+                self.cached_training_metadata = json.load(file)
+        else:
+            print('Warning: no cached model metadata found')
 
 
     def save(self, overwrite=False):
         '''
-        Save the training data and the validation results
+        Save the training data and the metadata
         '''
 
         if self.mode != 'training':
             raise ValueError("Cannot save training data unless mode = 'training'")
 
-        if self.current_validation_results is None:
-            raise ValueError('Cannot save training data without current validation results')
+        if self.current_training_metadata is None:
+            raise ValueError('Cannot save training data without current model metadata')
         
         # don't overwrite existing data
         filepath = self.training_data_filepath()
@@ -159,9 +164,10 @@ class FOVClassifier:
         # save the training data
         self.training_data.to_csv(filepath, index=False)
 
-        # save the validation results
-        with open(self.validation_results_filepath(), 'w') as file:
-            json.dump(self.current_validation_results, file)
+        # save the metadata
+        self.current_training_metadata['filepath'] = os.path.abspath(filepath)
+        with open(self.training_metadata_filepath(), 'w') as file:
+            json.dump(self.current_training_metadata, file)
 
 
     def process_training_data(self, data):
@@ -202,7 +208,7 @@ class FOVClassifier:
         self.training_data = data
 
 
-    def train(self, label):
+    def train(self, label, cross_validate=False):
         '''
         Train and cross-validate a classifier to predict the given label
         
@@ -215,6 +221,18 @@ class FOVClassifier:
         label : the label to predict (must be a boolean column in self.training_data)
         '''
 
+        # turn on errors in feature extraction methods
+        self.allow_errors = True
+
+        training_metadata = {
+            'training_label': label,
+            'training_timestamp': utils.timestamp(),
+            'model': {
+                'class': str(self.model.__class__),
+                'params': self.model.get_params(),
+            }
+        }
+
         # mask to identify training data with and without annotations
         # note that only the 'confluency' label is None if there is no annotation
         # (the other labels are False by default)
@@ -225,16 +243,55 @@ class FOVClassifier:
         X = training_data[list(self.feature_order)].values
         y = training_data[label].values.astype(bool)
 
-        cv = sklearn.model_selection.StratifiedKFold(n_splits=10, shuffle=True)        
-        scores = sklearn.model_selection.cross_validate(
-            self.model, X, y, cv=cv, scoring=['accuracy', 'precision', 'recall'])
-
-        validation_results = {key: '%0.2f' % value.mean() for key, value in scores.items()}
+        if cross_validate:
+            cv = sklearn.model_selection.StratifiedKFold(n_splits=10, shuffle=True)        
+            scores = sklearn.model_selection.cross_validate(
+                self.model, X, y, cv=cv, scoring=['accuracy', 'precision', 'recall'])
+            training_metadata['cv_results'] = {
+                key: '%0.2f' % value.mean() for key, value in scores.items()
+            }
 
         # train the model on all of the training data
         self.model.fit(X, y)
-        validation_results['full_oob_score'] = '%0.2f' % self.model.oob_score_
-        self.current_validation_results = validation_results
+        training_metadata['training_oob_score'] = '%0.2f' % self.model.oob_score_
+        print('oob_score: %0.2f' % self.model.oob_score_)
+        self.current_training_metadata = training_metadata
+
+
+    def validate(self):
+        '''
+        Sanity checks when in 'prediction' mode and after calling self.train
+        Intended use is right after loading and training from cached data on the microscope 
+
+        Steps:
+
+            1) Print the cached and current cross-validation results
+               for manual inspection/validation
+            
+            2) Check that the number of features returned by self.calculate_features
+               matches the number expected by the trained model.
+               (note that self.train implicitly validates whether all the features
+               listed in self.feature_order appear in the cached training data,
+               but there is no guarantee that self.feature_order is consistent
+               with the features actually returned by self.calculate_features)
+
+        '''
+
+        # compare cached and current CV results
+        print('Cached CV accuracy and recall: %s, %s' % (
+            self.cached_training_metadata['cv_results']['test_accuracy'],
+            self.cached_training_metadata['cv_results']['test_recall']))
+    
+        print('Current CV accuracy and recall: %s, %s' % (
+            self.current_training_metadata['cv_results']['test_accuracy'],
+            self.current_training_metadata['cv_results']['test_recall']))
+
+        # make sure the number of features is consistent 
+        self.allow_errors = True
+        mock_positions = np.array([[100, 500], [500, 500], [500, 100]])
+        features = self.calculate_features(mock_positions)
+        prediction = self.predict(features)
+        print('Mock prediction (should be false): %s' % prediction)
 
 
     @catch_errors
@@ -279,9 +336,10 @@ class FOVClassifier:
         
         '''
 
+        # required for the catch_errors wrapper to actually catch (and log) errors
+        self.allow_errors = False
+
         # reset the 'state' of the decision-making logic
-        # TODO: more robust way of defining and resetting this 'state'
-        self.error_has_occured = False
         self.decision_has_been_made = False
 
         # reset the log info
@@ -336,8 +394,8 @@ class FOVClassifier:
     def make_decision(self, decision, reason, error_info=None):
         '''
         '''
-        # if an error has already occured, do nothing
-        if self.error_has_occured or self.decision_has_been_made:
+        # do nothing if a decision has already been made
+        if self.decision_has_been_made:
             return
 
         self.decision_flag = decision
@@ -360,6 +418,15 @@ class FOVClassifier:
         positions = log_info.get('positions')
         features = log_info.get('features')
 
+        # if there's an external event logger (presumably assigned by a program instance)
+        if self.external_event_logger is not None:
+            if log_info.get('decision'):
+                message = "CLASSIFIER INFO: The FOV was accepted"
+            else:
+                message = "CLASSIFIER INFO: The FOV was rejected (reason: '%s')" % \
+                    log_info.get('reason')
+            self.external_event_logger(message)
+
         # if there's no log dir, we fall back to printing the decision and error (if any)
         if self.log_dir is None:
             if error_info is not None:
@@ -369,14 +436,6 @@ class FOVClassifier:
             print("Classification decision: %s (reason: '%s')" % \
                 (log_info.get('decision'), log_info.get('reason')))
             return
-
-        # if there's an external event logger (presumably assigned by a program instance)
-        if self.external_event_logger is not None:
-            if log_info.get('decision'):
-                message = "CLASSIFIER INFO: The FOV was accepted"
-            else:
-                message = "CLASSIFIER INFO: The FOV was rejected (reason: '%s')" % log_info.get('reason')
-            self.external_event_logger(message)
 
         # if we're still here, we need a position_ind
         if position_ind is None:
