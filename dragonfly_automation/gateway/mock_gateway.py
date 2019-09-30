@@ -5,6 +5,27 @@ import tifffile
 import tempfile
 import numpy as np
 
+ALL_WELL_IDS = [
+    'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12',
+    'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10', 'B11', 'B12',
+    'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 
+    'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10', 'D11', 'D12', 
+    'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11', 'E12', 
+    'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12', 
+    'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 
+    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'H11', 'H12',
+]
+
+# for rapid testing
+NUM_SITES_PER_WELL = 3
+WELL_IDS = ['A1', 'B10']
+
+# for simulating a real experiment
+NUM_SITES_PER_WELL = 25
+WELL_IDS = ALL_WELL_IDS[:48]
+
+FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/dragonfly-automation-tests/20190910/ML0000_20190910-3/logs/confluency-check/confluency-snaps'
+
 
 class JavaException:
     '''
@@ -36,7 +57,10 @@ class JavaGateway:
 class Gate:
 
     def __init__(self):
-        self.mm_studio = MMStudio()
+
+        self.position_ind = None
+        def set_position_ind(position_ind):
+            self.position_ind = position_ind
 
         self.laser_power = None
         def set_laser_power(laser_power):
@@ -45,6 +69,10 @@ class Gate:
         self.exposure_time = None
         def set_exposure_time(exposure_time):
             self.exposure_time = exposure_time
+
+        self.mm_studio = MMStudio(
+            set_position_ind=set_position_ind
+        )
 
         self.mm_core = MMCore(
             set_laser_power=set_laser_power,
@@ -62,12 +90,19 @@ class Gate:
         taken by MicroManager (usually via live.snap()) as an numpy memmap
 
         For an image of noise scaled by laser power and exposure time, use
-        meta = RandomMeta(self.laser_power, self.exposure_time)
+        meta = RandomNoiseMeta(self.laser_power, self.exposure_time)
 
         For a 'real' image from the tests/test-snaps/ directory, use
-        meta = RealMeta()
+        meta = RandomTestSnapMeta()
+
+        For the real logged image corresponding to self.position_ind
+        from a real experiment, use
+        meta = LoggedImageMeta(log_dir=FOV_LOG_DIR, position_ind=self.position_ind)
         '''
-        return RealMeta()
+        meta = LoggedImageMeta(
+            fov_log_dir=FOV_LOG_DIR, 
+            position_ind=self.position_ind)
+        return meta
 
 
 class Meta:
@@ -93,7 +128,16 @@ class Meta:
         return self.shape[1]
 
 
-class RealMeta(Meta):
+class LoggedImageMeta(Meta):
+
+    def __init__(self, fov_log_dir, position_ind):
+        
+        filename = 'confluency_snap_pos%05d_RAW.tif' % position_ind
+        im = tifffile.imread(os.path.join(fov_log_dir, filename))
+        self._make_memmap(im)
+
+
+class RandomTestSnapMeta(Meta):
     '''
     Mock for the Meta object that returns a random test snap
     from the tests/test-snaps/ directory
@@ -115,7 +159,7 @@ class RealMeta(Meta):
         self._make_memmap(im)
 
 
-class RandomMeta(Meta):
+class RandomNoiseMeta(Meta):
     '''
     Mock for the Meta object that returns an image consisting of noise
     scaled by laser power and exposure time
@@ -160,11 +204,14 @@ class MMStudio(Base):
     See https://valelab4.ucsf.edu/~MM/doc-2.0.0-beta/mmstudio/org/micromanager/Studio.html
     '''
 
+    def __init__(self, set_position_ind):
+        self.set_position_ind = set_position_ind
+
     def getAutofocusManager(self):
         return AutofocusManager()
 
     def getPositionList(self):
-        return PositionList()
+        return PositionList(self.set_position_ind)
     
     def live(self):
         return Base(name='SnapLiveManager')
@@ -222,18 +269,23 @@ class DataManager:
 
 class PositionList:
 
-    def __init__(self):
-        sites = ['Site_%d' % n for n in range(3)]
-        self._position_list = ['%s-%s' % ('A1', site) for site in sites]
-        self._position_list += ['%s-%s' % ('B10', site) for site in sites]
+    def __init__(self, set_position_ind):
+
+        self.set_position_ind = set_position_ind
+
+        # construct the HCS-like list of position labels
+        sites = ['Site_%d' % n for n in range(NUM_SITES_PER_WELL)]
+        self._position_list = []
+        for well_id in WELL_IDS:
+            self._position_list += ['%s-%s' % (well_id, site) for site in sites]
 
     def getNumberOfPositions(self):
         return len(self._position_list)
 
-    def getPosition(self, index):
-        return Position(self._position_list[index])
+    def getPosition(self, ind):
+        self.set_position_ind(ind)
+        return Position(self._position_list[ind])
     
-
 
 class Position:
 
