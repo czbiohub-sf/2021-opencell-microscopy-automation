@@ -319,10 +319,18 @@ class FOVClassifier:
         Use the pre-trained model to make a prediction
         '''
 
+        # threshold for a binary prediction from the predicted probability
+        # this is temporary and was empirically determined 
+        # to make the prediction more permissive ahead of test on 2019-10-03
+        predicted_prob_thresh = 0.15
+
         # construct the feature array of shape (1, num_features)
         X = np.array([features.get(name) for name in self.feature_order])[None, :]
-        flag = self.model.predict(X)[0]
-        prob = self.model.predict_proba(X)[0][0]
+
+        # note that predict_proba returns [p_false, p_true]
+        prob = self.model.predict_proba(X)[0][1]
+        flag = prob > predicted_prob_thresh
+
         result = {'prediction_flag': flag, 'prediction_prob': prob}
         return result
 
@@ -392,7 +400,6 @@ class FOVClassifier:
         self.log_info['positions'] = positions
 
         # determine if the FOV is a candidate
-        # (note that fov_is_candidate will be None if an error occurs in is_fov_candidate)
         fov_is_candidate = self.is_fov_candidate(positions)
         if not fov_is_candidate:
             self.make_decision(decision=False, reason='FOV is not a candidate')
@@ -402,12 +409,12 @@ class FOVClassifier:
         self.log_info['features'] = features
 
         # finally, use the trained model to generate a prediction
-        # (note that prediction is either a dict of {flag, probability} or None 
-        # if an error occurs in self.predict)
         prediction = self.predict(features)
         self.log_info['prediction'] = prediction
         if prediction is not None:
-            self.make_decision(decision=prediction.get('prediction_flag'), reason='Model prediction')
+            self.make_decision(
+                decision=prediction.get('prediction_flag'), 
+                reason='Model prediction (p = %0.2f)' % prediction.get('prediction_prob'))
 
         # log everything we've accumulated in self.log_info
         self.save_log_info()
