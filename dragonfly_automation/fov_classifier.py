@@ -64,11 +64,8 @@ def catch_errors(method):
 
 class FOVClassifier:
 
-    def __init__(self, cache_dir, log_dir=None, mode=None):
+    def __init__(self, log_dir=None, mode=None):
         '''
-        cache_dir : str, required
-            location to which to save the training data, if in training mode, 
-            or from which to load existing training data, if in prediction mode
         log_dir : str, optional
             path to a local directory in which to save log files
         mode : 'training' or 'prediction'
@@ -81,9 +78,6 @@ class FOVClassifier:
         if mode not in ['training', 'prediction']:
             raise ValueError("`mode` must be either 'training' or 'prediction'")
         self.mode = mode
-
-        os.makedirs(cache_dir, exist_ok=True)
-        self.cache_dir = cache_dir
 
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
@@ -118,22 +112,28 @@ class FOVClassifier:
 
 
     def training_data_filepath(self):
-        return os.path.join(self.cache_dir, 'training_data.csv')
+        return os.path.join(self.save_dir, 'training_data.csv')
 
     def training_metadata_filepath(self):
-        return os.path.join(self.cache_dir, 'training_metadata.json')
+        return os.path.join(self.save_dir, 'training_metadata.json')
 
 
-    def load(self):
+    def load(self, save_dir):
         '''
         Load existing training data and metadata
 
+        save_dir : str, required
+            location to which to save the training data, if in training mode, 
+            or from which to load existing training data, if in prediction mode
+        
         Steps
         1) load the training dataset and the cached metadata 
            (including cross-validation results)
         2) train the classifier (self.model)
         3) verify that the cross-validation results are comparable to the cached results
         '''
+
+        self.save_dir = save_dir
 
         # reset the current validation results
         self.current_training_metadata = None
@@ -149,10 +149,22 @@ class FOVClassifier:
             print('Warning: no cached model metadata found')
 
 
-    def save(self, overwrite=False):
+    def save(self, save_dir=None, overwrite=False):
         '''
         Save the training data and the metadata
+
+        If save_dir is None, save to the directory specified by self.save_dir
+        (which is set in self.load)
         '''
+
+        if save_dir is None and self.save_dir is None:
+            raise ValueError('A save directory must be specified')
+
+        if save_dir is None:
+            save_dir = self.save_dir
+        else:
+            self.save_dir = save_dir
+        os.makedirs(save_dir, exist_ok=True)
 
         if self.mode != 'training':
             raise ValueError("Cannot save training data unless mode = 'training'")
@@ -160,7 +172,7 @@ class FOVClassifier:
         # don't overwrite existing data
         filepath = self.training_data_filepath()
         if os.path.isfile(filepath) and not overwrite:
-            raise ValueError('Training data already saved to %s' % self.cache_dir)
+            raise ValueError('Training data already saved to %s' % self.save_dir)
 
         # save the training data
         self.training_data.to_csv(filepath, index=False)
@@ -319,9 +331,9 @@ class FOVClassifier:
         Use the pre-trained model to make a prediction
         '''
 
-        # threshold for a binary prediction from the predicted probability
+        # hack-ish threshold for a binary prediction from the predicted probability
         # this is temporary and was empirically determined 
-        # to make the prediction more permissive ahead of test on 2019-10-03
+        # to make the prediction from 'models/2019-10-01/' more permissive
         predicted_prob_thresh = 0.15
 
         # construct the feature array of shape (1, num_features)
