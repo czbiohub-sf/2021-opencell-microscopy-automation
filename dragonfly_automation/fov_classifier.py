@@ -51,8 +51,8 @@ def catch_errors(method):
             error_info = dict(method_name=method_name, error_message=str(error))
             
             # make the classification decision, since we do not attempt any error recovery
-            # note that this sets the decision_has_been_made flag, which will prevent
-            # the execution of all subsequent catch_errors-wrapped methods
+            # note that self.make_decision sets the decision_has_been_made flag, 
+            # which will prevent the execution of all subsequent catch_errors-wrapped methods
             self.make_decision(
                 decision=False, 
                 reason=("Error in method `FOVClassifier.%s`" % method_name),
@@ -312,8 +312,10 @@ class FOVClassifier:
 
         # construct the feature array of shape (1, num_features)
         X = np.array([features.get(name) for name in self.feature_order])[None, :]
-        prediction = self.model.predict(X)[0]
-        return prediction
+        flag = self.model.predict(X)[0]
+        prob = self.model.predict_proba(X)[0][0]
+        result = {'prediction_flag': flag, 'prediction_prob': prob}
+        return result
 
 
     def classify_raw_fov(self, image, position_ind=None):
@@ -362,7 +364,7 @@ class FOVClassifier:
         # note that, because validate_raw_fov is wrapped by the catch_errors method,
         # we must check that the validation_result is not None before accessing the 'flag' key.
         # also note that we only include the image in self.log_info if it passes validation
-        # (otherwise, errors may result when the image is later saved)
+        # (otherwise, errors may result when the image itself is logged in self.save_log_info)
         validation_result = self.validate_raw_fov(image)
         if validation_result is not None:
             if validation_result.get('flag'):
@@ -375,14 +377,13 @@ class FOVClassifier:
         if not nuclei_in_fov:
             self.make_decision(decision=False, reason='No nuclei in the FOV')
 
-        # calculate the background mask
+        # calculate the background mask and nucleus positions
         mask = self.generate_background_mask(image)
-
-        # calculate the nucleus positions from the mask
         positions = self.find_nucleus_positions(mask)
         self.log_info['positions'] = positions
 
         # determine if the FOV is a candidate
+        # (note that fov_is_candidate will be None if an error occurs in is_fov_candidate)
         fov_is_candidate = self.is_fov_candidate(positions)
         if not fov_is_candidate:
             self.make_decision(decision=False, reason='FOV is not a candidate')
@@ -392,9 +393,12 @@ class FOVClassifier:
         self.log_info['features'] = features
 
         # finally, use the trained model to generate a prediction
-        # (True if the FOV is 'good')
-        model_prediction = self.predict(features)
-        self.make_decision(decision=model_prediction, reason='Model prediction')
+        # (note that prediction is either a dict of {flag, probability} or None 
+        # if an error occurs in self.predict)
+        prediction = self.predict(features)
+        self.log_info['prediction'] = prediction
+        if prediction is not None:
+            self.make_decision(decision=prediction.get('prediction_flag'), reason='Model prediction')
 
         # log everything we've accumulated in self.log_info
         self.save_log_info()
@@ -427,30 +431,30 @@ class FOVClassifier:
         raw_image = log_info.get('raw_image')
         positions = log_info.get('positions')
         features = log_info.get('features')
+        prediction = log_info.get('prediction')
 
         # message for the external event logger 
         # (presumably assigned by a program instance)
         if log_info.get('decision'):
-            message = "CLASSIFIER INFO: The FOV was accepted"
+            self.external_event_logger("CLASSIFIER INFO: The FOV was accepted")
         else:
-            message = "CLASSIFIER INFO: The FOV was rejected (reason: '%s')" % \
-                log_info.get('reason')
-        self.external_event_logger(message)
+            self.external_event_logger(
+                "CLASSIFIER INFO: The FOV was rejected ('%s')" % log_info.get('reason'))
 
         # if there's no log dir, we fall back to printing the decision and error (if any)
         if self.log_dir is None:
             if error_info is not None:
                 print("Error during classification in method `%s`: '%s'" % \
                     (error_info.get('method_name'), error_info.get('error_message')))
-
-            print("Classification decision: %s (reason: '%s')" % \
+            print("Classification decision: %s ('%s')" % \
                 (log_info.get('decision'), log_info.get('reason')))
             return
 
         # if we're still here, we need a position_ind
         if position_ind is None:
-            raise ValueError('A position_ind must be provided to log classification info')
-        
+            print('Warning: a position_ind must be provided to log classification info')
+            return
+
         # directory and filepaths for logged images
         image_dir = os.path.join(self.log_dir, 'fov-images')
         os.makedirs(image_dir, exist_ok=True)
@@ -466,11 +470,17 @@ class FOVClassifier:
             'image_filepath': logged_image_filepath('RAW'),
         }
 
+        # dict of {method_name, error_message}
         if error_info is not None:
             row.update(error_info)
 
+        # dict of {num_nuclei, com_offset, etc}
         if features is not None:
             row.update(features)
+
+        # dict of {prediction_flag, prediction_prob}
+        if prediction is not None:
+            row.update(prediction)
 
         # append the row to the log file
         log_filepath = os.path.join(self.log_dir, 'fov-classification-log.csv')
