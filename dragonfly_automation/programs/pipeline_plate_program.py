@@ -136,10 +136,13 @@ class Program:
         # prepend a timestamp to the message
         message = '%s %s' % (utils.timestamp(), message)
  
-        # 'important' events are program- and classifier-level events
-        # (and not operation enter/exit events or events originated 
-        # by gateway_utils.Py4jWrapper instances)
-        message_is_important = 'PROGRAM INFO' in message or 'CLASSIFIER INFO' in message
+        # manually-defined 'important' events
+        important_labels = ['PROGRAM', 'CLASSIFIER', 'ERROR', 'WARNING']
+        message_is_important = False
+        for label in important_labels:
+            if label in message:
+                message_is_important = True
+    
         if message_is_important:
             log_filepaths.append(self.important_events_log_file)
         

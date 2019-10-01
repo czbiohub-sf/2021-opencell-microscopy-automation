@@ -259,7 +259,8 @@ class FOVClassifier:
 
         # train the model on all of the training data
         self.model.fit(X, y)
-        training_metadata['training_oob_score'] = '%0.2f' % self.model.oob_score_
+        training_metadata['oob_score'] = '%0.2f' % self.model.oob_score_
+        training_metadata['training_data_shape'] = list(X.shape)
         print('oob_score: %0.2f' % self.model.oob_score_)
         self.current_training_metadata = training_metadata
 
@@ -295,6 +296,14 @@ class FOVClassifier:
         print('Current CV accuracy and recall: %s, %s' % (
             self.current_training_metadata['cv_results']['test_accuracy'],
             self.current_training_metadata['cv_results']['test_recall']))
+
+        print('Cached and current training data shape: (%s, %s)' % (
+            self.cached_training_metadata['training_data_shape'],
+            self.current_training_metadata['training_data_shape']))
+
+        print('Cached and current oob_score: (%s, %s)' % (
+            self.cached_training_metadata['oob_score'],
+            self.current_training_metadata['oob_score']))
 
         # make sure the number of features is consistent 
         self.allow_errors = True
@@ -426,31 +435,24 @@ class FOVClassifier:
         '''
         
         log_info = self.log_info
-        position_ind = log_info.get('position_ind')
         error_info = log_info.get('error_info')
-        raw_image = log_info.get('raw_image')
-        positions = log_info.get('positions')
-        features = log_info.get('features')
-        prediction = log_info.get('prediction')
 
         # message for the external event logger 
-        # (presumably assigned by a program instance)
-        if log_info.get('decision'):
-            self.external_event_logger("CLASSIFIER INFO: The FOV was accepted")
-        else:
-            self.external_event_logger(
-                "CLASSIFIER INFO: The FOV was rejected ('%s')" % log_info.get('reason'))
+        reason = log_info.get('reason')
+        label = 'accepted' if log_info.get('decision') else 'rejected'
+        event_log_message = "CLASSIFIER INFO: The FOV was %s (reason: '%s')" % (label, reason)
+        self.external_event_logger(event_log_message)
 
         # if there's no log dir, we fall back to printing the decision and error (if any)
         if self.log_dir is None:
+            print(event_log_message)
             if error_info is not None:
                 print("Error during classification in method `%s`: '%s'" % \
                     (error_info.get('method_name'), error_info.get('error_message')))
-            print("Classification decision: %s ('%s')" % \
-                (log_info.get('decision'), log_info.get('reason')))
             return
 
         # if we're still here, we need a position_ind
+        position_ind = log_info.get('position_ind')
         if position_ind is None:
             print('Warning: a position_ind must be provided to log classification info')
             return
@@ -475,23 +477,26 @@ class FOVClassifier:
             row.update(error_info)
 
         # dict of {num_nuclei, com_offset, etc}
+        features = log_info.get('features')
         if features is not None:
             row.update(features)
 
         # dict of {prediction_flag, prediction_prob}
+        prediction = log_info.get('prediction')
         if prediction is not None:
             row.update(prediction)
 
         # append the row to the log file
         log_filepath = os.path.join(self.log_dir, 'fov-classification-log.csv')
         if os.path.isfile(log_filepath):
-            d = pd.read_csv(log_filepath)
-            d = d.append(row, ignore_index=True)
+            log = pd.read_csv(log_filepath)
+            log = log.append(row, ignore_index=True)
         else:
-            d = pd.DataFrame([row])
-        d.to_csv(log_filepath, index=False, float_format='%0.2f')
+            log = pd.DataFrame([row])
+        log.to_csv(log_filepath, index=False, float_format='%0.2f')
 
         # log the raw image itself
+        raw_image = log_info.get('raw_image')
         if raw_image is not None:
             tifffile.imsave(logged_image_filepath('RAW'), raw_image)
 
@@ -502,6 +507,7 @@ class FOVClassifier:
 
             # create and save the annotated image
             # (in which nucleus positions are marked with white squares)
+            positions = log_info.get('positions')
             if positions is not None:
                 
                 # spot width and whitepoint intensity
