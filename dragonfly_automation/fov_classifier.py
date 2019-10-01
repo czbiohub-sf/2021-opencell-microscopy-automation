@@ -88,6 +88,9 @@ class FOVClassifier:
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
         self.log_dir = log_dir
+
+        self.cached_training_metadata = None
+        self.current_training_metadata = None
         
         # an optional external event logger assigned after instantiation
         def dummy_event_logger(*args, **kwargs): pass
@@ -153,9 +156,6 @@ class FOVClassifier:
 
         if self.mode != 'training':
             raise ValueError("Cannot save training data unless mode = 'training'")
-
-        if self.current_training_metadata is None:
-            raise ValueError('Cannot save training data without current model metadata')
         
         # don't overwrite existing data
         filepath = self.training_data_filepath()
@@ -164,11 +164,16 @@ class FOVClassifier:
 
         # save the training data
         self.training_data.to_csv(filepath, index=False)
+        print('Training data saved to %s' % filepath)
 
         # save the metadata
-        self.current_training_metadata['filepath'] = os.path.abspath(filepath)
-        with open(self.training_metadata_filepath(), 'w') as file:
-            json.dump(self.current_training_metadata, file)
+        if self.current_training_metadata is None:
+            print('Warning: no metadata found to save')
+        else:
+            self.current_training_metadata['filepath'] = os.path.abspath(filepath)
+            with open(self.training_metadata_filepath(), 'w') as file:
+                json.dump(self.current_training_metadata, file)
+            print('Metadata saved to %s' % self.training_metadata_filepath())
 
 
     def process_training_data(self, data):
@@ -194,18 +199,10 @@ class FOVClassifier:
             im = tifffile.imread(row.filename)
             mask = self.generate_background_mask(im)
             positions = self.find_nucleus_positions(mask)
-            fov_is_candidate = self.is_fov_candidate(positions)
-            if fov_is_candidate:
-                features = self.calculate_features(positions)
-                for feature_name, feature_value in features.items():
-                    data.at[ind, feature_name] = feature_value
+            features = self.calculate_features(positions)
+            for feature_name, feature_value in features.items():
+                data.at[ind, feature_name] = feature_value
 
-        # drop rows with any missing/nan features
-        mask = data[list(self.feature_order)].isna().sum(axis=1)
-        if mask.sum():
-            print('\nWarning: some training data was dropped; see self.dropped_data')
-            self.dropped_data = data.loc[mask > 0]
-            data = data.loc[mask == 0]
         self.training_data = data
 
 
@@ -234,23 +231,31 @@ class FOVClassifier:
             }
         }
 
+        # drop rows with any missing/nan features
+        # note that, for now, we *do not* drop images 
+        # that would not pass the is_fov_candidate test
+        data = self.training_data.copy()
+        mask = data[list(self.feature_order)].isna().sum(axis=1)
+        if mask.sum():
+            print('\nWarning: some training data is missing features and will be dropped; see self.dropped_data')
+            self.dropped_data = data.loc[mask > 0]
+            data = data.loc[mask == 0]
+
         # mask to identify training data with and without annotations
         # note that only the 'confluency' label is None if there is no annotation
         # (the other labels are False by default)
-        mask = self.training_data['confluency'].isna()
+        mask = data['confluency'].isna()
+        data = data.loc[~mask]
 
-        # training data with annotations (i.e., the 'real' training data)
-        training_data = self.training_data.loc[~mask]
-        X = training_data[list(self.feature_order)].values
-        y = training_data[label].values.astype(bool)
+        X = data[list(self.feature_order)].values
+        y = data[label].values.astype(bool)
 
         if cross_validate:
             cv = sklearn.model_selection.StratifiedKFold(n_splits=10, shuffle=True)        
             scores = sklearn.model_selection.cross_validate(
                 self.model, X, y, cv=cv, scoring=['accuracy', 'precision', 'recall'])
             training_metadata['cv_results'] = {
-                key: '%0.2f' % value.mean() for key, value in scores.items()
-            }
+                key: '%0.2f' % value.mean() for key, value in scores.items()}
 
         # train the model on all of the training data
         self.model.fit(X, y)
@@ -277,6 +282,10 @@ class FOVClassifier:
                with the features actually returned by self.calculate_features)
 
         '''
+
+        if self.cached_training_metadata is None or self.current_training_metadata is None:
+            print('Warning: cannot validate without cached and current metadata to compare')
+            return
 
         # compare cached and current CV results
         print('Cached CV accuracy and recall: %s, %s' % (
