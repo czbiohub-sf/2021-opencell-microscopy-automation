@@ -75,17 +75,29 @@ gfp_channel_settings = ChannelSettings(
 #
 # Autoexposure settings
 #
-# KC: these values are copied from Nathan's script,
-# except for min_laser_power, which is just a guess for now
 # -----------------------------------------------------------------------------
 autoexposure_settings = AutoexposureSettings(
-    min_intensity=40000,
-    max_intensity=60000,
+
+    # min intensity defines under-exposure;
+    # chosen to be about 10x the background (or readout noise) when the EM gain is 400
+    min_intensity=2**13,
+
+    # max intensity defines over-exposure; 
+    # chosen to leave a (literal) bit of wiggle room
+    max_intensity=2**15,
+
+    # min and max exposure times are from Nathan
     min_exposure_time=30.0,
     max_exposure_time=500.0,
     default_exposure_time=DEFAULT_EXPOSURE_TIME,
+
+    # min laser power is just a guess
     min_laser_power=1,
+
+    # exposure step (for over-exposure) is from Nathan
     relative_exposure_step=0.8,
+
+    # z-step comparable to the z-resolution of the microscope
     z_step_size=0.5
 )
 
