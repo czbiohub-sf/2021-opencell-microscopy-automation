@@ -255,7 +255,11 @@ def autoexposure(
         stack_settings.stage_label, 
         position=stack_settings.relative_bottom, 
         kind='absolute')
-    
+
+    # hack to avoid bug in which the first image acquired is of DAPI and not GFP
+    mm_core.waitForSystem()
+    _ = acquire_image(gate, mm_studio)
+
     # keep track of the maximum intensity
     stack_max_intensity = 0
     
@@ -271,8 +275,9 @@ def autoexposure(
 
         # use a percentile to calculate the 'max' intensity 
         # as a defense against hot pixels, anomalous bright spots/dust, etc
-        # (the 99.99th percentile corresponds to ~100 pixels in a 1024x1024 image)
-        slice_max_intensity = np.percentile(image, 99.99)
+        # (the 99.9th percentile corresponds to ~1000 pixels in a 1024x1024 image)
+        slice_max_intensity = np.percentile(image, 99.9)
+        event_logger('AUTOEXPOSURE INFO: The z-slice max is %d' % slice_max_intensity)
 
         # if the slice was over-exposed, lower the exposure time or the laser power,
         # reset stack_max_intensity, and go back to the bottom of the z-stack
@@ -283,7 +288,7 @@ def autoexposure(
             # lower the exposure time
             channel_settings.exposure_time *= autoexposure_settings.relative_exposure_step
             event_logger(
-                'AUTOEXPOSURE INFO: the z-slice at %0.1f was overexposed (max = %d) so exposure time was reduced to %dms' % \
+                'AUTOEXPOSURE INFO: the z-slice at %0.1f was overexposed (max = %d) so the exposure time was reduced to %dms' % \
                     (current_z_position, slice_max_intensity, channel_settings.exposure_time))
 
             # if the exposure time is now too low, turn down the laser instead
@@ -349,7 +354,7 @@ def autoexposure(
                 channel_settings.exposure_time = autoexposure_settings.max_exposure_time
                 event_logger(
                     'AUTOEXPOSURE INFO: the stack was under-exposed and the maximum exposure time was exceeded')
-    
+
     # reset the piezo stage
     move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
 

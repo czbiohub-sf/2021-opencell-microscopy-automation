@@ -10,7 +10,6 @@ import pandas as pd
 
 from dragonfly_automation import utils
 from dragonfly_automation import operations
-from dragonfly_automation import fov_assessment
 from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.settings import ChannelSettingsManager
 from dragonfly_automation.programs import pipeline_plate_settings as settings
@@ -541,7 +540,8 @@ class PipelinePlateProgram(Program):
 
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
-                pass
+                self.event_logger("PROGRAM INFO: autoexposure failed and the FOV will be skipped")
+                return did_acquire_stacks
 
         # -----------------------------------------------------------------
         #
