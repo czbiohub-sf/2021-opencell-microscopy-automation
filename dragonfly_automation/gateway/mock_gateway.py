@@ -46,21 +46,19 @@ class Base:
         return wrapper
 
     
-
-class JavaGateway:
-
-    def __init__(self):
-        self.entry_point = Gate()
-
-
-
 class Gate:
 
-    def __init__(self):
+    def __init__(self, test_mode):
+
+        self.test_mode = test_mode
+        self.simulate_under_exposure = True
 
         self.position_ind = None
         def set_position_ind(position_ind):
             self.position_ind = position_ind
+
+            # alternate simulating under- and over-exposure at each new position
+            self.simulate_under_exposure = not self.simulate_under_exposure
 
         self.laser_power = None
         def set_laser_power(laser_power):
@@ -71,8 +69,7 @@ class Gate:
             self.exposure_time = exposure_time
 
         self.mm_studio = MMStudio(
-            set_position_ind=set_position_ind
-        )
+            set_position_ind=set_position_ind)
 
         self.mm_core = MMCore(
             set_laser_power=set_laser_power,
@@ -99,11 +96,21 @@ class Gate:
         from a real experiment, use
         meta = LoggedImageMeta(log_dir=FOV_LOG_DIR, position_ind=self.position_ind)
         '''
-        meta = LoggedImageMeta(
-            fov_log_dir=FOV_LOG_DIR, 
-            position_ind=self.position_ind)
 
-        meta = UnderexposureMeta(self.laser_power, self.exposure_time)
+        if self.test_mode == 'simulate-exposure':
+            if self.simulate_under_exposure:
+                meta = UnderexposureMeta(self.laser_power, self.exposure_time)
+            else:
+                meta = OverexposureMeta(self.laser_power, self.exposure_time)
+        
+        if self.test_mode == 'test-real':
+            meta = RandomTestSnapMeta()
+
+        if self.test_mode == 'logged-real':
+            meta = LoggedImageMeta(
+                fov_log_dir=FOV_LOG_DIR, 
+                position_ind=self.position_ind)
+
         return meta
 
 
@@ -171,14 +178,13 @@ class UnderexposureMeta(Meta):
 
         shape = (1024, 1024)
 
-        # rel_max will be one at default laser power and exposure time
+        # rel_max = 1 at default laser power and exposure time
         rel_max = (laser_power * exposure_time)/500
 
         minn = 0
-        maxx = int(5000 * rel_max)
+        maxx = int(min(65535, 5000 * rel_max))
         im = np.random.randint(minn, maxx, shape, dtype='uint16')
         self._make_memmap(im)
-
 
 
 class OverexposureMeta(Meta):
@@ -191,11 +197,11 @@ class OverexposureMeta(Meta):
 
         shape = (1024, 1024)
 
-        # rel_max will be one at default laser power and exposure time
-        rel_max = (laser_power * exposure_time)/500
+        # rel_max = 2 at default laser power and exposure time
+        rel_max = (laser_power * exposure_time)/250
 
-        minn = int(40000 * rel_max)
-        maxx = int(65535 * rel_max)
+        minn = int(min(65535 - 1, 40000 * rel_max))
+        maxx = int(min(65535, 65535 * rel_max))
         im = np.random.randint(minn, maxx, shape, dtype='uint16')
         self._make_memmap(im)
 

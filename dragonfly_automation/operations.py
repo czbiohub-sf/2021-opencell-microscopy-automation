@@ -283,15 +283,15 @@ def autoexposure(
             # lower the exposure time
             channel_settings.exposure_time *= autoexposure_settings.relative_exposure_step
             event_logger(
-                'AUTOEXPOSURE INFO: the z-slice at %0.2f was overexposed; reducing exposure time to %dms' % \
-                    (current_z_position, channel_settings.exposure_time))
+                'AUTOEXPOSURE INFO: the z-slice at %0.1f was overexposed (max = %d) so exposure time was reduced to %dms' % \
+                    (current_z_position, slice_max_intensity, channel_settings.exposure_time))
 
             # if the exposure time is now too low, turn down the laser instead
             if channel_settings.exposure_time < autoexposure_settings.min_exposure_time:
                 channel_settings.exposure_time = autoexposure_settings.default_exposure_time
                 channel_settings.laser_power *= autoexposure_settings.relative_exposure_step
                 event_logger(
-                    'AUTOEXPOSURE INFO: minimum exposure time exceeded; reducing laser power to %0.2f instead' % \
+                    'AUTOEXPOSURE INFO: the minimum exposure time was exceeded so the laser power was reduced to %0.1f%%' % \
                         (channel_settings.laser_power))
         
                 # update the laser power
@@ -314,6 +314,8 @@ def autoexposure(
             # KC: in practice, I believe this should rarely/never happen
             if channel_settings.laser_power < autoexposure_settings.min_laser_power:
                 autoexposure_did_succeed = False
+                event_logger(
+                    'AUTOEXPOSURE ERROR: The laser power was lowered to its minimum but the stack was still over-exposed')
                 break
 
         # if the slice was not over-exposed, 
@@ -340,8 +342,8 @@ def autoexposure(
         if intensity_ratio > 1:
             channel_settings.exposure_time *= intensity_ratio
             event_logger(
-                'AUTOEXPOSURE INFO: the stack was under-exposed; increasing exposure time by %0.2fx to %dms' % \
-                    (intensity_ratio, channel_settings.exposure_time))
+                'AUTOEXPOSURE INFO: the stack was under-exposed (max = %d) so the exposure time was increased by %0.1fx to %dms' % \
+                    (stack_max_intensity, intensity_ratio, channel_settings.exposure_time))
             
             if channel_settings.exposure_time > autoexposure_settings.max_exposure_time:
                 channel_settings.exposure_time = autoexposure_settings.max_exposure_time
@@ -352,8 +354,8 @@ def autoexposure(
     move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
 
     # log the final results
-    event_logger('AUTOEXPOSURE INFO: final laser power is %d and exposure time is %dms' % \
-        (channel_settings.laser_power, channel_settings.exposure_time))
+    event_logger('AUTOEXPOSURE INFO: the final stack max is %d, the laser power is %0.1f%%, and the exposure time is %dms' % \
+        (stack_max_intensity, channel_settings.laser_power, channel_settings.exposure_time))
 
     return autoexposure_did_succeed
 

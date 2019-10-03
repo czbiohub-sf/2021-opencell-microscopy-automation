@@ -63,10 +63,10 @@ class Py4jWrapper:
         return wrapper 
 
     
-def get_gate(env='dev', wrap=False, logger=None):
+def get_gate(env='dev', wrap=False, logger=None, test_mode=None):
 
     if env in ['dev', 'test']:
-        gate = mock_gateway.Gate()
+        gate = mock_gateway.Gate(test_mode)
     elif env == 'prod':
         gateway = JavaGateway()
         gate = gateway.entry_point
