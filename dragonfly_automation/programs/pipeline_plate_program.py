@@ -307,7 +307,7 @@ class PipelinePlateProgram(Program):
         # the maximum number of FOVs (that is, z-stacks) to acquire per well
         # (note that if few FOVs are accepted during the FOV assessment, 
         # we may end up with fewer than this number of stacks for some wells)
-        self.max_num_stacks_per_well = 8
+        self.max_num_stacks_per_well = 6
 
         # stage labels for convenience
         self.xystage_label = 'XYStage'
