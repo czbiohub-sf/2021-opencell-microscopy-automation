@@ -84,8 +84,9 @@ autoexposure_settings = AutoexposureSettings(
     min_exposure_time=30.0,
     max_exposure_time=500.0,
     default_exposure_time=DEFAULT_EXPOSURE_TIME,
-    min_laser_power=DEFAULT_LASER_POWER/10,
+    min_laser_power=1,
     relative_exposure_step=0.8,
+    z_step_size=0.5
 )
 
 

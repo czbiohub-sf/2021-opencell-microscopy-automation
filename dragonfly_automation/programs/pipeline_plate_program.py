@@ -137,7 +137,9 @@ class Program:
         message = '%s %s' % (utils.timestamp(), message)
  
         # manually-defined 'important' events
-        important_labels = ['PROGRAM', 'CLASSIFIER', 'ERROR', 'WARNING']
+        important_labels = [
+            'PROGRAM', 'CLASSIFIER', 'AUTOEXPOSURE', 'ERROR', 'WARNING']
+        
         message_is_important = False
         for label in important_labels:
             if label in message:
@@ -512,7 +514,7 @@ class PipelinePlateProgram(Program):
 
         # if the FOV is not good, we should not acquire the stacks
         if not fov_is_good:
-            if False: # self.env == 'dev':
+            if self.env == 'dev':
                 print("Warning: The FOV was rejected but this is ignored in 'dev' mode")
             else:
                 return did_acquire_stacks

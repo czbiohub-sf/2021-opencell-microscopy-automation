@@ -574,11 +574,11 @@ class FOVClassifier:
         Check whether there are *any* real nuclei in the image
 
         This is accomplished by using an empirically-determine minimum Otsu threshold,
-        which is predicated on the observation/assumption that that the background intensity 
-        in raw FOVs is and will be always around 500.
+        which is predicated on the observation that that the background intensity 
+        in raw FOVs is around 500.
 
-        *** Note that this minimum value is sensitive to the exposure settings! ***
-        (laser power, exposure time, camera gain, etc)
+        *** Note that this value is sensitive to the exposure settings! ***
+        (presumably, mostly the exposure time and the camera gain)
         '''
     
         min_otsu_thresh = 1000

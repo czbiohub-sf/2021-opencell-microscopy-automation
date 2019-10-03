@@ -21,8 +21,8 @@ NUM_SITES_PER_WELL = 3
 WELL_IDS = ['A1', 'B10']
 
 # for simulating a real experiment
-NUM_SITES_PER_WELL = 25
-WELL_IDS = ALL_WELL_IDS[:48]
+# NUM_SITES_PER_WELL = 25
+# WELL_IDS = ALL_WELL_IDS[:48]
 
 FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/dragonfly-automation-tests/20190910/ML0000_20190910-3/logs/confluency-check/confluency-snaps'
 
@@ -90,7 +90,7 @@ class Gate:
         taken by MicroManager (usually via live.snap()) as an numpy memmap
 
         For an image of noise scaled by laser power and exposure time, use
-        meta = RandomNoiseMeta(self.laser_power, self.exposure_time)
+        meta = OverexposureMeta(self.laser_power, self.exposure_time)
 
         For a 'real' image from the tests/test-snaps/ directory, use
         meta = RandomTestSnapMeta()
@@ -102,6 +102,8 @@ class Gate:
         meta = LoggedImageMeta(
             fov_log_dir=FOV_LOG_DIR, 
             position_ind=self.position_ind)
+
+        meta = UnderexposureMeta(self.laser_power, self.exposure_time)
         return meta
 
 
@@ -159,7 +161,7 @@ class RandomTestSnapMeta(Meta):
         self._make_memmap(im)
 
 
-class RandomNoiseMeta(Meta):
+class UnderexposureMeta(Meta):
     '''
     Mock for the Meta object that returns an image consisting of noise
     scaled by laser power and exposure time
@@ -167,15 +169,34 @@ class RandomNoiseMeta(Meta):
     '''
     def __init__(self, laser_power, exposure_time):
 
-        # over-exposed unless laser_power is below 10 and exposure_time is below 40
-        if laser_power >= 10 or exposure_time > 40:
-            rel_max = 1
-        else:
-            rel_max = exposure_time/40
+        shape = (1024, 1024)
+
+        # rel_max will be one at default laser power and exposure time
+        rel_max = (laser_power * exposure_time)/500
+
+        minn = 0
+        maxx = int(5000 * rel_max)
+        im = np.random.randint(minn, maxx, shape, dtype='uint16')
+        self._make_memmap(im)
+
+
+
+class OverexposureMeta(Meta):
+    '''
+    Mock for the Meta object that returns an image consisting of noise
+    scaled by laser power and exposure time
+    (for testing autoexposure algorithms)
+    '''
+    def __init__(self, laser_power, exposure_time):
 
         shape = (1024, 1024)
-        maxx = int(65535 * min(1, rel_max))
-        im = np.random.randint(0, maxx, shape, dtype='uint16')
+
+        # rel_max will be one at default laser power and exposure time
+        rel_max = (laser_power * exposure_time)/500
+
+        minn = int(40000 * rel_max)
+        maxx = int(65535 * rel_max)
+        im = np.random.randint(minn, maxx, shape, dtype='uint16')
         self._make_memmap(im)
 
 

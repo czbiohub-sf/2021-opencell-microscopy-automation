@@ -41,6 +41,9 @@ AutoexposureSettings = namedtuple('AutoexposureSettings', [
     # factor by which to decrease the exposure time or laser power
     # if a z-slice is found to be over-exposed 
     'relative_exposure_step',
+
+    # z-step size to use
+    'z_step_size',
 ])
 
 
