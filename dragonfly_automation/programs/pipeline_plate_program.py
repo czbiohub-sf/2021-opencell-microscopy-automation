@@ -500,7 +500,7 @@ class PipelinePlateProgram(Program):
 
         # acquire an image of the DAPI signal for the FOV assessment
         self.operations.change_channel(self.mm_core, self.dapi_channel)
-        image = self.operations.acquire_image(self.gate, self.mm_studio)
+        image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
 
         # classify the FOV
         # note that, given all of the error handling in FOVClassifier, 

@@ -44,12 +44,16 @@ def autofocus(mm_studio, mm_core):
     return autofocus_did_succeed
 
 
-def acquire_image(gate, mm_studio):
+def acquire_image(gate, mm_studio, mm_core):
     '''
     Acquire an image using the current laser/camera/exposure settings
     and return the image data as a numpy memmap
 
     '''
+
+
+    # KC: not sure if this is necessary but it seems wise
+    mm_core.waitForSystem()
 
     # number of times to try calling gate.getLastMeta()
     num_tries = 10
@@ -187,7 +191,7 @@ def change_channel(mm_core, channel_settings):
         channel_settings.config_group, 
         channel_settings.config_name)
 
-    # TODO: is this waitForConfig call necessary?
+    # changing the config takes time
     mm_core.waitForConfig(
         channel_settings.config_group, 
         channel_settings.config_name)
@@ -283,35 +287,35 @@ def autoexposure(
     
     autoexposure_did_succeed = True
 
-    # move to the bottom of the z-stack
-    current_z_position = move_z_stage(
-        mm_core, 
-        stack_settings.stage_label, 
-        position=stack_settings.relative_bottom, 
-        kind='absolute')
-
-    # hack to avoid bug in which the first image acquired is of DAPI and not GFP
-    mm_core.waitForSystem()
-    _ = acquire_image(gate, mm_studio)
-
     # keep track of the maximum intensity
     stack_max_intensity = 0
     
     # keep track of whether any slices were ever over-exposed
     overexposure_did_occur = False
 
+    # start at the bottom of the stack
+    z_position = stack_settings.relative_bottom
+
     # step through the z-stack and check each slice for over-exposure
-    while current_z_position <= stack_settings.relative_top:
+    while z_position <= stack_settings.relative_top:
+
+        # move to the next z-position 
+        # (either the next slice or the bottom of the stack)
+        move_z_stage(
+            mm_core, 
+            stack_settings.stage_label, 
+            position=z_position,
+            kind='absolute')
 
         # acquire an image and check the exposure
-        mm_core.waitForSystem()
-        image = acquire_image(gate, mm_studio)
+        image = acquire_image(gate, mm_studio, mm_core)
 
         # use a percentile to calculate the 'max' intensity 
         # as a defense against hot pixels, anomalous bright spots/dust, etc
         # (the 99.9th percentile corresponds to ~1000 pixels in a 1024x1024 image)
         slice_max_intensity = np.percentile(image, 99.9)
-        event_logger('AUTOEXPOSURE INFO: The z-slice max is %d' % slice_max_intensity)
+        event_logger(
+            'AUTOEXPOSURE INFO: The max intensity at z = %0.1f is %d' % (z_position, slice_max_intensity))
 
         # if the slice was over-exposed, lower the exposure time or the laser power,
         # reset stack_max_intensity, and go back to the bottom of the z-stack
@@ -322,15 +326,15 @@ def autoexposure(
             # lower the exposure time
             channel_settings.exposure_time *= autoexposure_settings.relative_exposure_step
             event_logger(
-                'AUTOEXPOSURE INFO: the z-slice at %0.1f was overexposed (max = %d) so the exposure time was reduced to %dms' % \
-                    (current_z_position, slice_max_intensity, channel_settings.exposure_time))
+                'AUTOEXPOSURE INFO: The slice at z = %0.1f was overexposed (max = %d) so the exposure time was reduced to %dms' % \
+                    (z_position, slice_max_intensity, channel_settings.exposure_time))
 
             # if the exposure time is now too low, turn down the laser instead
             if channel_settings.exposure_time < autoexposure_settings.min_exposure_time:
                 channel_settings.exposure_time = autoexposure_settings.default_exposure_time
                 channel_settings.laser_power *= autoexposure_settings.relative_exposure_step
                 event_logger(
-                    'AUTOEXPOSURE INFO: the minimum exposure time was exceeded so the laser power was reduced to %0.1f%%' % \
+                    'AUTOEXPOSURE INFO: The minimum exposure time was exceeded so the laser power was reduced to %0.1f%%' % \
                         (channel_settings.laser_power))
         
                 # update the laser power
@@ -343,7 +347,7 @@ def autoexposure(
             mm_core.setExposure(float(channel_settings.exposure_time))
 
             # prepare to return to the bottom of the stack
-            new_z_position = stack_settings.relative_bottom
+            z_position = stack_settings.relative_bottom
 
             # reset the max intensity
             stack_max_intensity = 0
@@ -361,15 +365,8 @@ def autoexposure(
         # update stack_max and move to the next z-slice
         else:
             stack_max_intensity = max(stack_max_intensity, slice_max_intensity)
-            new_z_position = current_z_position + autoexposure_settings.z_step_size
+            z_position += autoexposure_settings.z_step_size
     
-        # move to the new z-position 
-        # (either the next slice or the bottom of the stack)
-        current_z_position = move_z_stage(
-            mm_core, 
-            stack_settings.stage_label, 
-            position=new_z_position,
-            kind='absolute')
 
     # after exiting the while-loop, either
     # 1) some slices were over-exposed and the exposure is now adjusted, or
@@ -381,19 +378,19 @@ def autoexposure(
         if intensity_ratio > 1:
             channel_settings.exposure_time *= intensity_ratio
             event_logger(
-                'AUTOEXPOSURE INFO: the stack was under-exposed (max = %d) so the exposure time was increased by %0.1fx to %dms' % \
+                'AUTOEXPOSURE INFO: The stack was under-exposed (max = %d) so the exposure time was increased by %0.1fx to %dms' % \
                     (stack_max_intensity, intensity_ratio, channel_settings.exposure_time))
             
             if channel_settings.exposure_time > autoexposure_settings.max_exposure_time:
                 channel_settings.exposure_time = autoexposure_settings.max_exposure_time
                 event_logger(
-                    'AUTOEXPOSURE INFO: the stack was under-exposed and the maximum exposure time was exceeded')
+                    'AUTOEXPOSURE INFO: The stack was under-exposed and the maximum exposure time was exceeded')
 
     # reset the piezo stage
     move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
 
     # log the final results
-    event_logger('AUTOEXPOSURE INFO: the final stack max is %d, the laser power is %0.1f%%, and the exposure time is %dms' % \
+    event_logger('AUTOEXPOSURE INFO: The final stack max is %d, the laser power is %0.1f%%, and the exposure time is %dms' % \
         (stack_max_intensity, channel_settings.laser_power, channel_settings.exposure_time))
 
     return autoexposure_did_succeed

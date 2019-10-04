@@ -98,7 +98,7 @@ autoexposure_settings = AutoexposureSettings(
     relative_exposure_step=0.8,
 
     # z-step comparable to the z-resolution of the microscope
-    z_step_size=0.5
+    z_step_size=1.0
 )
 
 
