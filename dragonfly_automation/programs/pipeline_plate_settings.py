@@ -70,6 +70,19 @@ gfp_channel_settings = ChannelSettings(
     default_camera_gain=DEFAULT_CAMERA_GAIN
 )
 
+# provisional brightfield settings
+# TODO: check that the config name is the right one
+bf_channel_settings = ChannelSettings(
+    config_group=CONFIG_GROUP,
+    config_name='EMCCD_BF_ConfocalIn',
+    camera_name=CAMERA_NAME,
+    laser_line=None,
+    laser_name=None,
+    default_laser_power=None,
+    default_exposure_time=DEFAULT_EXPOSURE_TIME,
+    default_camera_gain=DEFAULT_CAMERA_GAIN
+)
+
 
 # -----------------------------------------------------------------------------
 #

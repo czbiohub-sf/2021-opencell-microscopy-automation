@@ -58,8 +58,8 @@ def acquire_image(gate, mm_studio, mm_core):
     # number of times to try calling gate.getLastMeta()
     num_tries = 10
 
-    # time in ms to wait between calls to gate.getLastMeta()
-    wait_time = 50
+    # time in seconds to wait between calls to gate.getLastMeta()
+    wait_time = .05
 
     # clear the mm2python queue
     # this ensure that gate.getLastMeta returns either None
@@ -67,13 +67,13 @@ def acquire_image(gate, mm_studio, mm_core):
     gate.clearQueue()
 
     # acquire an image using the current exposure settings
-    # (this method only returns when the acquisition is complete)
+    # (note that this method does not exit until the exposure is complete)
     mm_studio.live().snap(True)
 
     # retrieve the mm2python metadata corresponding to the image acquired above
-    # (requires waiting for some amount of time less than 100ms)
+    # (this seems to require waiting for some amount of time between 30 and 100ms)
     for _ in range(num_tries):
-        time.sleep(wait_time/1000)
+        time.sleep(wait_time)
         meta = gate.getLastMeta()
         if meta is not None:
             break
@@ -84,7 +84,7 @@ def acquire_image(gate, mm_studio, mm_core):
     wait_time *= 10
     if meta is None:
         for _ in range(num_tries):
-            time.sleep(wait_time/1000)
+            time.sleep(wait_time)
             meta = gate.getLastMeta()
             if meta is not None:
                 break
@@ -197,10 +197,11 @@ def change_channel(mm_core, channel_settings):
         channel_settings.config_name)
 
     # laser power
-    mm_core.setProperty(
-        channel_settings.laser_line,
-        channel_settings.laser_name,
-        channel_settings.laser_power)
+    if channel_settings.laser_line is not None:
+        mm_core.setProperty(
+            channel_settings.laser_line,
+            channel_settings.laser_name,
+            channel_settings.laser_power)
 
     # exposure time
     mm_core.setExposure(float(channel_settings.exposure_time))

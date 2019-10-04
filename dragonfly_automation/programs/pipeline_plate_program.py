@@ -508,6 +508,7 @@ class PipelinePlateProgram(Program):
         try:
             fov_is_good = self.fov_classifier.classify_raw_fov(
                 image, position_ind=self.current_position_ind)
+
         except Exception as error:
             fov_is_good = False
             self.event_logger(
@@ -528,15 +529,16 @@ class PipelinePlateProgram(Program):
         #
         # -----------------------------------------------------------------
         if should_do_autoexposure:
-            self.operations.change_channel(self.mm_core, self.gfp_channel)
+            channel_settings = self.gfp_channel
+            self.operations.change_channel(self.mm_core, channel_settings)
             autoexposure_did_succeed = self.operations.autoexposure(
-                self.gate,
-                self.mm_studio,
-                self.mm_core,
-                self.stack_settings,
-                self.autoexposure_settings,
-                self.gfp_channel,
-                self.event_logger)
+                gate=self.gate,
+                mm_studio=self.mm_studio,
+                mm_core=self.mm_core,
+                stack_settings=self.stack_settings,
+                autoexposure_settings=self.autoexposure_settings,
+                channel_settings=channel_settings,
+                event_logger=self.event_logger)
 
             if not autoexposure_did_succeed:
                 # TODO: decide how to handle this situation
@@ -558,10 +560,10 @@ class PipelinePlateProgram(Program):
 
             # acquire the stack
             self.operations.acquire_stack(
-                self.mm_studio,
-                self.mm_core, 
-                self.datastore, 
-                self.stack_settings,
+                mm_studio=self.mm_studio,
+                mm_core=self.mm_core, 
+                datastore=self.datastore, 
+                stack_settings=self.stack_settings,
                 channel_ind=channel_ind,
                 position_ind=self.current_position_ind,
                 position_name=self.current_position_name)
