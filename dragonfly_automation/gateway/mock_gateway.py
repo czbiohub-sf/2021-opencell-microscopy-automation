@@ -81,6 +81,9 @@ class Gate:
     def getStudio(self):
         return self.mm_studio
 
+    def clearQueue(self):
+        pass
+
     def getLastMeta(self):
         '''
         Returns a Meta object that provides access to the last image (or 'snap')
