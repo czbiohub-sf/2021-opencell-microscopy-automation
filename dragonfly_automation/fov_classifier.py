@@ -426,14 +426,15 @@ class FOVClassifier:
         if prediction is not None:
             self.make_decision(
                 decision=prediction.get('prediction_flag'), 
-                reason='Model prediction (p = %0.2f)' % prediction.get('prediction_prob'))
+                reason='Model prediction (p = %0.2f)' % prediction.get('prediction_prob'),
+                prob=prediction.get('prediction_prob'))
 
         # log everything we've accumulated in self.log_info
         self.save_log_info()
-        return self.decision_flag
+        return self.decision_prob
 
 
-    def make_decision(self, decision, reason, error_info=None):
+    def make_decision(self, decision, reason, prob=None, error_info=None):
         '''
         '''
         # do nothing if a decision has already been made
@@ -442,6 +443,10 @@ class FOVClassifier:
 
         self.decision_flag = decision
         self.decision_has_been_made = True
+        
+        self.decision_prob = 0
+        if prob is not None:
+            self.decision_prob = prob
 
         # update the log
         self.log_info['error_info'] = error_info

@@ -21,8 +21,8 @@ NUM_SITES_PER_WELL = 3
 WELL_IDS = ['A1', 'B10']
 
 # for simulating a real experiment
-# NUM_SITES_PER_WELL = 25
-# WELL_IDS = ALL_WELL_IDS[:48]
+NUM_SITES_PER_WELL = 25
+WELL_IDS = ALL_WELL_IDS[:48]
 
 FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/dragonfly-automation-tests/20190910/ML0000_20190910-3/logs/confluency-check/confluency-snaps'
 
@@ -106,7 +106,7 @@ class Gate:
             else:
                 meta = OverexposureMeta(self.laser_power, self.exposure_time)
         
-        if self.test_mode == 'test-real':
+        if self.test_mode == 'random-real':
             meta = RandomTestSnapMeta()
 
         if self.test_mode == 'logged-real':
