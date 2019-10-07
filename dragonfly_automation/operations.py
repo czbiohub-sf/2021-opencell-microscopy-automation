@@ -21,13 +21,13 @@ class Operations:
 
 def go_to_position(mm_studio, mm_core, position_ind):
 
-    position_list = mm_studio.getPositionList()
-    position = position_list.getPosition(position_ind)
+    mm_position_list = mm_studio.getPositionList()
+    mm_position = mm_position_list.getPosition(position_ind)
 
     # move the stage to the new position
     # note that `goToPosition` moves the stages specified in the position list,
     # which are the 'XYStage' and 'FocusDrive' devices (and not the 'PiezoZ' stage)
-    position.goToPosition(position, mm_core)
+    mm_position.goToPosition(mm_position, mm_core)
 
 
 def autofocus(mm_studio, mm_core):

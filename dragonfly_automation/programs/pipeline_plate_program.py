@@ -399,27 +399,26 @@ class PipelinePlateProgram(Program):
         For example: 'A1_Site-0', 'A1_Site-1', 'A10_Site-10', etc.
 
         Here, the well_id identifies the well on the *imaging* plate, 
-        and the site number is a per-well count, starting from zero, of positions.
-
+        and the site number is a per-well count, starting from zero, of positions in each well.
 
         '''
 
         # construct properties for each position
         # NOTE that the order of the positions is determined by the HCS Site Generator
         # and must be preserved to prevent dangerously long x-y stage movements
-        all_position_props = []
-        position_list = self.mm_studio.getPositionList()
-        for position_ind in range(position_list.getNumberOfPositions()):
+        all_positions = []
+        mm_position_list = self.mm_studio.getPositionList()
+        for position_ind in range(mm_position_list.getNumberOfPositions()):
             
-            position = position_list.getPosition(position_ind)
-            position_label = position.getLabel()
+            mm_position = mm_position_list.getPosition(position_ind)
+            position_label = mm_position.getLabel()
             well_id, site_num = self.parse_hcs_position_label(position_label)
 
             # construct a human-readable and unique name for the current position
             # (used in acquire_stack to determine the name of the TIFF file)
             position_name = f'{position_ind}-{well_id}-{site_num}'
 
-            all_position_props.append({
+            all_positions.append({
                 'ind': position_ind,
                 'label': position_label,
                 'name': position_name,
@@ -428,40 +427,45 @@ class PipelinePlateProgram(Program):
             })
 
         # list of *order-preserved* unique well_ids 
-        # (assuming that all positions in each well appear together in a single contiguous block)
+        # (assumes that all positions in each well appear together in a single contiguous block)
         unique_well_ids = []
-        well_id = all_position_props[0]['well_id']
-        for prop in all_position_props:
-            if prop['well_id'] != well_id:
-                well_id = prop['well_id']
+        well_id = all_positions[0]['well_id']
+        for position in all_positions:
+            if position['well_id'] != well_id:
+                well_id = position['well_id']
                 unique_well_ids.append(well_id)
 
         # loop over wells
         for well_id in unique_well_ids:
-            self.current_well_id = well_id
             self.event_logger('PROGRAM INFO: Scoring all FOVs in well %s' % well_id, newline=True)
-            position_props = self.score_positions(well_id, all_position_props)
+            self.current_well_id = well_id
+            
+            # positions in this well
+            positions = [p for p in all_positions if p['well_id'] == well_id]
 
-            if not len(position_props):
+            # score and rank the positions
+            positions_to_acquire = self.select_positions(positions)
+            if not len(positions_to_acquire):
                 self.event_logger('PROGRAM WARNING: No acceptable FOVs were found in well %s' % well_id)
             else:
-                
                 # pretty array of scores for the event log
-                scores = ', '.join(['%0.2f' % prop['fov_score'] for prop in position_props])
-
+                scores = ', '.join(['%0.2f' % p['fov_score'] for p in positions_to_acquire])
                 self.event_logger(
                     'PROGRAM INFO: Imaging %d FOVs in well %s (scores: [%s])' % \
-                        (len(position_props), well_id, scores),
+                        (len(positions_to_acquire), well_id, scores),
                     newline=True)
     
-                self.acquire_positions(position_props)
+                self.acquire_positions(positions_to_acquire)
 
         self.cleanup()
     
 
-    def score_positions(self, well_id, all_position_props):
+    def select_positions(self, positions):
         '''
-        Score all of the FOVs in one well
+        Score and rank the positions and select the subset of positions to acquire
+        
+        Usually, the positions correspond to all positions in one well,
+        but we do not assume that this is the case here. 
 
         '''
 
@@ -474,14 +478,11 @@ class PipelinePlateProgram(Program):
 
         positions_to_image = []
 
-        # positions in this well
-        position_props = [prop for prop in all_position_props if prop['well_id'] == well_id]
-
         # sort positions by site number
-        position_props = sorted(position_props, key=lambda prop: prop['site_num'])
+        positions = sorted(positions, key=lambda position: position['site_num'])
 
         # move to the first position in the well
-        self.operations.go_to_position(self.mm_studio, self.mm_core, position_props[0]['ind'])
+        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
 
         # attempt to call AFC
         # TODO: more robust handling of AFC timeout
@@ -490,20 +491,20 @@ class PipelinePlateProgram(Program):
             self.event_logger('PROGRAM ERROR: AFC failed and stacks will not be acquired')
             return positions_to_image
 
-        # get the updated FocusDrive z-position
-        current_focusdrive_position = self.mm_core.getPosition('FocusDrive')
+        # get the AFC-updated FocusDrive z-position
+        focusdrive_position = self.mm_core.getPosition('FocusDrive')
 
         # change to the DAPI channel before FOV scoring
         self.operations.change_channel(self.mm_core, self.dapi_channel)
 
         # generate the scores for all positions in the well
-        for prop in position_props:
+        for position in positions:
 
-            position_ind = prop['ind']
+            position_ind = position['ind']
             operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
             # update the FocusDrive position (mimics running AFC)
-            self.mm_core.setPosition('FocusDrive', current_focusdrive_position)
+            self.mm_core.setPosition('FocusDrive', focusdrive_position)
 
             # acquire an image of the DAPI signal for the FOV assessment
             image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
@@ -514,52 +515,58 @@ class PipelinePlateProgram(Program):
             try:
                 fov_score = self.fov_classifier.classify_raw_fov(image, position_ind=position_ind)
             except Exception as error:
-                fov_score = 0
+                fov_score = -999
                 self.event_logger(
                     'PROGRAM ERROR: an uncaught exception occured during FOV classification: %s' % error)
 
-            prop['fov_score'] = fov_score
+            position['fov_score'] = fov_score
 
         # sort positions in descending order by score (from good to bad)
-        position_props = sorted(position_props, key=lambda prop: -prop['fov_score'])
+        positions = sorted(positions, key=lambda p: -p['fov_score'])
 
         # list of acceptable positions
-        acceptable_positions = [prop for prop in position_props if prop['fov_score'] > abs_min_score]
+        acceptable_positions = [p for p in positions if p['fov_score'] > abs_min_score]
 
         self.event_logger('PROGRAM INFO: Found %d acceptable FOVs' % len(acceptable_positions))
 
-        # select only the 'best' positions if there are more than we need
+        # select only the highest-scoring positions 
+        # if there are more acceptable positions than we need
         if len(acceptable_positions) > max_num_positions:
-            positions_to_image = position_props[:max_num_positions]
+            positions_to_image = positions[:max_num_positions]
         
-        # select the best positions if there are fewer than the minimum
+        # select the highest-scoring positions if there are too few acceptable positions
         elif len(acceptable_positions) < min_num_positions:
-            positions_to_image = position_props[:min_num_positions]
+            positions_to_image = positions[:min_num_positions]
             self.event_logger(
-                'PROGRAM INFO: Too few acceptable FOVs were found; the best %d FOVs will be imaged anyway' % min_num_positions)
+                'PROGRAM INFO: Too few acceptable FOVs were found but the best %d FOVs will be imaged anyway' % min_num_positions)
         else:
             positions_to_image = acceptable_positions
 
         return positions_to_image
 
 
-    def acquire_positions(self, position_props):
+    def acquire_positions(self, positions):
         '''
-        Acquire z-stacks at the positions listed in position_props
+        Acquire z-stacks at the positions listed in positions
 
         We assume that all of these positions correspond to *one* well
 
+        # TODO: check that all positions are in the same well
+        # TODO: more event logging ('imaging position 1/6 in well A10')
+
         '''
         
+        self.event_logger(
+            'PROGRAM INFO: Running the autoexposure algorithm on the first acceptable FOV of well %s' % self.current_well_id)
+    
         # go to the first position
-        self.operations.go_to_position(self.mm_studio, self.mm_core, position_props[0]['ind'])
+        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
 
         # reset the GFP channel settings
-        channel_settings = self.gfp_channel
-        channel_settings.reset()
+        self.gfp_channel.reset()
 
         # change the channel to GFP
-        self.operations.change_channel(self.mm_core, channel_settings)
+        self.operations.change_channel(self.mm_core, self.gfp_channel)
 
         # run the autoexposure algorithm at the first position 
         # (note that laser power and exposure time are modified in-place)
@@ -569,25 +576,24 @@ class PipelinePlateProgram(Program):
             mm_core=self.mm_core,
             stack_settings=self.stack_settings,
             autoexposure_settings=self.autoexposure_settings,
-            channel_settings=channel_settings,
+            channel_settings=self.gfp_channel,
             event_logger=self.event_logger)
 
         if not autoexposure_did_succeed:
             # TODO: decide how to handle this situation
-            self.event_logger("PROGRAM INFO: autoexposure failed in well %s" % self.current_well_id)
+            self.event_logger("PROGRAM ERROR: autoexposure failed in well %s" % self.current_well_id)
             return
 
-        
-        for prop in position_props:
+        for position in positions:
+            self.event_logger('PROGRAM INFO: Acquiring stacks at position %s' % position['name'])
 
             # go to the position
-            position_ind = prop['ind']
+            position_ind = position['ind']
             self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
             # acquire the stacks
             channels = [self.dapi_channel, self.gfp_channel]
             for channel_ind, channel_settings in enumerate(channels):
-
                 self.event_logger("PROGRAM INFO: Acquiring channel '%s'" % channel_settings.config_name)
 
                 # change the channel
@@ -601,14 +607,14 @@ class PipelinePlateProgram(Program):
                     stack_settings=self.stack_settings,
                     channel_ind=channel_ind,
                     position_ind=position_ind,
-                    position_name=prop['name'])
+                    position_name=position['name'])
                 
                 # log the acquisition
                 self.acquisition_logger(
                     channel_settings=channel_settings,
                     position_ind=position_ind,
                     well_id=self.current_well_id,
-                    site_num=prop['site_num'])
+                    site_num=position['site_num'])
 
         return
 
