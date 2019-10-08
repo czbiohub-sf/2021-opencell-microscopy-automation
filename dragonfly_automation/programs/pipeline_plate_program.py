@@ -464,8 +464,38 @@ class PipelinePlateProgram(Program):
         '''
         Score and rank the positions and select the subset of positions to acquire
         
-        Usually, the positions correspond to all positions in one well,
-        but we do not assume that this is the case here. 
+        The positions should correspond to all positions in one well,
+        but we do not explicitly assume that that is the case here. 
+
+        *** Note about AFC ***
+        Currently, we call AFC at each position. However, this is likely not necessary,
+        because if we can assume the positions are all in one well (which they always should be),
+        then the AFC-adjusted positions are likely to be essentially the same at each position
+        (because the plate is not tilted on the length scale of a single well).
+
+        An alternative is to call AFC only at the first (arbitrary) position, 
+        record the new position of the FocusDrive device (which is what AFC updates), 
+        and then set the position of the FocusDrive device at all subsequent positions.
+
+        This is what this alternative would look like:
+
+        # go to a position and call AFC
+        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
+        autofocus_did_succeed = self.operations.autofocus(self.mm_studio, self.mm_core)
+
+        # get the AFC-updated FocusDrive position
+        focusdrive_position = self.mm_core.getPosition('FocusDrive')
+
+        # loop over positions to generate scores
+        for position in positions:
+            self.operations.go_to_position(...)
+
+            # update the FocusDrive position (mimics running AFC)
+            self.operations.move_z_stage(
+                self.mm_core, 
+                'FocusDrive', 
+                position=focusdrive_position, 
+                kind='absolute')
 
         '''
 
@@ -477,48 +507,33 @@ class PipelinePlateProgram(Program):
         # the maximum number of positions to image in a well
         max_num_positions = 6
 
+        # the returned list of 'good' positions to be imaged
         positions_to_image = []
 
         # sort positions by site number
         positions = sorted(positions, key=lambda position: position['site_num'])
 
-        # move to the first position in the well
-        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
-
-        # attempt to call AFC
-        # TODO: more robust handling of AFC timeout
-        autofocus_did_succeed = self.operations.autofocus(self.mm_studio, self.mm_core)
-        if not autofocus_did_succeed:
-            self.event_logger('PROGRAM ERROR: AFC failed and stacks will not be acquired')
-            return positions_to_image
-
-        # get the AFC-updated FocusDrive position
-        focusdrive_position = self.mm_core.getPosition('FocusDrive')
-
-        # change to the DAPI channel before FOV scoring
+        # change to the DAPI channel for FOV scoring
         self.operations.change_channel(self.mm_core, self.dapi_channel)
 
-        # generate the scores for all positions in the well
+        # generate the score for each position
         for position in positions:
 
-            position_ind = position['ind']
-            self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+            self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
 
-            # update the FocusDrive position (mimics running AFC)
-            self.operations.move_z_stage(
-                self.mm_core, 
-                'FocusDrive', 
-                position=focusdrive_position, 
-                kind='absolute')
+            # attempt to call AFC
+            autofocus_did_succeed = self.operations.autofocus(self.mm_studio, self.mm_core)
+            if not autofocus_did_succeed:
+                self.event_logger('PROGRAM ERROR: AFC failed but attempting to continue anyway')
 
-            # acquire an image of the DAPI signal for the FOV assessment
+            # acquire an image of the DAPI signal
             image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
 
-            # score the FOV (a score of -1 corresponds to 'bad' and 1 to 'good')
+            # score the FOV (a score close to -1 corresponds to 'bad' and 1 to 'good')
             # note that, given all of the error handling in FOVClassifier, 
-            # the try-catch is a last line of defense that should never be needed
+            # this try-catch is a last line of defense that should never be needed
             try:
-                fov_score = self.fov_classifier.classify_raw_fov(image, position_ind=position_ind)
+                fov_score = self.fov_classifier.score_raw_fov(image, position_ind=position['ind'])
             except Exception as error:
                 fov_score = None
                 self.event_logger(
@@ -527,6 +542,7 @@ class PipelinePlateProgram(Program):
             position['fov_score'] = fov_score
 
         # drop positions that could not be scored
+        # (score_raw_fov returns None if an error occurs or the FOV is not a candidate)
         positions = [p for p in positions if p['fov_score'] is not None]
 
         # sort positions in descending order by score (from good to bad)
@@ -536,8 +552,7 @@ class PipelinePlateProgram(Program):
         acceptable_positions = [p for p in positions if p['fov_score'] > abs_min_score]
         self.event_logger('PROGRAM INFO: Found %d acceptable FOVs' % len(acceptable_positions))
 
-        # select only the highest-scoring positions 
-        # if there are more acceptable positions than needed
+        # crop the list if there are more acceptable positions than needed
         positions_to_image = acceptable_positions[:max_num_positions]
         return positions_to_image
 
