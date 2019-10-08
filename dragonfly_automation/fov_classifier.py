@@ -26,7 +26,7 @@ def catch_errors(method):
     '''
     Wrapper for instance methods called in self.classify_raw_fov
     that catches and logs *all* exceptions and, if an exception occurs,
-    calls self.make_decision to classify the FOV as 'not good'
+    sets the score to None and prevents subsequent wrapped methods from executing
 
     '''
 
@@ -37,10 +37,10 @@ def catch_errors(method):
         if self.allow_errors:
             return method(self, *args, **kwargs)
 
-        # do not call the method if a decision has already been made
-        # (which includes decisions made because an error already ocurred)
+        # do not call the method if a score has already been assigned
+        # (this happens when an error ocurred in an earlier wrapped method)
         result = None
-        if self.decision_has_been_made:
+        if self.score_has_been_assigned:
             return result
 
         # attempt the method call
@@ -50,12 +50,12 @@ def catch_errors(method):
         except Exception as error:
             error_info = dict(method_name=method_name, error_message=str(error))
             
-            # make the classification decision, since we do not attempt any error recovery
-            # note that self.make_decision sets the decision_has_been_made flag, 
+            # if an error has occured, we set the score to None
+            # note that self.assign_score sets the score_has_been_assigned flag to True,
             # which will prevent the execution of all subsequent catch_errors-wrapped methods
-            self.make_decision(
-                decision=False, 
-                reason=("Error in method `FOVClassifier.%s`" % method_name),
+            self.assign_score(
+                score=None, 
+                comment=("Error in method `FOVClassifier.%s`" % method_name),
                 error_info=error_info)
 
         return result
@@ -64,11 +64,13 @@ def catch_errors(method):
 
 class FOVClassifier:
 
-    def __init__(self, log_dir=None, mode=None):
+    def __init__(self, log_dir=None, mode='prediction', model_type='regression'):
         '''
         log_dir : str, optional
             path to a local directory in which to save log files
         mode : 'training' or 'prediction'
+
+        model : 'classification' or 'regression'
         '''
 
         # whether the methods wrapped by catch_errors
@@ -78,6 +80,10 @@ class FOVClassifier:
         if mode not in ['training', 'prediction']:
             raise ValueError("`mode` must be either 'training' or 'prediction'")
         self.mode = mode
+
+        if model_type not in ['classification', 'regression']:
+            raise ValueError("`model` must be either 'classification' or 'regression'")
+        self.model_type = model_type
 
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
@@ -104,11 +110,17 @@ class FOVClassifier:
             'num_unclustered',
         )
 
-        # the classifier to use
-        self.model = sklearn.ensemble.RandomForestClassifier(
-            n_estimators=300,
-            max_features='sqrt',
-            oob_score=True)
+        if self.model_type == 'classification':
+            self.model = sklearn.ensemble.RandomForestClassifier(
+                n_estimators=300,
+                max_features='sqrt',
+                oob_score=True)
+
+        if self.model_type == 'regression':
+            self.model = sklearn.ensemble.RandomForestRegressor(
+                n_estimators=300,
+                max_features='auto',
+                oob_score=True)
 
 
     def training_data_filepath(self):
@@ -218,23 +230,21 @@ class FOVClassifier:
         self.training_data = data
 
 
-    def train(self, label, cross_validate=False):
+    def train(self):
         '''
-        Train and cross-validate a classifier to predict the given label
-        
-        Reminders:
-            precision is (tp / (tp + fp))
-            recall is (tp / (tp + fn))
+        Train a model to predict the score 
 
-        Parameters
-        ----------
-        label : the label to predict (must be a boolean column in self.training_data)
+        Note that the model can be either a classification or regression model,
+        since the score is a categorical variable (e.g., -1, 0, 1 for bad/neutral/good)
         '''
+
+        label = 'score'
 
         # turn on errors in feature extraction methods
         self.allow_errors = True
 
         training_metadata = {
+            'model_type': self.model_type,
             'training_label': label,
             'training_timestamp': utils.timestamp(),
             'model': {
@@ -249,31 +259,25 @@ class FOVClassifier:
         data = self.training_data.copy()
         mask = data[list(self.feature_order)].isna().sum(axis=1)
         if mask.sum():
-            print('\nWarning: some training data is missing features and will be dropped; see self.dropped_data')
+            print('\nWarning: some training data is missing features and will be dropped (see self.dropped_data)')
             self.dropped_data = data.loc[mask > 0]
             data = data.loc[mask == 0]
 
         # mask to identify training data with and without annotations
-        # note that only the 'confluency' label is None if there is no annotation
-        # (the other labels are False by default)
-        mask = data['confluency'].isna()
+        mask = data[label].isna()
         data = data.loc[~mask]
 
         X = data[list(self.feature_order)].values
-        y = data[label].values.astype(bool)
+        y = data[label].values.astype(float)
 
-        if cross_validate:
-            cv = sklearn.model_selection.StratifiedKFold(n_splits=10, shuffle=True)        
-            scores = sklearn.model_selection.cross_validate(
-                self.model, X, y, cv=cv, scoring=['accuracy', 'precision', 'recall'])
-            training_metadata['cv_results'] = {
-                key: '%0.2f' % value.mean() for key, value in scores.items()}
-
-        # train the model on all of the training data
+        # train the model
         self.model.fit(X, y)
+
+        # log the oob_score
         training_metadata['oob_score'] = '%0.2f' % self.model.oob_score_
         training_metadata['training_data_shape'] = list(X.shape)
         print('oob_score: %0.2f' % self.model.oob_score_)
+
         self.current_training_metadata = training_metadata
 
 
@@ -300,15 +304,6 @@ class FOVClassifier:
             print('Warning: cannot validate without cached and current metadata to compare')
             return
 
-        # compare cached and current CV results
-        print('Cached CV accuracy and recall: %s, %s' % (
-            self.cached_training_metadata['cv_results']['test_accuracy'],
-            self.cached_training_metadata['cv_results']['test_recall']))
-    
-        print('Current CV accuracy and recall: %s, %s' % (
-            self.current_training_metadata['cv_results']['test_accuracy'],
-            self.current_training_metadata['cv_results']['test_recall']))
-
         print('Cached and current training data shape: (%s, %s)' % (
             self.cached_training_metadata['training_data_shape'],
             self.current_training_metadata['training_data_shape']))
@@ -321,35 +316,32 @@ class FOVClassifier:
         self.allow_errors = True
         mock_positions = np.array([[100, 500], [500, 500], [500, 100]])
         features = self.calculate_features(mock_positions)
-        prediction = self.predict(features)
-        print('Mock prediction (should be false): %s' % prediction)
+        score = self.predict_score(features)
+        print('Mock predicted score (should be falsy): %s' % score)
 
 
     @catch_errors
-    def predict(self, features):
+    def predict_score(self, features):
         '''
-        Use the pre-trained model to make a prediction
+        Use the pre-trained model to predict a score
         '''
-
-        # hack-ish threshold for a binary prediction from the predicted probability
-        # this is temporary and was empirically determined 
-        # to make the prediction from 'models/2019-10-01/' more permissive
-        predicted_prob_thresh = 0.15
 
         # construct the feature array of shape (1, num_features)
         X = np.array([features.get(name) for name in self.feature_order])[None, :]
 
-        # note that predict_proba returns [p_false, p_true]
-        prob = self.model.predict_proba(X)[0][1]
-        flag = prob > predicted_prob_thresh
+        # use predict_proba if the model is a classifier
+        # (note that predict_proba returns [p_false, p_true])
+        if self.model_type == 'classification':
+            score = self.model.predict_proba(X)[0][1]
+        else:
+            score = self.model.predict(X)[0]
 
-        result = {'prediction_flag': flag, 'prediction_prob': prob}
-        return result
+        return score
 
 
-    def classify_raw_fov(self, image, position_ind=None):
+    def score_raw_fov(self, image, position_ind=None):
         '''
-        Classify a raw, uncurated FOV from the microscope itself
+        Predict a score for a raw, uncurated FOV from the microscope itself
 
         Steps:
             validate the image object (yes, no, error)
@@ -380,11 +372,12 @@ class FOVClassifier:
         # required for the catch_errors wrapper to actually catch (and log) errors
         self.allow_errors = False
 
-        # reset the 'state' of the decision-making logic
-        self.decision_has_been_made = False
+        # reset the 'state' of the score-assignment logic
+        self.assigned_score = None
+        self.score_has_been_assigned = False
 
         # reset the log info
-        # note that this dict is modified in this method *and* in self.make_decision
+        # note that this dict is modified in this method *and* in self.assign_score
         self.log_info = {
             'position_ind': position_ind
         }
@@ -399,12 +392,12 @@ class FOVClassifier:
             if validation_result.get('flag'):
                 self.log_info['raw_image'] = image
             else:
-                self.make_decision(decision=False, reason=validation_result.get('message'))
+                self.assign_score(score=None, comment=validation_result.get('message'))
     
         # check whether there are any nuclei in the FOV
         nuclei_in_fov = self.are_nuclei_in_fov(image)
         if not nuclei_in_fov:
-            self.make_decision(decision=False, reason='No nuclei in the FOV')
+            self.assign_score(score=None, comment='No nuclei in the FOV')
 
         # calculate the background mask and nucleus positions
         mask = self.generate_background_mask(image)
@@ -414,44 +407,37 @@ class FOVClassifier:
         # determine if the FOV is a candidate
         fov_is_candidate = self.is_fov_candidate(positions)
         if not fov_is_candidate:
-            self.make_decision(decision=False, reason='FOV is not a candidate')
+            self.assign_score(score=None, comment='FOV is not a candidate')
 
         # calculate features from the positions
         features = self.calculate_features(positions)
         self.log_info['features'] = features
 
         # finally, use the trained model to generate a prediction
-        prediction = self.predict(features)
-        self.log_info['prediction'] = prediction
-        if prediction is not None:
-            self.make_decision(
-                decision=prediction.get('prediction_flag'), 
-                reason='Model prediction (p = %0.2f)' % prediction.get('prediction_prob'),
-                prob=prediction.get('prediction_prob'))
-
+        score = self.predict_score(features)
+        self.log_info['score'] = score
+        if score is not None:
+            self.assign_score(score, comment='Model prediction')
+    
         # log everything we've accumulated in self.log_info
         self.save_log_info()
-        return self.decision_prob
+        return self.assigned_score
 
 
-    def make_decision(self, decision, reason, prob=None, error_info=None):
+    def assign_score(self, score, comment, error_info=None):
         '''
         '''
-        # do nothing if a decision has already been made
-        if self.decision_has_been_made:
+        # do nothing if a score has already been assigned
+        if self.score_has_been_assigned:
             return
 
-        self.decision_flag = decision
-        self.decision_has_been_made = True
-        
-        self.decision_prob = 0
-        if prob is not None:
-            self.decision_prob = prob
+        self.assigned_score = score
+        self.score_has_been_assigned = True
 
         # update the log
+        self.log_info['score'] = score
+        self.log_info['comment'] = comment
         self.log_info['error_info'] = error_info
-        self.log_info['decision'] = decision
-        self.log_info['reason'] = reason
 
 
     def save_log_info(self):
@@ -462,12 +448,13 @@ class FOVClassifier:
         error_info = log_info.get('error_info')
 
         # message for the external event logger 
-        reason = log_info.get('reason')
-        label = 'accepted' if log_info.get('decision') else 'rejected'
-        event_log_message = "CLASSIFIER INFO: The FOV was %s (reason: '%s')" % (label, reason)
+        comment = log_info.get('comment')
+        score = log_info.get('score')
+        score = '%0.2f' % score if score is not None else score
+        event_log_message = "CLASSIFIER INFO: The FOV score was %s (comment: '%s')" % (score, comment)
         self.external_event_logger(event_log_message)
 
-        # if there's no log dir, we fall back to printing the decision and error (if any)
+        # if there's no log dir, we fall back to printing the score and error (if any)
         if self.log_dir is None:
             print(event_log_message)
             if error_info is not None:
@@ -489,9 +476,9 @@ class FOVClassifier:
         
         # construct the CSV log row
         row = {
+            'score': score,
+            'comment': comment,
             'position_ind': position_ind,
-            'decision': log_info.get('decision'),
-            'reason': log_info.get('reason'),
             'timestamp': utils.timestamp(),
             'image_filepath': logged_image_filepath('RAW'),
         }
@@ -504,11 +491,6 @@ class FOVClassifier:
         features = log_info.get('features')
         if features is not None:
             row.update(features)
-
-        # dict of {prediction_flag, prediction_prob}
-        prediction = log_info.get('prediction')
-        if prediction is not None:
-            row.update(prediction)
 
         # append the row to the log file
         log_filepath = os.path.join(self.log_dir, 'fov-classification-log.csv')
@@ -551,7 +533,6 @@ class FOVClassifier:
                     ] = white
 
                 tifffile.imsave(logged_image_filepath('ANT'), ant_image)
-
 
 
     @catch_errors

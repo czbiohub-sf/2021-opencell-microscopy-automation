@@ -469,11 +469,12 @@ class PipelinePlateProgram(Program):
 
         '''
 
-        # threshold to define acceptable FOVs
-        abs_min_score = 0.15
+        # generous empirical threshold to define acceptable FOVs
+        # assumes we are using a regression model to predict a -1/+1 bad/good score
+        # TODO: better documentation and move this to settings or __init__
+        abs_min_score = -0.5
 
-        # the min and max number of positions to image in a well
-        min_num_positions = 1
+        # the maximum number of positions to image in a well
         max_num_positions = 6
 
         positions_to_image = []
@@ -491,7 +492,7 @@ class PipelinePlateProgram(Program):
             self.event_logger('PROGRAM ERROR: AFC failed and stacks will not be acquired')
             return positions_to_image
 
-        # get the AFC-updated FocusDrive z-position
+        # get the AFC-updated FocusDrive position
         focusdrive_position = self.mm_core.getPosition('FocusDrive')
 
         # change to the DAPI channel before FOV scoring
@@ -501,47 +502,43 @@ class PipelinePlateProgram(Program):
         for position in positions:
 
             position_ind = position['ind']
-            operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+            self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
             # update the FocusDrive position (mimics running AFC)
-            self.mm_core.setPosition('FocusDrive', focusdrive_position)
+            self.operations.move_z_stage(
+                self.mm_core, 
+                'FocusDrive', 
+                position=focusdrive_position, 
+                kind='absolute')
 
             # acquire an image of the DAPI signal for the FOV assessment
             image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
 
-            # score the FOV (a score of 0 corresponds to 'terrible' and 1 to 'great')
+            # score the FOV (a score of -1 corresponds to 'bad' and 1 to 'good')
             # note that, given all of the error handling in FOVClassifier, 
             # the try-catch is a last line of defense that should never be needed
             try:
                 fov_score = self.fov_classifier.classify_raw_fov(image, position_ind=position_ind)
             except Exception as error:
-                fov_score = -999
+                fov_score = None
                 self.event_logger(
                     'PROGRAM ERROR: an uncaught exception occured during FOV classification: %s' % error)
 
             position['fov_score'] = fov_score
+
+        # drop positions that could not be scored
+        positions = [p for p in positions if p['fov_score'] is not None]
 
         # sort positions in descending order by score (from good to bad)
         positions = sorted(positions, key=lambda p: -p['fov_score'])
 
         # list of acceptable positions
         acceptable_positions = [p for p in positions if p['fov_score'] > abs_min_score]
-
         self.event_logger('PROGRAM INFO: Found %d acceptable FOVs' % len(acceptable_positions))
 
         # select only the highest-scoring positions 
-        # if there are more acceptable positions than we need
-        if len(acceptable_positions) > max_num_positions:
-            positions_to_image = positions[:max_num_positions]
-        
-        # select the highest-scoring positions if there are too few acceptable positions
-        elif len(acceptable_positions) < min_num_positions:
-            positions_to_image = positions[:min_num_positions]
-            self.event_logger(
-                'PROGRAM INFO: Too few acceptable FOVs were found but the best %d FOVs will be imaged anyway' % min_num_positions)
-        else:
-            positions_to_image = acceptable_positions
-
+        # if there are more acceptable positions than needed
+        positions_to_image = acceptable_positions[:max_num_positions]
         return positions_to_image
 
 
