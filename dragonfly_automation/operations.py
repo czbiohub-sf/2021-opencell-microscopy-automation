@@ -30,7 +30,7 @@ def go_to_position(mm_studio, mm_core, position_ind):
     mm_position.goToPosition(mm_position, mm_core)
 
 
-def autofocus(mm_studio, mm_core):
+def autofocus(mm_studio, mm_core, event_logger):
 
     '''
     Minimal wrapper around the `fullFocus` method
@@ -48,9 +48,10 @@ def autofocus(mm_studio, mm_core):
 
     try:
         af_plugin.fullFocus()
-    except py4j.protocol.Py4JJavaError:
+    except py4j.protocol.Py4JJavaError as error:
+        event_logger('PROGRAM ERROR: AFC failed (%s)' % str(error))
         autofocus_did_succeed = False
-
+    
     mm_core.waitForSystem()
     return autofocus_did_succeed
 

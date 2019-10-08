@@ -340,7 +340,6 @@ class PipelinePlateProgram(Program):
         af_manager.setAutofocusMethodByName("Adaptive Focus Control")
 
         # these `assignImageSynchro` calls are copied directly from Nathan's script
-        # TODO: determine whether they are necessary
         self.mm_core.assignImageSynchro(self.zstage_label)
         self.mm_core.assignImageSynchro(self.xystage_label)
         self.mm_core.assignImageSynchro(self.mm_core.getShutterDevice())
@@ -437,8 +436,8 @@ class PipelinePlateProgram(Program):
 
         # loop over wells
         for well_id in unique_well_ids:
-            self.event_logger('PROGRAM INFO: Scoring all FOVs in well %s' % well_id, newline=True)
             self.current_well_id = well_id
+            self.event_logger('PROGRAM INFO: Scoring all FOVs in well %s' % well_id, newline=True)
             
             # positions in this well
             positions = [p for p in all_positions if p['well_id'] == well_id]
@@ -448,7 +447,7 @@ class PipelinePlateProgram(Program):
             if not len(positions_to_acquire):
                 self.event_logger('PROGRAM WARNING: No acceptable FOVs were found in well %s' % well_id)
             else:
-                # pretty array of scores for the event log
+                # prettify the scores for the event log
                 scores = ', '.join(['%0.2f' % p['fov_score'] for p in positions_to_acquire])
                 self.event_logger(
                     'PROGRAM INFO: Imaging %d FOVs in well %s (scores: [%s])' % \
@@ -521,10 +520,8 @@ class PipelinePlateProgram(Program):
 
             self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
 
-            # attempt to call AFC
-            autofocus_did_succeed = self.operations.autofocus(self.mm_studio, self.mm_core)
-            if not autofocus_did_succeed:
-                self.event_logger('PROGRAM ERROR: AFC failed but attempting to continue anyway')
+            # attempt to call AFC (and ignore errors)
+            self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
 
             # acquire an image of the DAPI signal
             image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
@@ -563,16 +560,19 @@ class PipelinePlateProgram(Program):
 
         We assume that all of these positions correspond to *one* well
 
-        # TODO: check that all positions are in the same well
-        # TODO: more event logging ('imaging position 1/6 in well A10')
-
         '''
-        
+
+        # sort positions by site number (to minimize stage movement)
+        positions = sorted(positions, key=lambda position: position['site_num'])
+
         self.event_logger(
             'PROGRAM INFO: Running the autoexposure algorithm on the first acceptable FOV of well %s' % self.current_well_id)
     
         # go to the first position
         self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
+
+        # attempt to call AFC (and ignore errors)
+        self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
 
         # reset the GFP channel settings
         self.gfp_channel.reset()
@@ -592,16 +592,25 @@ class PipelinePlateProgram(Program):
             event_logger=self.event_logger)
 
         if not autoexposure_did_succeed:
-            # TODO: decide how to handle this situation
-            self.event_logger("PROGRAM ERROR: autoexposure failed in well %s" % self.current_well_id)
-            return
+            self.event_logger(
+                "PROGRAM ERROR: autoexposure failed in well %s but attempting to continue" % self.current_well_id)
 
-        for position in positions:
-            self.event_logger('PROGRAM INFO: Acquiring stacks at position %s' % position['name'])
+        for ind, position in enumerate(positions):
+            self.event_logger(
+                "PROGRAM INFO: Acquiring stacks at position %d of %d in well %s (position name '%s')" % \
+                    (ind + 1, len(positions), position['well_id'], position['name']),
+                    newline=True)
+            
+            # sanity check 
+            if self.current_well_id != position['well_id']:
+                self.event_logger('PROGRAM ERROR: The well_id of the position being acquired does not match self.current_well_id')
 
             # go to the position
             position_ind = position['ind']
             self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+
+            # attempt to call AFC (and ignore errors)
+            self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
 
             # acquire the stacks
             channels = [self.dapi_channel, self.gfp_channel]
@@ -625,7 +634,7 @@ class PipelinePlateProgram(Program):
                 self.acquisition_logger(
                     channel_settings=channel_settings,
                     position_ind=position_ind,
-                    well_id=self.current_well_id,
+                    well_id=position['well_id'],
                     site_num=position['site_num'])
 
         return
