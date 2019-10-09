@@ -63,7 +63,6 @@ def acquire_image(gate, mm_studio, mm_core):
 
     '''
 
-
     # KC: not sure if this is necessary but it seems wise
     mm_core.waitForSystem()
 
@@ -93,8 +92,8 @@ def acquire_image(gate, mm_studio, mm_core):
     # if meta is still None, try again with a longer wait time
     # (KC: I have no reason to believe this would ever be necessary;
     # I've included it only out of an abundance of caution)
-    wait_time *= 10
     if meta is None:
+        wait_time *= 10
         for _ in range(num_tries):
             time.sleep(wait_time)
             meta = gate.getLastMeta()
@@ -124,8 +123,7 @@ def acquire_stack(
     position_ind, 
     position_name):
     '''
-    Acquire a z-stack using the given settings
-    and 'put' it in the datastore object
+    Acquire a z-stack using the given settings and 'put' it in the datastore object
 
     This method results in the creation (via datastore.putImage)
     of a single TIFF stack with a filename of the form
@@ -133,18 +131,33 @@ def acquire_stack(
 
     Parameters
     ----------
-    mm_studio, mm_core : 
-    datastore : 
+    mm_studio, mm_core, datastore : 
     stack_settings : 
     channel_ind : int
-        a position-unique channel index
+        a position-unique channel index (usually 0 for DAPI an 1 for GFP)
     position_ind : int
-        an experiment-unique position index
+        the experiment-unique position index
     position_name : str
-        an arbitrary but experiment-unique name for the current position; 
+        an arbitrary but experiment-unique name for the current position,
         used to determine the filename of the TIFF stack
-    '''
+    
+    Context
+    -------
+    The MicroManager API calls that acquire and 'save' an image at each z-slice 
+    are based on those that appear in the MicroManager v2 beanshell scripts. 
+    The relevant block from these scripts is copied verbatim below for reference. 
+    ```
+    mmc.snapImage();
+    tmp1 = mmc.getTaggedImage();
+    Image channel0 = mm.data().convertTaggedImage(tmp1);
+    channel0 = channel0.copyWith(
+        channel0.getCoords().copy().channel(c).z(z).stagePosition(p).build(),
+        channel0.getMetadata().copy().positionName(""+p).build());
+    autosavestore.putImage(channel0);
+    ```
 
+    '''
+		
     # generate a list of the z positions to visit
     z_positions = np.arange(
         stack_settings.relative_bottom, 
@@ -166,17 +179,17 @@ def acquire_stack(
         image = mm_studio.data().convertTaggedImage(tagged_image)
 
         # manually construct image coordinates (position, channel, z)
-        # NOTE: a new TIFF stack will be created whenever a new and unique value
-        # is passed to coords.stagePosition (which must be an int)
+        # NOTE: a new TIFF stack will be created whenever a new and datastore-unique value
+        # is passed to coords.stagePosition (this value must, however, be an int)
         coords = image.getCoords().copy()
-        coords = coords.z(z_ind)
         coords = coords.channel(channel_ind)
+        coords = coords.z(z_ind)
         coords = coords.stagePosition(position_ind)
         coords = coords.build()
 
         # construct image metadata
-        # NOTE: the filename of the TIFF stack is determined *only* by the value
-        # passed to metadata.positionName (which can be any string)
+        # NOTE: the filename of the TIFF stack is determined entirely 
+        # by the value passed to metadata.positionName (and this value can be any string)
         metadata = image.getMetadata().copy()
         metadata = metadata.positionName(position_name)
         metadata = metadata.build()
