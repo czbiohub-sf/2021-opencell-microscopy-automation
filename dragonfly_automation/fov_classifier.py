@@ -55,7 +55,7 @@ def catch_errors(method):
             # which will prevent the execution of all subsequent catch_errors-wrapped methods
             self.assign_score(
                 score=None, 
-                comment=("Error in method `FOVClassifier.%s`" % method_name),
+                comment=("Error in <FOVClassifier.%s>" % method_name),
                 error_info=error_info)
 
         return result
@@ -373,7 +373,6 @@ class FOVClassifier:
         self.allow_errors = False
 
         # reset the 'state' of the score-assignment logic
-        self.assigned_score = None
         self.score_has_been_assigned = False
 
         # reset the log info
@@ -421,7 +420,7 @@ class FOVClassifier:
     
         # log everything we've accumulated in self.log_info
         self.save_log_info()
-        return self.assigned_score
+        return self.log_info
 
 
     def assign_score(self, score, comment, error_info=None):
@@ -430,8 +429,6 @@ class FOVClassifier:
         # do nothing if a score has already been assigned
         if self.score_has_been_assigned:
             return
-
-        self.assigned_score = score
         self.score_has_been_assigned = True
 
         # update the log
@@ -445,18 +442,12 @@ class FOVClassifier:
         '''
         
         log_info = self.log_info
-        error_info = log_info.get('error_info')
-
-        # message for the external event logger 
-        comment = log_info.get('comment')
         score = log_info.get('score')
-        score = '%0.2f' % score if score is not None else score
-        event_log_message = "CLASSIFIER INFO: The FOV score was %s (comment: '%s')" % (score, comment)
-        self.external_event_logger(event_log_message)
-
-        # if there's no log dir, we fall back to printing the score and error (if any)
+        comment = log_info.get('comment')
+        error_info = log_info.get('error_info')
+        
+        # if there's no log dir, print the error_info (if any) (just for debugging)
         if self.log_dir is None:
-            print(event_log_message)
             if error_info is not None:
                 print("Error during classification in method `%s`: '%s'" % \
                     (error_info.get('method_name'), error_info.get('error_message')))

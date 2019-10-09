@@ -103,6 +103,9 @@ class Program:
         # log the experiment root directory
         self.program_metadata_logger('root_directory', self.root_dir)
 
+        # log the directory the fov_classifier was loaded from
+        self.program_metadata_logger('fov_classifier_save_dir', self.fov_classifier.save_dir)
+
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
             env=self.env, 
@@ -529,14 +532,24 @@ class PipelinePlateProgram(Program):
             # score the FOV (a score close to -1 corresponds to 'bad' and 1 to 'good')
             # note that, given all of the error handling in FOVClassifier, 
             # this try-catch is a last line of defense that should never be needed
+            log_info = None
             try:
-                fov_score = self.fov_classifier.score_raw_fov(image, position_ind=position['ind'])
+                log_info = self.fov_classifier.score_raw_fov(image, position_ind=position['ind'])
             except Exception as error:
-                fov_score = None
                 self.event_logger(
-                    'PROGRAM ERROR: an uncaught exception occured during FOV classification: %s' % error)
+                    "PROGRAM ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s" % \
+                        (position['name'], error))
 
-            position['fov_score'] = fov_score
+            position['fov_score'] = None
+            if log_info is not None:
+                score = log_info.get('score')
+                position['fov_score'] = score
+
+                # prettify the score for the event log
+                score = '%0.2f' % score if score is not None else score
+                self.event_logger(
+                    "PROGRAM INFO: The FOV score at position '%s' was %s (comment: '%s')" % \
+                        (position['name'], score, log_info.get('comment')))            
 
         # drop positions that could not be scored
         # (score_raw_fov returns None if an error occurs or the FOV is not a candidate)
@@ -566,7 +579,8 @@ class PipelinePlateProgram(Program):
         positions = sorted(positions, key=lambda position: position['site_num'])
 
         self.event_logger(
-            'PROGRAM INFO: Running the autoexposure algorithm on the first acceptable FOV of well %s' % self.current_well_id)
+            "PROGRAM INFO: Autoexposing at the first acceptable FOV of well %s (position '%s')" % \
+                (positions[0]['name'], self.current_well_id))
     
         # go to the first position
         self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
@@ -597,13 +611,14 @@ class PipelinePlateProgram(Program):
 
         for ind, position in enumerate(positions):
             self.event_logger(
-                "PROGRAM INFO: Acquiring stacks at position %d of %d in well %s (position name '%s')" % \
+                "PROGRAM INFO: Acquiring stacks at position %d of %d in well %s (position '%s')" % \
                     (ind + 1, len(positions), position['well_id'], position['name']),
                     newline=True)
             
             # sanity check 
             if self.current_well_id != position['well_id']:
-                self.event_logger('PROGRAM ERROR: The well_id of the position being acquired does not match self.current_well_id')
+                self.event_logger(
+                    'PROGRAM ERROR: The well_id of the position being acquired does not match self.current_well_id')
 
             # go to the position
             position_ind = position['ind']

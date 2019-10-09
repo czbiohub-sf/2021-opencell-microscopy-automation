@@ -328,7 +328,7 @@ def autoexposure(
         # (the 99.9th percentile corresponds to ~1000 pixels in a 1024x1024 image)
         slice_max_intensity = np.percentile(image, 99.9)
         event_logger(
-            'AUTOEXPOSURE INFO: The max intensity at z = %0.1f is %d' % (z_position, slice_max_intensity))
+            'AUTOEXPOSURE INFO: max_intensity = %d at z = %0.1f' % (slice_max_intensity, z_position))
 
         # if the slice was over-exposed, lower the exposure time or the laser power,
         # reset stack_max_intensity, and go back to the bottom of the z-stack
