@@ -27,13 +27,22 @@ WELL_IDS = ALL_WELL_IDS[:48]
 FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/dragonfly-automation-tests/20190910/ML0000_20190910-3/logs/confluency-check/confluency-snaps'
 
 
-class JavaException:
+class MockJavaException:
     '''
     mock for py4j java_exception object expected by py4j.protocol.Py4JJavaError    
     '''
     _target_id = 'target_id'
     _gateway_client = '_gateway_client'
-    
+
+
+class MockPy4JJavaError(py4j.protocol.Py4JJavaError):
+
+    def __init__(self):
+        super().__init__('Mocked Py4JJavaError', MockJavaException())
+
+    def __str__(self):
+        return 'Mocked Py4JJavaError'
+
 
 class Base:
 
@@ -217,13 +226,11 @@ class AutofocusManager(Base):
 
 class AutofocusMethod(Base):
     def fullFocus(self):
-        # error expected if AFC times out
-        py4j_error = py4j.protocol.Py4JJavaError('Mocked Py4JJavaError', JavaException())
 
         # TODO: programmatically specify this flag
         mock_afc_timeout = False
         if mock_afc_timeout:
-            raise py4j_error
+            raise MockPy4JJavaError()
         else:
             return
 
