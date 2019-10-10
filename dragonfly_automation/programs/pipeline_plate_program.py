@@ -430,11 +430,9 @@ class PipelinePlateProgram(Program):
 
         # list of *order-preserved* unique well_ids 
         # (assumes that all positions in each well appear together in a single contiguous block)
-        unique_well_ids = []
-        well_id = all_positions[0]['well_id']
+        unique_well_ids = [all_positions[0]['well_id']]
         for position in all_positions:
-            if position['well_id'] != well_id:
-                well_id = position['well_id']
+            if position['well_id'] != unique_well_ids[-1]:
                 unique_well_ids.append(well_id)
 
         # loop over wells
@@ -464,40 +462,23 @@ class PipelinePlateProgram(Program):
 
     def select_positions(self, positions):
         '''
-        Score and rank the positions and select the subset of positions to acquire
-        
+        Visit and score each of the positions listed in `positions` 
+        and select the highest-scoring subset of positions to acquire
+
         The positions should correspond to all positions in one well,
         but we do not explicitly assume that that is the case here. 
 
         *** Note about AFC ***
-        Currently, we call AFC at each position. However, this is likely not necessary,
-        because if we can assume the positions are all in one well (which they always should be),
-        then the AFC-adjusted positions are likely to be essentially the same at each position
-        (because the plate is not tilted on the length scale of a single well).
+        Because AFC can take some time to run, we use a little trick/hack here to speed it up.
 
-        An alternative is to call AFC only at the first (arbitrary) position, 
-        record the new position of the FocusDrive device (which is what AFC updates), 
-        and then set the position of the FocusDrive device at all subsequent positions.
+        First, before the loop over positions, we call AFC at the first position
+        (in site-number order) and record the FocusDrive position (which is what AFC updates).
+        Then, in the position loop, we move the FocusDrive to this AFC-adjusted position,
+        right after moving to the new position and right *before* calling AFC.
 
-        This is what this alternative would look like:
-
-        # go to a position and call AFC
-        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
-        autofocus_did_succeed = self.operations.autofocus(self.mm_studio, self.mm_core)
-
-        # get the AFC-updated FocusDrive position
-        focusdrive_position = self.mm_core.getPosition('FocusDrive')
-
-        # loop over positions to generate scores
-        for position in positions:
-            self.operations.go_to_position(...)
-
-            # update the FocusDrive position (mimics running AFC)
-            self.operations.move_z_stage(
-                self.mm_core, 
-                'FocusDrive', 
-                position=focusdrive_position, 
-                kind='absolute')
+        The logic of this little trick is that, because the positions we visit are all in one well, 
+        the AFC-adjusted FocusDrive positions are likely to be very similiar to one another 
+        (because the plate should not be tilted on the length scale of a single well).
 
         '''
 
@@ -515,13 +496,30 @@ class PipelinePlateProgram(Program):
         # sort positions by site number
         positions = sorted(positions, key=lambda position: position['site_num'])
 
+        # go to the first position and call AFC
+        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
+        autofocus_succeeded = self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
+
+        # if AFC succeeded, get the AFC-updated FocusDrive position
+        # (if AFC fails, it moves the FocusDrive stage down 500ish microns, which we want to ignore)
+        focusdrive_position = None
+        if autofocus_succeeded:
+            focusdrive_position = self.mm_core.getPosition('FocusDrive')
+
         # change to the DAPI channel for FOV scoring
         self.operations.change_channel(self.mm_core, self.dapi_channel)
 
-        # generate the score for each position
+        # score the FOV at each position
         for position in positions:
-
             self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
+
+            # update the FocusDrive position (this should help AFC to focus faster)
+            if focusdrive_position is not None:
+                self.operations.move_z_stage(
+                    self.mm_core, 
+                    'FocusDrive', 
+                    position=focusdrive_position, 
+                    kind='absolute')
 
             # attempt to call AFC (and ignore errors)
             self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
@@ -529,9 +527,9 @@ class PipelinePlateProgram(Program):
             # acquire an image of the DAPI signal
             image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
 
-            # score the FOV (a score close to -1 corresponds to 'bad' and 1 to 'good')
+            # score the FOV
             # note that, given all of the error handling in FOVClassifier, 
-            # this try-catch is a last line of defense that should never be needed
+            # the try-catch is a last line of defense that should never be needed
             log_info = None
             try:
                 log_info = self.fov_classifier.score_raw_fov(image, position_ind=position['ind'])
@@ -540,7 +538,7 @@ class PipelinePlateProgram(Program):
                     "PROGRAM ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s" % \
                         (position['name'], error))
 
-            position['fov_score'] = None
+            # retrieve the score and note it in the event log
             if log_info is not None:
                 score = log_info.get('score')
                 position['fov_score'] = score
@@ -551,9 +549,9 @@ class PipelinePlateProgram(Program):
                     "PROGRAM INFO: The FOV score at position '%s' was %s (comment: '%s')" % \
                         (position['name'], score, log_info.get('comment')))            
 
-        # drop positions that could not be scored
-        # (score_raw_fov returns None if an error occurs or the FOV is not a candidate)
-        positions = [p for p in positions if p['fov_score'] is not None]
+        # drop positions without a score
+        # (this will happen if log_info.get('score') is None or if there was an uncaught error above)
+        positions = [p for p in positions if p.get('fov_score') is not None]
 
         # sort positions in descending order by score (from good to bad)
         positions = sorted(positions, key=lambda p: -p['fov_score'])
@@ -571,9 +569,14 @@ class PipelinePlateProgram(Program):
         '''
         Acquire z-stacks at the positions listed in positions
 
-        We assume that all of these positions correspond to *one* well
+        ** We assume that all of these positions correspond to one well **
 
         '''
+
+        # this should never happen
+        if not len(positions):
+            print('Warning: acquire_positions received an empty list of positions')
+            return
 
         # sort positions by site number (to minimize stage movement)
         positions = sorted(positions, key=lambda position: position['site_num'])
