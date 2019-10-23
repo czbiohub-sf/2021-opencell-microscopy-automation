@@ -458,7 +458,8 @@ class PipelinePlateProgram(Program):
         # (assumes that all positions in each well appear together in a single contiguous block)
         unique_well_ids = [all_positions[0]['well_id']]
         for position in all_positions:
-            if position['well_id'] != unique_well_ids[-1]:
+            well_id = position['well_id']
+            if well_id != unique_well_ids[-1]:
                 unique_well_ids.append(well_id)
 
         # loop over wells
