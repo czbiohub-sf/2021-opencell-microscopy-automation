@@ -38,6 +38,9 @@ def autofocus(mm_studio, mm_core, event_logger):
 
     TODO: specify the autofocus plugin to use 
     (e.g., either AFC or 'traditional' autofocus)
+
+    TODO: consider switching to mm_core API, 
+    which has its own fullFocus method - might be faster
     
     '''
     autofocus_did_succeed = True

@@ -583,7 +583,7 @@ class PipelinePlateProgram(Program):
 
         self.event_logger(
             "PROGRAM INFO: Autoexposing at the first acceptable FOV of well %s (position '%s')" % \
-                (positions[0]['name'], self.current_well_id))
+                (self.current_well_id, positions[0]['name']))
     
         # go to the first position
         self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
