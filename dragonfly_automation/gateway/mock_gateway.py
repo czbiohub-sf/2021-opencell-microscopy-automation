@@ -225,8 +225,10 @@ class AutofocusManager(Base):
 
 
 class AutofocusMethod(Base):
+    '''
+    Mock for the af_plugin object
+    '''
     def fullFocus(self):
-
         # TODO: programmatically specify this flag
         mock_afc_timeout = False
         if mock_afc_timeout:
@@ -234,6 +236,12 @@ class AutofocusMethod(Base):
         else:
             return
 
+    def getPropertyNames(self):
+        return 'Offset', 'LockThreshold'
+
+    def getPropertyValue(self, name):
+        return 0
+    
 
 class MMStudio(Base):
     '''

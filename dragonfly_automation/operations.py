@@ -30,33 +30,58 @@ def go_to_position(mm_studio, mm_core, position_ind):
     mm_position.goToPosition(mm_position, mm_core)
 
 
-def autofocus(mm_studio, mm_core, event_logger):
+def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=None):
 
     '''
-    Minimal wrapper around the `fullFocus` method
-    of the active autofocus plugin
-
-    TODO: specify the autofocus plugin to use 
-    (e.g., either AFC or 'traditional' autofocus)
+    Minimal wrapper around the `fullFocus` method of the active autofocus plugin,
+    ** which is assumed to be AFC **
 
     TODO: consider switching to mm_core API, 
     which has its own fullFocus method - might be faster
-    
-    '''
-    autofocus_did_succeed = True
 
-    # get the active AutofocusPlugin
+    '''
+    afc_error = None
+    afc_did_succeed = True
+
+    # get the active AutofocusPlugin (assumed to be AFC)
     af_manager = mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()
 
+    # log all of the af_plugin properties
+    prop_names = af_plugin.getPropertyNames()
+    af_plugin_props = {name: af_plugin.getPropertyValue(name) for name in prop_names}
+
+    # the initial AFC score and FocusDrive position
+    score_before = af_plugin.getCurrentFocusScore()
+    focusdrive_position_before = mm_core.getPosition('FocusDrive')
+    
     try:
         af_plugin.fullFocus()
     except py4j.protocol.Py4JJavaError as error:
         event_logger("PROGRAM ERROR: AFC failed (error: '%s')" % str(error))
-        autofocus_did_succeed = False
+        afc_error = str(error)
+        afc_did_succeed = False
     
     mm_core.waitForSystem()
-    return autofocus_did_succeed
+
+    # add an artificial delay because, anecdotally, the score
+    # takes some time to update after the FocusDrive is moved
+    time.sleep(0.5)
+
+    score_after = af_plugin.getCurrentFocusScore()
+    focusdrive_position_after = mm_core.getPosition('FocusDrive')
+    
+    if afc_logger is not None:
+        afc_logger(
+            score_before=score_before,
+            score_after=score_after,
+            focusdrive_position_before=focusdrive_position_before,
+            focusdrive_position_after=focusdrive_position_after,
+            afc_error=afc_error,
+            position_ind=position_ind,
+            **af_plugin_props)
+
+    return afc_did_succeed
 
 
 def acquire_image(gate, mm_studio, mm_core):

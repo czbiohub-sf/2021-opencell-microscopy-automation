@@ -93,6 +93,10 @@ class Program:
         self.acquisition_log_file = os.path.join(
             self.log_dir, '%s_acquired-images.csv' % self.experiment_name)
 
+        # AFC log (CSV)
+        self.afc_log_file = os.path.join(
+            self.log_dir, '%s_afc-calls.csv' % self.experiment_name)
+
         # log the current commit
         repo = git.Repo('..')
         if not repo:
@@ -188,6 +192,28 @@ class Program:
         metadata[key] = value
         with open(self.metadata_log_file, 'w') as file:
             json.dump(metadata, file)
+
+
+    def afc_logger(self, **kwargs):
+        '''
+        Append a row to the AFC log
+        
+        This log is intended to record the position of the FocusDrive
+        before and after AFC is called, as well as whether any errors occur.
+    
+        '''
+
+        # construct the row
+        row = {'timestamp': utils.timestamp()}
+        row.update(kwargs)
+
+        # append the row to the CSV
+        if os.path.isfile(self.afc_log_file):
+            d = pd.read_csv(self.afc_log_file)
+            d = d.append(row, ignore_index=True)
+        else:
+            d = pd.DataFrame([row])
+        d.to_csv(self.afc_log_file, index=False)
 
 
     def acquisition_logger(self, channel_settings, **kwargs):
@@ -497,13 +523,15 @@ class PipelinePlateProgram(Program):
         positions = sorted(positions, key=lambda position: position['site_num'])
 
         # go to the first position and call AFC
-        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
-        autofocus_succeeded = self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
+        position_ind = positions[0]['ind']
+        self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+        afc_succeeded = self.operations.call_afc(
+            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
 
         # if AFC succeeded, get the AFC-updated FocusDrive position
         # (if AFC fails, it moves the FocusDrive stage down 500ish microns, which we want to ignore)
         focusdrive_position = None
-        if autofocus_succeeded:
+        if afc_succeeded:
             focusdrive_position = self.mm_core.getPosition('FocusDrive')
 
         # change to the DAPI channel for FOV scoring
@@ -511,7 +539,8 @@ class PipelinePlateProgram(Program):
 
         # score the FOV at each position
         for position in positions:
-            self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
+            position_ind = position['ind']
+            self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
             # update the FocusDrive position (this should help AFC to focus faster)
             if focusdrive_position is not None:
@@ -522,7 +551,8 @@ class PipelinePlateProgram(Program):
                     kind='absolute')
 
             # attempt to call AFC (and ignore errors)
-            self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
+            self.operations.call_afc(
+                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
 
             # acquire an image of the DAPI signal
             image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
@@ -532,7 +562,7 @@ class PipelinePlateProgram(Program):
             # the try-catch is a last line of defense that should never be needed
             log_info = None
             try:
-                log_info = self.fov_classifier.score_raw_fov(image, position_ind=position['ind'])
+                log_info = self.fov_classifier.score_raw_fov(image, position_ind=position_ind)
             except Exception as error:
                 self.event_logger(
                     "PROGRAM ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s" % \
@@ -586,10 +616,12 @@ class PipelinePlateProgram(Program):
                 (self.current_well_id, positions[0]['name']))
     
         # go to the first position
-        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
+        position_ind = positions[0]['ind']
+        self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
         # attempt to call AFC (and ignore errors)
-        self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
+        self.operations.call_afc(
+            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
 
         # reset the GFP channel settings
         self.gfp_channel.reset()
@@ -628,7 +660,8 @@ class PipelinePlateProgram(Program):
             self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
             # attempt to call AFC (and ignore errors)
-            self.operations.autofocus(self.mm_studio, self.mm_core, self.event_logger)
+            self.operations.call_afc(
+                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
 
             # acquire the stacks
             channels = [self.dapi_channel, self.gfp_channel]
