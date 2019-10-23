@@ -144,15 +144,20 @@ def interpolate_focusdrive_positions_from_all(
     position_list_filepath, 
     measured_focusdrive_positions, 
     top_left_well_id,
-    bottom_right_well_id):
+    bottom_right_well_id,
+    offset=0):
     '''
 
-    measured_focusdrive_positions = {
-        'B9': 7600,
-        'B5': 7500,
-        'B2': 7600,
-        ...
-    }
+    Parameters
+    ----------
+    position_list_filepath: str
+        Local path to a JSON list of positions assumed to have been generated
+        by the HCS Site Generator plugin
+    measured_focusdrive_positions : a dict of well_ids and measured FocusDrive positions
+        e.g., {'B9': 7600, 'B5': 7500, ...}
+    top_left_well_id : the well_id of the top-left-most well (usually 'B2')
+    bottom_right_well_id : the well_id of the bottom-left-most well (usually 'G9')
+    offset : a constant offset (in microns) to add to the interpolated positions
 
     '''
 
@@ -176,7 +181,7 @@ def interpolate_focusdrive_positions_from_all(
         x, y = well_id_to_position(well_id)
 
         # the interpolated z-position of the current well
-        interpolated_position = interpolator(x, y)[0]
+        interpolated_position = interpolator(x, y)[0] + offset
 
         # the config entry for the 'FocusDrive' device (this is the motorized z-stage)
         focus_drive_config = {
