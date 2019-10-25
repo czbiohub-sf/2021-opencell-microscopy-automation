@@ -47,9 +47,11 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     af_manager = mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()
 
-    # log all of the af_plugin properties
-    prop_names = af_plugin.getPropertyNames()
-    af_plugin_props = {name: af_plugin.getPropertyValue(name) for name in prop_names}
+    # log all of the af_plugin properties 
+    # (currently doesn't work - getPropertyNames returns a java object, not a list)
+    af_plugin_props = {}
+    # prop_names = af_plugin.getPropertyNames()
+    # af_plugin_props = {name: af_plugin.getPropertyValue(name) for name in prop_names}
 
     # the initial AFC score and FocusDrive position
     score_before = af_plugin.getCurrentFocusScore()
