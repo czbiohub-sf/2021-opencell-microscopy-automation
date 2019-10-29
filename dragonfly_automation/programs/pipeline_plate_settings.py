@@ -30,7 +30,7 @@ dev_stack_settings = StackSettings(
 prod_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=16.0,
-    relative_bottom=-10.0,
+    relative_bottom=-6.0,
     step_size=0.2
 )
 
