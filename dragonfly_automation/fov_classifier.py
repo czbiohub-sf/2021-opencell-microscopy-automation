@@ -202,8 +202,7 @@ class FOVClassifier:
 
     def process_training_data(self, data):
         '''
-        Calculate the features from the training data images,
-        and drop any images that are either not candidates or that yield errors
+        Calculate the features from the training data images
 
         Note that there is minimal error handling, since the training data has been curated
         and we should be able to find nuclei in every image without errors occurring
@@ -254,8 +253,7 @@ class FOVClassifier:
         }
 
         # drop rows with any missing/nan features
-        # note that, for now, we *do not* drop images 
-        # that would not pass the is_fov_candidate test
+        # (note that, for now, we do not worry about what gets dropped here)
         data = self.training_data.copy()
         mask = data[list(self.feature_order)].isna().sum(axis=1)
         if mask.sum():
@@ -352,7 +350,6 @@ class FOVClassifier:
             make the prediction (yes, no, error)
 
         Poorly documented failure modes:
-          - if the image is random noise, then we usually get 'not a candidate'
           - if there is some giant but uniform artifact that doesn't break the thresholding
             (e.g., some large region is uniformly zero), we'll never know
 
@@ -403,10 +400,10 @@ class FOVClassifier:
         positions = self.find_nucleus_positions(mask)
         self.log_info['positions'] = positions
 
-        # determine if the FOV is a candidate
-        fov_is_candidate = self.is_fov_candidate(positions)
-        if not fov_is_candidate:
-            self.assign_score(score=None, comment='FOV is not a candidate')
+        # determine if the are too few nuclei in the mask to proceed
+        enough_nuclei_in_fov = self.are_enough_nuclei_in_fov(positions)
+        if not enough_nuclei_in_fov:
+            self.assign_score(score=None, comment='Too few nuclei in the FOV')
 
         # calculate features from the positions
         features = self.calculate_features(positions)
@@ -557,7 +554,6 @@ class FOVClassifier:
         *** Note that this value is sensitive to the exposure settings! ***
         (presumably, mostly the exposure time and the camera gain)
         '''
-    
         min_otsu_thresh = 1000
         otsu_thresh = skimage.filters.threshold_li(image)
         nuclei_in_fov = otsu_thresh > min_otsu_thresh
@@ -565,25 +561,19 @@ class FOVClassifier:
 
 
     @catch_errors
-    def is_fov_candidate(self, positions):
+    def are_enough_nuclei_in_fov(self, positions):
         '''
-        Check whether there are way too few or way too many 'nuclei' in the FOV
+        Check whether there are way too few 'nuclei' in the FOV
 
         This will occur if either
-           1) there are very few or very many real nuclei in the FOV, or
+           1) there are very few real nuclei in the FOV, or
            2) there are _no_ real nuclei in the FOV,
               and the nucleus positions correspond to noise, dust, etc
               (we attempt to defend against this by first calling are_nuclei_in_fov)
         '''
-
-        is_candidate = True
         min_num_nuclei = 10
-        max_num_nuclei = 100
-
         num_positions = positions.shape[0]
-        if num_positions < min_num_nuclei or num_positions > max_num_nuclei:
-            is_candidate = False
-
+        is_candidate = num_positions > min_num_nuclei
         return is_candidate
 
 
