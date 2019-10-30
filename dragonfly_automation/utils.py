@@ -92,7 +92,7 @@ def interpolate_focusdrive_positions_from_corners(
             interpolated_position = interpolator(row_ind, physical_col_ind)[0]
 
             # the config entry for the 'FocusDrive' device (this is the motorized z-stage)
-            focus_drive_config = {
+            focusdrive_config = {
                 'X': interpolated_position,
                 'Y': 0,
                 'Z': 0,
@@ -104,7 +104,7 @@ def interpolate_focusdrive_positions_from_corners(
             # at each position of the current well
             for pos_ind in range(num_positions_per_well):
                 ind = num_positions_per_well * (row_ind * num_cols + col_ind) + pos_ind
-                position_list['POSITIONS'][ind]['DEVICES'].append(focus_drive_config)
+                position_list['POSITIONS'][ind]['DEVICES'].append(focusdrive_config)
     
     # save the new position_list
     ext = position_list_filepath.split('.')[-1]
@@ -184,7 +184,7 @@ def interpolate_focusdrive_positions_from_all(
         interpolated_position = interpolator(x, y)[0] + offset
 
         # the config entry for the 'FocusDrive' device (this is the motorized z-stage)
-        focus_drive_config = {
+        focusdrive_config = {
             'X': interpolated_position,
             'Y': 0,
             'Z': 0,
@@ -192,7 +192,7 @@ def interpolate_focusdrive_positions_from_all(
             'DEVICE': 'FocusDrive',
         }
 
-        position_list['POSITIONS'][ind]['DEVICES'].append(focus_drive_config)
+        position_list['POSITIONS'][ind]['DEVICES'].append(focusdrive_config)
     
     # save the new position_list
     ext = position_list_filepath.split('.')[-1]

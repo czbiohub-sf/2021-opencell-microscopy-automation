@@ -39,7 +39,7 @@ bf_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=16.0,
     relative_bottom=-6.0,
-    step_size=2.0
+    step_size=1.0
 )
 
 
