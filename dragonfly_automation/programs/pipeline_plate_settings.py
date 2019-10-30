@@ -34,6 +34,14 @@ prod_stack_settings = StackSettings(
     step_size=0.2
 )
 
+# brightfield stack settings (with coarser step size)
+bf_stack_settings = StackSettings(
+    stage_label=STAGE_LABEL,
+    relative_top=16.0,
+    relative_bottom=-6.0,
+    step_size=2.0
+)
+
 
 # -----------------------------------------------------------------------------
 #
@@ -79,8 +87,8 @@ bf_channel_settings = ChannelSettings(
     laser_line=None,
     laser_name=None,
     default_laser_power=None,
-    default_exposure_time=DEFAULT_EXPOSURE_TIME,
-    default_camera_gain=DEFAULT_CAMERA_GAIN
+    default_exposure_time=100.0,
+    default_camera_gain=400.0
 )
 
 

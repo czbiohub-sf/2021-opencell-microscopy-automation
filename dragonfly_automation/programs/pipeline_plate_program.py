@@ -34,7 +34,7 @@ class Program:
 
     '''
 
-    def __init__(self, root_dir, fov_classifier, env='dev', verbose=True, test_mode='test-real'):
+    def __init__(self, root_dir, fov_classifier, env='dev', verbose=True, test_mode=None):
         '''
         Program instantiation
 
@@ -315,22 +315,29 @@ class PipelinePlateProgram(Program):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # whether to acquire a brightfield stack after the DAPI and GFP stacks
+        self.acquire_bf_stacks = False
+
         # log the name of the program subclass
         self.program_metadata_logger('program_name', self.__class__.__name__)
 
-        # initialize channel managers for GFP and DAPI
+        # initialize channel managers
+        self.bf_channel = ChannelSettingsManager(settings.bf_channel_settings)
         self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
         self.dapi_channel = ChannelSettingsManager(settings.dapi_channel_settings)
         
         # copy the autoexposure settings
         self.autoexposure_settings = settings.autoexposure_settings
 
-        # different stack settings for dev and prod
-        # (just to reduce the number of slices acquired in dev mode)
+        # brightfield stack settings
+        self.bf_stack_settings = settings.bf_stack_settings
+        
+        # fluorescence stack settings for dev and prod
+        # ('dev' settings reduce the number of slices acquired in dev mode)
         if self.env == 'prod':
-            self.stack_settings = settings.prod_stack_settings
+            self.fl_stack_settings = settings.prod_stack_settings
         if self.env == 'dev':
-            self.stack_settings = settings.dev_stack_settings
+            self.fl_stack_settings = settings.dev_stack_settings
     
         # the maximum number of FOVs (that is, z-stacks) to acquire per well
         # (note that if few FOVs are accepted during the FOV assessment, 
@@ -339,7 +346,7 @@ class PipelinePlateProgram(Program):
 
         # stage labels for convenience
         self.xystage_label = 'XYStage'
-        self.zstage_label = self.stack_settings.stage_label
+        self.zstage_label = self.fl_stack_settings.stage_label
     
         # manually log all of the settings
         self.program_metadata_logger(
@@ -347,8 +354,12 @@ class PipelinePlateProgram(Program):
             dict(self.autoexposure_settings._asdict()))
 
         self.program_metadata_logger(
-            'stack_settings', 
-            dict(self.stack_settings._asdict()))
+            'fluorescence_stack_settings', 
+            dict(self.fl_stack_settings._asdict()))
+
+        self.program_metadata_logger(
+            'brightfield_stack_settings', 
+            dict(self.bf_stack_settings._asdict()))
     
         self.program_metadata_logger(
             'dapi_channel',
@@ -636,7 +647,7 @@ class PipelinePlateProgram(Program):
             gate=self.gate,
             mm_studio=self.mm_studio,
             mm_core=self.mm_core,
-            stack_settings=self.stack_settings,
+            stack_settings=self.fl_stack_settings,
             autoexposure_settings=self.autoexposure_settings,
             channel_settings=self.gfp_channel,
             event_logger=self.event_logger)
@@ -666,29 +677,36 @@ class PipelinePlateProgram(Program):
 
             # acquire the stacks
             channels = [self.dapi_channel, self.gfp_channel]
-            for channel_ind, channel_settings in enumerate(channels):
-                self.event_logger("PROGRAM INFO: Acquiring channel '%s'" % channel_settings.config_name)
+            stack_settings = [self.fl_stack_settings, self.fl_stack_settings]
+
+            if self.acquire_bf_stacks:
+                channels.append(self.bf_channel)
+                stack_settings.append(self.bf_stack_settings)
+            
+            # nomenclature: note the ugly switch to the singular 'stack_setting' here
+            for channel_ind, (channel, stack_setting) in enumerate(zip(channels, stack_settings)):
+                self.event_logger("PROGRAM INFO: Acquiring channel '%s'" % channel.config_name)
 
                 # change the channel
-                self.operations.change_channel(self.mm_core, channel_settings)
+                self.operations.change_channel(self.mm_core, channel)
 
                 # acquire the stack
                 self.operations.acquire_stack(
                     mm_studio=self.mm_studio,
                     mm_core=self.mm_core, 
                     datastore=self.datastore, 
-                    stack_settings=self.stack_settings,
+                    stack_settings=stack_setting,
                     channel_ind=channel_ind,
                     position_ind=position_ind,
                     position_name=position['name'])
-                
+
                 # log the acquisition
                 self.acquisition_logger(
-                    channel_settings=channel_settings,
+                    channel_settings=channel,
                     position_ind=position_ind,
                     well_id=position['well_id'],
                     site_num=position['site_num'])
-
+        
         return
 
 
