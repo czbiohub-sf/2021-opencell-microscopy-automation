@@ -661,7 +661,7 @@ class PipelinePlateProgram(Program):
                 "PROGRAM INFO: Acquiring stacks at position %d of %d in well %s (position '%s')" % \
                     (ind + 1, len(positions), position['well_id'], position['name']),
                     newline=True)
-            
+
             # sanity check 
             if self.current_well_id != position['well_id']:
                 self.event_logger(
@@ -669,40 +669,53 @@ class PipelinePlateProgram(Program):
 
             # go to the position
             position_ind = position['ind']
+            position_name = position['name']
             self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
             # attempt to call AFC (and ignore errors)
             self.operations.call_afc(
                 self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
 
-            # acquire the stacks
-            channels = [self.dapi_channel, self.gfp_channel]
-            stack_settings = [self.fl_stack_settings, self.fl_stack_settings]
+            # settings for the two fluorescence channels
+            all_settings = [
+                {
+                    'name': position_name,
+                    'channel': self.dapi_channel,
+                    'stack': self.fl_stack_settings,
+                },{
+                    'name': position_name,
+                    'channel': self.gfp_channel,
+                    'stack': self.fl_stack_settings,
+                }
+            ]
 
+            # settings for BF channel (which has its own position name and z-stack settings)
             if self.acquire_bf_stacks:
-                channels.append(self.bf_channel)
-                stack_settings.append(self.bf_stack_settings)
-            
-            # nomenclature: note the ugly switch to the singular 'stack_setting' here
-            for channel_ind, (channel, stack_setting) in enumerate(zip(channels, stack_settings)):
-                self.event_logger("PROGRAM INFO: Acquiring channel '%s'" % channel.config_name)
+                all_settings.append({
+                    'name': '%s-BF' % position_name,
+                    'channel': self.bf_channel,
+                    'stack': self.bf_stack_settings,
+                })
+
+            for channel_ind, settings in enumerate(all_settings):
+                self.event_logger("PROGRAM INFO: Acquiring channel '%s'" % settings['channel'].config_name)
 
                 # change the channel
-                self.operations.change_channel(self.mm_core, channel)
+                self.operations.change_channel(self.mm_core, settings['channel'])
 
                 # acquire the stack
                 self.operations.acquire_stack(
                     mm_studio=self.mm_studio,
                     mm_core=self.mm_core, 
                     datastore=self.datastore, 
-                    stack_settings=stack_setting,
+                    stack_settings=settings['stack'],
                     channel_ind=channel_ind,
                     position_ind=position_ind,
-                    position_name=position['name'])
+                    position_name=settings['name'])
 
                 # log the acquisition
                 self.acquisition_logger(
-                    channel_settings=channel,
+                    channel_settings=settings['channel'],
                     position_ind=position_ind,
                     well_id=position['well_id'],
                     site_num=position['site_num'])
