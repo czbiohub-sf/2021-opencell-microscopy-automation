@@ -316,7 +316,7 @@ class PipelinePlateProgram(Program):
         super().__init__(*args, **kwargs)
 
         # whether to acquire a brightfield stack after the DAPI and GFP stacks
-        self.acquire_bf_stacks = False
+        self.acquire_bf_stacks = True
 
         # log the name of the program subclass
         self.program_metadata_logger('program_name', self.__class__.__name__)

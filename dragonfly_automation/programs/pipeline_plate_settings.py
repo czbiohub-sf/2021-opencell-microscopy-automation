@@ -39,7 +39,7 @@ bf_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=16.0,
     relative_bottom=-6.0,
-    step_size=1.0
+    step_size=0.2
 )
 
 
@@ -82,12 +82,12 @@ gfp_channel_settings = ChannelSettings(
 # TODO: check that the config name is the right one
 bf_channel_settings = ChannelSettings(
     config_group=CONFIG_GROUP,
-    config_name='EMCCD_BF_ConfocalIn',
+    config_name='EMCCD_BF',
     camera_name=CAMERA_NAME,
     laser_line=None,
     laser_name=None,
     default_laser_power=None,
-    default_exposure_time=100.0,
+    default_exposure_time=50.0,
     default_camera_gain=400.0
 )
 
