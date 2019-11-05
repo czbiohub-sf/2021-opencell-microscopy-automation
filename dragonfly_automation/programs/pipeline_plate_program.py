@@ -669,7 +669,6 @@ class PipelinePlateProgram(Program):
 
             # go to the position
             position_ind = position['ind']
-            position_name = position['name']
             self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
             # attempt to call AFC (and ignore errors)
@@ -679,20 +678,17 @@ class PipelinePlateProgram(Program):
             # settings for the two fluorescence channels
             all_settings = [
                 {
-                    'name': position_name,
                     'channel': self.dapi_channel,
                     'stack': self.fl_stack_settings,
                 },{
-                    'name': position_name,
                     'channel': self.gfp_channel,
                     'stack': self.fl_stack_settings,
                 }
             ]
 
-            # settings for BF channel (which has its own position name and z-stack settings)
+            # settings for the brightfield channel (which has its own z-stack settings)
             if self.acquire_bf_stacks:
                 all_settings.append({
-                    'name': '%s-BF' % position_name,
                     'channel': self.bf_channel,
                     'stack': self.bf_stack_settings,
                 })
@@ -711,7 +707,7 @@ class PipelinePlateProgram(Program):
                     stack_settings=settings['stack'],
                     channel_ind=channel_ind,
                     position_ind=position_ind,
-                    position_name=settings['name'])
+                    position_name=position['name'])
 
                 # log the acquisition
                 self.acquisition_logger(
