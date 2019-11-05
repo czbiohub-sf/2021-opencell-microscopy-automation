@@ -100,15 +100,16 @@ bf_channel_settings = ChannelSettings(
 autoexposure_settings = AutoexposureSettings(
 
     # min intensity defines under-exposure;
-    # chosen to be about 10x the background (or readout noise) when the EM gain is 400
-    min_intensity=2**13,
+    # chosen to be about 20x the background (or readout noise) when the EM gain is 400
+    min_intensity=2**14,
 
     # max intensity defines over-exposure; 
     # chosen to leave a (literal) bit of wiggle room
     max_intensity=2**15,
 
-    # min and max exposure times are from Nathan
-    min_exposure_time=30.0,
+    # min and max exposure times 
+    # (min of 40ms is to avoid artifacts from the spinning disk)
+    min_exposure_time=40.0,
     max_exposure_time=500.0,
     default_exposure_time=DEFAULT_EXPOSURE_TIME,
 
@@ -118,7 +119,7 @@ autoexposure_settings = AutoexposureSettings(
     # exposure step (for over-exposure) is from Nathan
     relative_exposure_step=0.8,
 
-    # z-step comparable to the z-resolution of the microscope
+    # a coarse z-step is sufficient for stepping through the stack during autoexposure
     z_step_size=1.0
 )
 

@@ -368,8 +368,8 @@ def autoexposure(
 
         # use a percentile to calculate the 'max' intensity 
         # as a defense against hot pixels, anomalous bright spots/dust, etc
-        # (the 99.9th percentile corresponds to ~1000 pixels in a 1024x1024 image)
-        slice_max_intensity = np.percentile(image, 99.9)
+        # (the 99.99th percentile corresponds to ~100 pixels in a 1024x1024 image)
+        slice_max_intensity = np.percentile(image, 99.99)
         event_logger(
             'AUTOEXPOSURE INFO: max_intensity = %d at z = %0.1f' % (slice_max_intensity, z_position))
 
