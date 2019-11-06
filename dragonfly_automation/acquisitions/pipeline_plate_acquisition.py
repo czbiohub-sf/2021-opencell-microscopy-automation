@@ -12,12 +12,12 @@ from dragonfly_automation import utils
 from dragonfly_automation import operations
 from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.settings import ChannelSettingsManager
-from dragonfly_automation.programs import pipeline_plate_settings as settings
+from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 
-class Program:
+class Acquisition:
     '''
-    Base class for programs
+    Base class for acquisition scripts
 
     Public methods
     --------------
@@ -36,7 +36,6 @@ class Program:
 
     def __init__(self, root_dir, fov_scorer, env='dev', verbose=True, test_mode=None):
         '''
-        Program instantiation
 
         datastore : py4j datastore object
             passed explicitly here to avoid an unusual py4j error
@@ -300,9 +299,9 @@ class Program:
         self.program_metadata_logger('cleanup_timestamp', utils.timestamp())
 
     
-class PipelinePlateProgram(Program):
+class PipelinePlateAcquisition(Acquisition):
     '''
-    This program is a re-implementation of Nathan's pipeline plate acquisition script
+    This is a re-implementation of Nathan's pipeline plate acquisition script
 
     It acquires DAPI and GFP z-stacks at some number of positions
     in some number of wells on a 96-well plate.
