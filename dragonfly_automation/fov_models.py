@@ -24,7 +24,7 @@ def printr(s):
 
 def catch_errors(method):
     '''
-    Wrapper for instance methods called in self.classify_raw_fov
+    Wrapper for instance methods called in self.score_raw_fov
     that catches and logs *all* exceptions and, if an exception occurs,
     sets the score to None and prevents subsequent wrapped methods from executing
 
@@ -74,7 +74,7 @@ class PipelineFOVScorer:
         '''
 
         # whether the methods wrapped by catch_errors
-        # can raise errors or not (explicitly set to False in self.classify_raw_fov)
+        # can raise errors or not (explicitly set to False in self.score_raw_fov)
         self.allow_errors = True
 
         if mode not in ['training', 'prediction']:
@@ -92,14 +92,10 @@ class PipelineFOVScorer:
         self.cached_training_metadata = None
         self.current_training_metadata = None
         
-        # an optional external event logger assigned after instantiation
-        def dummy_event_logger(*args, **kwargs): pass
-        self.external_event_logger = dummy_event_logger
-
         # hard-coded image size
         self.image_size = 1024
 
-        # hard-coded feature order for the classifier
+        # hard-coded feature order for the model
         self.feature_order = (
             'num_nuclei',
             'com_offset',
@@ -141,7 +137,7 @@ class PipelineFOVScorer:
         Steps
         1) load the training dataset and the cached metadata 
            (including cross-validation results)
-        2) train the classifier (self.model)
+        2) train the model (self.model)
         3) verify that the cross-validation results are comparable to the cached results
         '''
 
@@ -356,7 +352,7 @@ class PipelineFOVScorer:
         Parameters
         ----------
         image : numpy.ndarray (2D and uint16)
-            The raw field of view to classify; assumed to be close to in-focus
+            The raw field of view to score; assumed to be close to in-focus
         position_ind : int, optional (but required for logging)
             The index of the current position
             Note that we use an index, and not a label, because it's not clear
@@ -446,14 +442,14 @@ class PipelineFOVScorer:
         # if there's no log dir, print the error_info (if any) (just for debugging)
         if self.log_dir is None:
             if error_info is not None:
-                print("Error during classification in method `%s`: '%s'" % \
+                print("Error during FOV scoring in method `%s`: '%s'" % \
                     (error_info.get('method_name'), error_info.get('error_message')))
             return
 
         # if we're still here, we need a position_ind
         position_ind = log_info.get('position_ind')
         if position_ind is None:
-            print('Warning: a position_ind must be provided to log classification info')
+            print('Warning: a position_ind must be provided to log FOV scoring info')
             return
 
         # directory and filepaths for logged images

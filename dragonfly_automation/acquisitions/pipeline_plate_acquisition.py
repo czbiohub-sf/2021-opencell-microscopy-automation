@@ -60,9 +60,8 @@ class Acquisition:
         self.log_dir = os.path.join(self.root_dir, 'logs')
         self.data_dir = os.path.join(self.root_dir, 'raw_data')
 
-        # assign the log_dir and event logger to the fov_scorer instance
+        # assign the log_dir to the fov_scorer instance
         fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
-        fov_scorer.external_event_logger = self.event_logger
 
         # check whether data and/or logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
