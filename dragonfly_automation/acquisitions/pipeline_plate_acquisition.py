@@ -84,7 +84,7 @@ class Acquisition:
         self.important_events_log_file = os.path.join(
             self.log_dir, '%s_important-events.log' % self.experiment_name)
         
-        # program metadata log (JSON)
+        # acquisition metadata log (JSON)
         self.metadata_log_file = os.path.join(
             self.log_dir, '%s_experiment-metadata.json' % self.experiment_name)
         
@@ -101,13 +101,13 @@ class Acquisition:
         if not repo:
             raise ValueError('This script cannot be run outside of a git repo')
         current_commit = repo.commit().hexsha
-        self.program_metadata_logger('git_commit', current_commit)
+        self.acquisition_metadata_logger('git_commit', current_commit)
 
         # log the experiment root directory
-        self.program_metadata_logger('root_directory', self.root_dir)
+        self.acquisition_metadata_logger('root_directory', self.root_dir)
 
         # log the directory the fov_scorer was loaded from
-        self.program_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
+        self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
@@ -144,8 +144,8 @@ class Acquisition:
         if newline:
             message = '\n%s' % message
  
-        # manually-defined 'important' events
-        important_labels = ['PROGRAM', 'AUTOEXPOSURE', 'ERROR', 'WARNING']
+        # manually-defined 'important' event categories
+        important_labels = ['ACQUISITION', 'SCORING', 'AUTOEXPOSURE', 'ERROR', 'WARNING']
         
         message_is_important = False
         for label in important_labels:
@@ -169,14 +169,14 @@ class Acquisition:
             print(message)
 
 
-    def program_metadata_logger(self, key, value):
+    def acquisition_metadata_logger(self, key, value):
         '''
-        Append a key-value pair to the program-level metadata (which is just a JSON object)
+        Append a key-value pair to the acquisition-level metadata (which is just a JSON object)
 
-        This log is intended to capture metadata like the name of the program subclass,
+        This log is intended to capture metadata like the name of the acquisition subclass,
         the name of the imaging experiment, the start and end times of the acquisition itself,
-        the git commit hash of the dragonfly-automation repo when the program was run,
-        and also all of the program-level settings (autoexposure, stack, and default channel settings)
+        the git commit hash of the dragonfly-automation repo when the acquisition was run,
+        and also all of the acquisition-level settings (autoexposure, stack, and default channel settings)
 
         TODO: check for key collisions
         '''
@@ -259,7 +259,7 @@ class Acquisition:
         should_split_positions = True
         should_generate_separate_metadata = True
 
-        self.event_logger('PROGRAM INFO: Creating datastore at %s' % self.data_dir)
+        self.event_logger('ACQUISITION INFO: Creating datastore at %s' % self.data_dir)
         self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
             self.data_dir,
             should_generate_separate_metadata, 
@@ -273,7 +273,7 @@ class Acquisition:
         Commands to execute before the acquisition begins
         e.g., setting the autofocus mode, camera mode, various synchronization commands
         '''
-        self.program_metadata_logger('setup_timestamp', utils.timestamp())
+        self.acquisition_metadata_logger('setup_timestamp', utils.timestamp())
 
 
     def run(self):
@@ -296,7 +296,7 @@ class Acquisition:
             self.datastore.freeze()
 
         # log the time
-        self.program_metadata_logger('cleanup_timestamp', utils.timestamp())
+        self.acquisition_metadata_logger('cleanup_timestamp', utils.timestamp())
 
     
 class PipelinePlateAcquisition(Acquisition):
@@ -316,8 +316,8 @@ class PipelinePlateAcquisition(Acquisition):
         # whether to acquire a brightfield stack after the DAPI and GFP stacks
         self.acquire_bf_stacks = True
 
-        # log the name of the program subclass
-        self.program_metadata_logger('program_name', self.__class__.__name__)
+        # log the name of the acquisition subclass
+        self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
 
         # initialize channel managers
         self.bf_channel = ChannelSettingsManager(settings.bf_channel_settings)
@@ -347,29 +347,29 @@ class PipelinePlateAcquisition(Acquisition):
         self.zstage_label = self.fl_stack_settings.stage_label
     
         # manually log all of the settings
-        self.program_metadata_logger(
+        self.acquisition_metadata_logger(
             'autoexposure_settings', 
             dict(self.autoexposure_settings._asdict()))
 
-        self.program_metadata_logger(
+        self.acquisition_metadata_logger(
             'fluorescence_stack_settings', 
             dict(self.fl_stack_settings._asdict()))
 
-        self.program_metadata_logger(
+        self.acquisition_metadata_logger(
             'brightfield_stack_settings', 
             dict(self.bf_stack_settings._asdict()))
     
-        self.program_metadata_logger(
+        self.acquisition_metadata_logger(
             'dapi_channel',
             self.dapi_channel.__dict__)
 
-        self.program_metadata_logger(
+        self.acquisition_metadata_logger(
             'gfp_channel',
             self.gfp_channel.__dict__)
     
 
     def setup(self):
-        self.event_logger('PROGRAM INFO: Calling setup method')
+        self.event_logger('ACQUISITION INFO: Calling setup method')
 
         super().setup()
 
@@ -386,7 +386,7 @@ class PipelinePlateAcquisition(Acquisition):
         # turn on auto shutter mode 
         # (this means that the shutter automatically opens and closes when an image is acquired)
         self.mm_core.setAutoShutter(True)
-        self.event_logger('PROGRAM INFO: Exiting setup method')
+        self.event_logger('ACQUISITION INFO: Exiting setup method')
 
 
     def cleanup(self):
@@ -394,9 +394,9 @@ class PipelinePlateAcquisition(Acquisition):
         TODO: are there commands that should be executed here
         to ensure the microscope is returned to a 'safe' state?
         '''
-        self.event_logger('PROGRAM INFO: Calling cleanup method')
+        self.event_logger('ACQUISITION INFO: Calling cleanup method')
         super().cleanup()
-        self.event_logger('PROGRAM INFO: Exiting cleanup method')
+        self.event_logger('ACQUISITION INFO: Exiting cleanup method')
 
 
     def parse_hcs_position_label(self, label):
@@ -412,7 +412,7 @@ class PipelinePlateAcquisition(Acquisition):
         pattern = r'^([A-H][0-9]{1,2})-Site_([0-9]+)$'
         result = re.findall(pattern, label)
         if not result:
-            self.event_logger('PROGRAM ERROR: Unexpected site label %s' % label)
+            self.event_logger('ACQUISITION ERROR: Unexpected site label %s' % label)
         
         well_id, site_num = result[0]
         site_num = int(site_num)
@@ -474,7 +474,7 @@ class PipelinePlateAcquisition(Acquisition):
         # loop over wells
         for well_id in unique_well_ids:
             self.current_well_id = well_id
-            self.event_logger('PROGRAM INFO: Scoring all FOVs in well %s' % well_id, newline=True)
+            self.event_logger('ACQUISITION INFO: Scoring all FOVs in well %s' % well_id, newline=True)
             
             # positions in this well
             positions = [p for p in all_positions if p['well_id'] == well_id]
@@ -482,12 +482,12 @@ class PipelinePlateAcquisition(Acquisition):
             # score and rank the positions
             positions_to_acquire = self.select_positions(positions)
             if not len(positions_to_acquire):
-                self.event_logger('PROGRAM WARNING: No acceptable FOVs were found in well %s' % well_id)
+                self.event_logger('ACQUISITION WARNING: No acceptable FOVs were found in well %s' % well_id)
             else:
                 # prettify the scores for the event log
                 scores = ', '.join(['%0.2f' % p['fov_score'] for p in positions_to_acquire])
                 self.event_logger(
-                    'PROGRAM INFO: Imaging %d FOVs in well %s (scores: [%s])' % \
+                    'ACQUISITION INFO: Imaging %d FOVs in well %s (scores: [%s])' % \
                         (len(positions_to_acquire), well_id, scores),
                     newline=True)
     
@@ -575,7 +575,7 @@ class PipelinePlateAcquisition(Acquisition):
                 log_info = self.fov_scorer.score_raw_fov(image, position_ind=position_ind)
             except Exception as error:
                 self.event_logger(
-                    "PROGRAM ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s" % \
+                    "SCORING ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s" % \
                         (position['name'], error))
 
             # retrieve the score and note it in the event log
@@ -586,7 +586,7 @@ class PipelinePlateAcquisition(Acquisition):
                 # prettify the score for the event log
                 score = '%0.2f' % score if score is not None else score
                 self.event_logger(
-                    "PROGRAM INFO: The FOV score at position '%s' was %s (comment: '%s')" % \
+                    "SCORING INFO: The FOV score at position '%s' was %s (comment: '%s')" % \
                         (position['name'], score, log_info.get('comment')))            
 
         # drop positions without a score
@@ -598,7 +598,7 @@ class PipelinePlateAcquisition(Acquisition):
 
         # list of acceptable positions
         acceptable_positions = [p for p in positions if p['fov_score'] > abs_min_score]
-        self.event_logger('PROGRAM INFO: Found %d acceptable FOVs' % len(acceptable_positions))
+        self.event_logger('ACQUISITION INFO: Found %d acceptable FOVs' % len(acceptable_positions))
 
         # crop the list if there are more acceptable positions than needed
         positions_to_image = acceptable_positions[:max_num_positions]
@@ -622,7 +622,7 @@ class PipelinePlateAcquisition(Acquisition):
         positions = sorted(positions, key=lambda position: position['site_num'])
 
         self.event_logger(
-            "PROGRAM INFO: Autoexposing at the first acceptable FOV of well %s (position '%s')" % \
+            "ACQUISITION INFO: Autoexposing at the first acceptable FOV of well %s (position '%s')" % \
                 (self.current_well_id, positions[0]['name']))
     
         # go to the first position
@@ -652,18 +652,18 @@ class PipelinePlateAcquisition(Acquisition):
 
         if not autoexposure_did_succeed:
             self.event_logger(
-                "PROGRAM ERROR: autoexposure failed in well %s but attempting to continue" % self.current_well_id)
+                "ACQUISITION ERROR: autoexposure failed in well %s but attempting to continue" % self.current_well_id)
 
         for ind, position in enumerate(positions):
             self.event_logger(
-                "PROGRAM INFO: Acquiring stacks at position %d of %d in well %s (position '%s')" % \
+                "ACQUISITION INFO: Acquiring stacks at position %d of %d in well %s (position '%s')" % \
                     (ind + 1, len(positions), position['well_id'], position['name']),
                     newline=True)
 
             # sanity check 
             if self.current_well_id != position['well_id']:
                 self.event_logger(
-                    'PROGRAM ERROR: The well_id of the position being acquired does not match self.current_well_id')
+                    'ACQUISITION ERROR: The well_id of the position being acquired does not match self.current_well_id')
 
             # go to the position
             position_ind = position['ind']
@@ -692,7 +692,7 @@ class PipelinePlateAcquisition(Acquisition):
                 })
 
             for channel_ind, settings in enumerate(all_settings):
-                self.event_logger("PROGRAM INFO: Acquiring channel '%s'" % settings['channel'].config_name)
+                self.event_logger("ACQUISITION INFO: Acquiring channel '%s'" % settings['channel'].config_name)
 
                 # change the channel
                 self.operations.change_channel(self.mm_core, settings['channel'])

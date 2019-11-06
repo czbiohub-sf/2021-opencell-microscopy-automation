@@ -60,7 +60,7 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     try:
         af_plugin.fullFocus()
     except py4j.protocol.Py4JJavaError as error:
-        event_logger("PROGRAM ERROR: AFC failed (error: '%s')" % str(error))
+        event_logger("AUTOFOCUS ERROR: AFC failed (error: '%s')" % str(error))
         afc_error = str(error)
         afc_did_succeed = False
     
