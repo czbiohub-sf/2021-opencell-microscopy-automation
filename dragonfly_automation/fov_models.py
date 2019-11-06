@@ -55,14 +55,14 @@ def catch_errors(method):
             # which will prevent the execution of all subsequent catch_errors-wrapped methods
             self.assign_score(
                 score=None, 
-                comment=("Error in <FOVClassifier.%s>" % method_name),
+                comment=("Error in <PipelineFOVScorer.%s>" % method_name),
                 error_info=error_info)
 
         return result
     return wrapper
 
 
-class FOVClassifier:
+class PipelineFOVScorer:
 
     def __init__(self, log_dir=None, mode='prediction', model_type='regression'):
         '''
@@ -481,7 +481,7 @@ class FOVClassifier:
             row.update(features)
 
         # append the row to the log file
-        log_filepath = os.path.join(self.log_dir, 'fov-classification-log.csv')
+        log_filepath = os.path.join(self.log_dir, 'fov-score-log.csv')
         if os.path.isfile(log_filepath):
             log = pd.read_csv(log_filepath)
             log = log.append(row, ignore_index=True)

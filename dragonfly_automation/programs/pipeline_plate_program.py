@@ -34,7 +34,7 @@ class Program:
 
     '''
 
-    def __init__(self, root_dir, fov_classifier, env='dev', verbose=True, test_mode=None):
+    def __init__(self, root_dir, fov_scorer, env='dev', verbose=True, test_mode=None):
         '''
         Program instantiation
 
@@ -53,7 +53,7 @@ class Program:
 
         self.env = env
         self.verbose = verbose
-        self.fov_classifier = fov_classifier
+        self.fov_scorer = fov_scorer
 
         # the name of the experiment is the name of the directory
         self.experiment_name = os.path.split(self.root_dir)[-1]
@@ -61,9 +61,9 @@ class Program:
         self.log_dir = os.path.join(self.root_dir, 'logs')
         self.data_dir = os.path.join(self.root_dir, 'raw_data')
 
-        # assign the log_dir and event logger to the fov_classifier instance
-        fov_classifier.log_dir = os.path.join(self.log_dir, 'fov-classification')
-        fov_classifier.external_event_logger = self.event_logger
+        # assign the log_dir and event logger to the fov_scorer instance
+        fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
+        fov_scorer.external_event_logger = self.event_logger
 
         # check whether data and/or logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
@@ -107,8 +107,8 @@ class Program:
         # log the experiment root directory
         self.program_metadata_logger('root_directory', self.root_dir)
 
-        # log the directory the fov_classifier was loaded from
-        self.program_metadata_logger('fov_classifier_save_dir', self.fov_classifier.save_dir)
+        # log the directory the fov_scorer was loaded from
+        self.program_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
@@ -131,7 +131,7 @@ class Program:
         Note that this method is also passed to, and called from, 
         - some methods in the operations module
         - the wrappers around the gate, mm_studio, and mm_core objects
-        - the logging method of the FOVClassifier instance at self.fov_classifier
+        - the logging method of the FOVScorer instance at self.fov_scorer
 
         For now, we rely on the correct manual hard-coding of log messages 
         to identify, in the logfile, which of these contexts this method was called from
@@ -146,8 +146,7 @@ class Program:
             message = '\n%s' % message
  
         # manually-defined 'important' events
-        important_labels = [
-            'PROGRAM', 'CLASSIFIER', 'AUTOEXPOSURE', 'ERROR', 'WARNING']
+        important_labels = ['PROGRAM', 'AUTOEXPOSURE', 'ERROR', 'WARNING']
         
         message_is_important = False
         for label in important_labels:
@@ -570,11 +569,11 @@ class PipelinePlateProgram(Program):
             image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
 
             # score the FOV
-            # note that, given all of the error handling in FOVClassifier, 
+            # note that, given all of the error handling in PipelineFOVScorer, 
             # the try-catch is a last line of defense that should never be needed
             log_info = None
             try:
-                log_info = self.fov_classifier.score_raw_fov(image, position_ind=position_ind)
+                log_info = self.fov_scorer.score_raw_fov(image, position_ind=position_ind)
             except Exception as error:
                 self.event_logger(
                     "PROGRAM ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s" % \
