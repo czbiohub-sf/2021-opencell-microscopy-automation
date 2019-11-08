@@ -11,7 +11,7 @@ import pandas as pd
 from dragonfly_automation import utils
 from dragonfly_automation import operations
 from dragonfly_automation.gateway import gateway_utils
-from dragonfly_automation.settings import ChannelSettingsManager
+from dragonfly_automation.settings_schemas import ChannelSettingsManager
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 
