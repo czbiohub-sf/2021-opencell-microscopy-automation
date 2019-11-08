@@ -175,7 +175,8 @@ class Acquisition:
         This log is intended to capture metadata like the name of the acquisition subclass,
         the name of the imaging experiment, the start and end times of the acquisition itself,
         the git commit hash of the dragonfly-automation repo when the acquisition was run,
-        and also all of the acquisition-level settings (autoexposure, stack, and default channel settings)
+        and also all of the acquisition-level settings 
+        (autoexposure, stack, and default channel settings)
 
         TODO: check for key collisions
         '''
@@ -481,10 +482,15 @@ class PipelinePlateAcquisition(Acquisition):
             # score and rank the positions
             positions_to_acquire = self.select_positions(positions)
             if not len(positions_to_acquire):
-                self.event_logger('ACQUISITION WARNING: No acceptable FOVs were found in well %s' % well_id)
+                self.event_logger('ACQUISITION WARNING: No FOVs will be imaged in well %s' % well_id)
             else:
                 # prettify the scores for the event log
-                scores = ', '.join(['%0.2f' % p['fov_score'] for p in positions_to_acquire])
+                scores = [
+                    '%0.2f' % p['fov_score'] if p['fov_score'] is not None else 'None' 
+                    for p in positions_to_acquire
+                ]
+                scores = ', '.join(scores)
+
                 self.event_logger(
                     'ACQUISITION INFO: Imaging %d FOVs in well %s (scores: [%s])' % \
                         (len(positions_to_acquire), well_id, scores),
@@ -521,6 +527,9 @@ class PipelinePlateAcquisition(Acquisition):
         # assumes we are using a regression model to predict a -1/+1 bad/good score
         # TODO: better documentation and move this to settings or __init__
         abs_min_score = -0.5
+
+        # the minimum number of positions to image in a well
+        min_num_positions = 1
 
         # the maximum number of positions to image in a well
         max_num_positions = 6
@@ -590,17 +599,43 @@ class PipelinePlateAcquisition(Acquisition):
 
         # drop positions without a score
         # (this will happen if log_info.get('score') is None or if there was an uncaught error above)
-        positions = [p for p in positions if p.get('fov_score') is not None]
+        positions_with_score = [p for p in positions if p.get('fov_score') is not None]
 
         # sort positions in descending order by score (from good to bad)
-        positions = sorted(positions, key=lambda p: -p['fov_score'])
+        positions_with_score = sorted(positions_with_score, key=lambda p: -p['fov_score'])
 
         # list of acceptable positions
-        acceptable_positions = [p for p in positions if p['fov_score'] > abs_min_score]
+        acceptable_positions = [p for p in positions_with_score if p['fov_score'] > abs_min_score]
         self.event_logger('ACQUISITION INFO: Found %d acceptable FOVs' % len(acceptable_positions))
 
         # crop the list if there are more acceptable positions than needed
         positions_to_image = acceptable_positions[:max_num_positions]
+
+        # remove positions from positions_with_score that are now in positions_to_image
+        positions_with_score = positions_with_score[len(positions_to_image):]
+
+        # if there were too few acceptable positions found, 
+        # append the next-highest-scoring positions
+        num_positions_short = min_num_positions - len(positions_to_image)
+        if num_positions_short > 0:
+            additional_positions = positions_with_score[:num_positions_short]
+            positions_to_image.extend(additional_positions)
+
+            if len(additional_positions):
+                self.event_logger(
+                    'ACQUISITION INFO: Fewer than the minimum of %s acceptable FOVs were found so %s additional scored FOVs will be imaged' % \
+                        (min_num_positions, len(additional_positions)))
+            else:
+                self.event_logger(
+                    'ACQUISITION INFO: Fewer than the minimum of %s acceptable FOVs were found and there are no additional scored FOVs to image' % \
+                        (min_num_positions,))
+
+        # if there are still too few FOVs, there's nothing we can do        
+        if len(positions_to_image) < min_num_positions:
+            self.event_logger(
+                'ACQUISITION WARNING: All %s scored FOVs will be imaged but this is fewer than the minimum of %s FOVs' % \
+                    (len(positions_to_image), min_num_positions))
+
         return positions_to_image
 
 
