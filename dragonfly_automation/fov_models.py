@@ -196,33 +196,35 @@ class PipelineFOVScorer:
             print('Metadata saved to %s' % self.training_metadata_filepath())
 
 
-    def process_training_data(self, data):
+    def process_existing_fov(self, filepath):
         '''
-        Calculate the features from the training data images
+        Process and calculate features from a single extant FOV
+        (in the form of either a z-projection or a single in-focus z-slice)
 
-        Note that there is minimal error handling, since the training data has been curated
-        and we should be able to find nuclei in every image without errors occurring
+        This method is intended to process an existing image,
+        either to generate training data or to predict a score for an existing FOV;
+        it is *not* intended to process an image directly from the microscope itself
+        (for this application, see self.score_raw_fov)
+
+        Note that this method behaves like a class method, but cannot formally be one
+        because the feature extraction methods themselves are instance methods
+        (which they must be for the catch_errors wrapper to work)
 
         Parameters
         ----------
-        data : a pd.DataFrame with a 'filename' column and one or more label columns
+        filepath : absolute path to a single FOV (as a single-page TIFF)
 
         '''
 
-        # create columns for the calculated features
-        for feature_name in self.feature_order:
-            data[feature_name] = None
-
-        for ind, row in data.iterrows():
-            printr(row.filename)
-            im = tifffile.imread(row.filename)
+        im = tifffile.imread(filepath)
+        try:
             mask = self.generate_background_mask(im)
             positions = self.find_nucleus_positions(mask)
             features = self.calculate_features(positions)
-            for feature_name, feature_value in features.items():
-                data.at[ind, feature_name] = feature_value
-
-        self.training_data = data
+        except Exception as error:
+            features = {'error': str(error)}
+        features['filename'] = filepath.split(os.sep)[-1]
+        return features
 
 
     def train(self):
@@ -312,25 +314,6 @@ class PipelineFOVScorer:
         features = self.calculate_features(mock_positions)
         score = self.predict_score(features)
         print('Mock predicted score (should be falsy): %s' % score)
-
-
-    @catch_errors
-    def predict_score(self, features):
-        '''
-        Use the pre-trained model to predict a score
-        '''
-
-        # construct the feature array of shape (1, num_features)
-        X = np.array([features.get(name) for name in self.feature_order])[None, :]
-
-        # use predict_proba if the model is a classifier
-        # (note that predict_proba returns [p_false, p_true])
-        if self.model_type == 'classification':
-            score = self.model.predict_proba(X)[0][1]
-        else:
-            score = self.model.predict(X)[0]
-
-        return score
 
 
     def score_raw_fov(self, image, position_ind=None):
@@ -705,6 +688,25 @@ class PipelineFOVScorer:
         })
 
         return features
+
+
+    @catch_errors
+    def predict_score(self, features):
+        '''
+        Use the pre-trained model to predict a score
+        '''
+
+        # construct the feature array of shape (1, num_features)
+        X = np.array([features.get(name) for name in self.feature_order])[None, :]
+
+        # use predict_proba if the model is a classifier
+        # (note that predict_proba returns [p_false, p_true])
+        if self.model_type == 'classification':
+            score = self.model.predict_proba(X)[0][1]
+        else:
+            score = self.model.predict(X)[0]
+
+        return score
 
 
     def show_nucleus_positions(self, positions, im=None, ax=None):
