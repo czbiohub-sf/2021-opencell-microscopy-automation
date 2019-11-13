@@ -218,14 +218,28 @@ class PipelineFOVScorer:
 
         features = {'filename': filepath.split(os.sep)[-1]}
         if not os.path.isfile(filepath):
-            features['error'] = '%s does not exist' % filepath
+            features['error'] = 'File does not exist'
             return features
 
         im = tifffile.imread(filepath)
         try:
+            # check whether there are any nuclei in the FOV
+            nuclei_in_fov = self.are_nuclei_in_fov(im)
+            if not nuclei_in_fov:
+                features['error'] = 'No nuclei in the FOV'
+                return features
+
+            # calculate the background mask and nucleus positions
             mask = self.generate_background_mask(im)
             positions = self.find_nucleus_positions(mask)
+
+            # determine if the are too few nuclei in the mask to proceed
+            enough_nuclei_in_fov = self.are_enough_nuclei_in_fov(positions)
+            if not enough_nuclei_in_fov:
+                features['error'] = 'Too few nuclei in the FOV'
+                return features
             features.update(self.calculate_features(positions))
+        
         except Exception as error:
             features['error'] = str(error)
         return features
