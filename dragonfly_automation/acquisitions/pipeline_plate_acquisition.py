@@ -631,7 +631,7 @@ class PipelinePlateAcquisition(Acquisition):
                         (min_num_positions,))
 
         # if there are still too few FOVs, there's nothing we can do        
-        if len(positions_to_image) < min_num_positions:
+        if len(positions_to_image) > 0 and len(positions_to_image) < min_num_positions:
             self.event_logger(
                 'ACQUISITION WARNING: All %s scored FOVs will be imaged but this is fewer than the minimum of %s FOVs' % \
                     (len(positions_to_image), min_num_positions))
