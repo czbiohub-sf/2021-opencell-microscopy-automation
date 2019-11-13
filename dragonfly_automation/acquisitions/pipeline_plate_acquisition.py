@@ -144,7 +144,7 @@ class Acquisition:
             message = '\n%s' % message
  
         # manually-defined 'important' event categories
-        important_labels = ['ACQUISITION', 'SCORING', 'AUTOEXPOSURE', 'ERROR', 'WARNING']
+        important_labels = ['ACQUISITION', 'SCORING', 'AUTOFOCUS', 'AUTOEXPOSURE', 'ERROR', 'WARNING']
         
         message_is_important = False
         for label in important_labels:
@@ -529,7 +529,7 @@ class PipelinePlateAcquisition(Acquisition):
         abs_min_score = -0.5
 
         # the minimum number of positions to image in a well
-        min_num_positions = 1
+        min_num_positions = 2
 
         # the maximum number of positions to image in a well
         max_num_positions = 6
@@ -540,17 +540,18 @@ class PipelinePlateAcquisition(Acquisition):
         # sort positions by site number
         positions = sorted(positions, key=lambda position: position['site_num'])
 
-        # go to the first position and call AFC
+        # go to the first position
         position_ind = positions[0]['ind']
         self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
-        afc_succeeded = self.operations.call_afc(
+
+        # call AFC
+        afc_did_succeed = self.operations.call_afc(
             self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
 
         # if AFC succeeded, get the AFC-updated FocusDrive position
-        # (if AFC fails, it moves the FocusDrive stage down 500ish microns, which we want to ignore)
-        focusdrive_position = None
-        if afc_succeeded:
-            focusdrive_position = self.mm_core.getPosition('FocusDrive')
+        afc_updated_focusdrive_position = None
+        if afc_did_succeed:
+            afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
 
         # change to the DAPI channel for FOV scoring
         self.operations.change_channel(self.mm_core, self.dapi_channel)
@@ -561,23 +562,29 @@ class PipelinePlateAcquisition(Acquisition):
             self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
 
             # update the FocusDrive position (this should help AFC to focus faster)
-            if focusdrive_position is not None:
+            if afc_updated_focusdrive_position is not None:
                 self.operations.move_z_stage(
                     self.mm_core, 
                     'FocusDrive', 
-                    position=focusdrive_position, 
+                    position=afc_updated_focusdrive_position, 
                     kind='absolute')
 
-            # attempt to call AFC (and ignore errors)
-            self.operations.call_afc(
+            # attempt to call AFC
+            afc_did_succeed = self.operations.call_afc(
                 self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
+
+            # update the AFC-updated FocusDrive position and log it for later use
+            # in self.acquire_positions
+            if afc_did_succeed:
+                afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
+                position['afc_updated_focusdrive_position'] = afc_updated_focusdrive_position
 
             # acquire an image of the DAPI signal
             image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
 
             # score the FOV
             # note that, given all of the error handling in PipelineFOVScorer, 
-            # the try-catch is a last line of defense that should never be needed
+            # this try-catch is a last line of defense that should never be needed
             log_info = None
             try:
                 log_info = self.fov_scorer.score_raw_fov(image, position_ind=position_ind)
@@ -639,6 +646,27 @@ class PipelinePlateAcquisition(Acquisition):
         return positions_to_image
 
 
+    def go_to_position(self, position):
+        '''
+        Convenience method called by acquire_positions
+        to move to a new position and update the FocusDrive position
+        '''
+        self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
+
+        # update the FocusDrive position
+        afc_updated_focusdrive_position = position.get('afc_updated_focusdrive_position')
+        if afc_updated_focusdrive_position is not None:
+            current_position = self.mm_core.getPosition('FocusDrive')
+            self.event_logger(
+                'ACQUISITION INFO: Updating the interpolated FocusDrive position (%d) with the prior AFC-updated position (%d)' % \
+                    (current_position, afc_updated_focusdrive_position))
+            self.operations.move_z_stage(
+                self.mm_core, 
+                'FocusDrive', 
+                position=afc_updated_focusdrive_position, 
+                kind='absolute')
+
+
     def acquire_positions(self, positions):
         '''
         Acquire z-stacks at the positions listed in positions
@@ -659,13 +687,13 @@ class PipelinePlateAcquisition(Acquisition):
             "ACQUISITION INFO: Autoexposing at the first acceptable FOV of well %s (position '%s')" % \
                 (self.current_well_id, positions[0]['name']))
     
-        # go to the first position
-        position_ind = positions[0]['ind']
-        self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+        # go to the first position, where autoexposure will be run
+        position = positions[0]
+        self.go_to_position(position)
 
         # attempt to call AFC (and ignore errors)
         self.operations.call_afc(
-            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
+            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind'])
 
         # reset the GFP channel settings
         self.gfp_channel.reset()
@@ -688,6 +716,7 @@ class PipelinePlateAcquisition(Acquisition):
             self.event_logger(
                 "ACQUISITION ERROR: autoexposure failed in well %s but attempting to continue" % self.current_well_id)
 
+        # acquire z-stacks at each position
         for ind, position in enumerate(positions):
             self.event_logger(
                 "ACQUISITION INFO: Acquiring stacks at position %d of %d in well %s (position '%s')" % \
@@ -701,10 +730,10 @@ class PipelinePlateAcquisition(Acquisition):
 
             # go to the position
             position_ind = position['ind']
-            self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+            self.go_to_position(position)
 
             # attempt to call AFC (and ignore errors)
-            self.operations.call_afc(
+            afc_did_succeed = self.operations.call_afc(
                 self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
 
             # settings for the two fluorescence channels
@@ -725,6 +754,7 @@ class PipelinePlateAcquisition(Acquisition):
                     'stack': self.bf_stack_settings,
                 })
 
+            # acquire a z-stack for each channel
             for channel_ind, settings in enumerate(all_settings):
                 self.event_logger("ACQUISITION INFO: Acquiring channel '%s'" % settings['channel'].config_name)
 
@@ -746,7 +776,8 @@ class PipelinePlateAcquisition(Acquisition):
                     channel_settings=settings['channel'],
                     position_ind=position_ind,
                     well_id=position['well_id'],
-                    site_num=position['site_num'])
+                    site_num=position['site_num'],
+                    afc_did_succeed=afc_did_succeed)
         
         return
 

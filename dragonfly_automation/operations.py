@@ -40,48 +40,87 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     which has its own fullFocus method - might be faster
 
     '''
-    afc_error = None
-    afc_did_succeed = True
 
     # get the active AutofocusPlugin (assumed to be AFC)
     af_manager = mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()
 
-    # log all of the af_plugin properties 
-    # (currently doesn't work - getPropertyNames returns a java object, not a list)
-    af_plugin_props = {}
-    # prop_names = af_plugin.getPropertyNames()
-    # af_plugin_props = {name: af_plugin.getPropertyValue(name) for name in prop_names}
-
     # the initial AFC score and FocusDrive position
-    score_before = af_plugin.getCurrentFocusScore()
-    focusdrive_position_before = mm_core.getPosition('FocusDrive')
+    initial_afc_score = af_plugin.getCurrentFocusScore()
+    initial_focusdrive_position = mm_core.getPosition('FocusDrive')
     
-    try:
-        af_plugin.fullFocus()
-    except py4j.protocol.Py4JJavaError as error:
-        event_logger("AUTOFOCUS ERROR: AFC failed (error: '%s')" % str(error))
-        afc_error = str(error)
-        afc_did_succeed = False
-    
-    mm_core.waitForSystem()
+    event_logger('AUTOFOCUS INFO: Attempting to call AFC (initial FocusDrive position is %d)' % \
+        (initial_focusdrive_position,))
 
-    # add an artificial delay because, anecdotally, the score
-    # takes some time to update after the FocusDrive is moved
+    # here we attempt to call AFC at various focusdrive positions.
+    # the logic of this is that, when AFC times out, it is usually because
+    # the stage (FocusDrive) is too low, so here, when it times out,
+    # we move the stage up in 20um steps and attempt to call AFC at each step
+    afc_error_message = None
+    afc_did_succeed = False
+    failed_offsets = []
+
+    focusdrive_offsets = [0, 20, 40, -20]
+    for offset in focusdrive_offsets:
+        if afc_did_succeed:
+            continue
+
+        if offset != 0:
+            # if we're here, it means AFC already failed once (at offset = 0),
+            # which means we need to reset the FocusDrive position 
+            # and then move it up by the (now nonzero) offset
+            # (note that when AFC times out, it lowers the FocusDrive by around 500um)
+            focusdrive_position = initial_focusdrive_position + offset
+            move_z_stage(
+                mm_core, 
+                'FocusDrive', 
+                position=focusdrive_position,
+                kind='absolute')
+            # delay to help AFC adjust to the new position (see comments below)
+            time.sleep(0.5)
+
+        try:
+            af_plugin.fullFocus()
+            afc_did_succeed = True
+            successful_offset = offset
+        except py4j.protocol.Py4JJavaError as error:
+            event_logger("AUTOFOCUS INFO: AFC timed out at an offset of %dum" % offset)
+            afc_error_message = str(error)
+            failed_offsets.append(offset)
+
+
+    # add an artificial delay before retrieving the AFC score
+    # because, anecdotally, the score requires some time to update 
+    # after the FocusDrive is moved
     time.sleep(0.5)
+    final_afc_score = af_plugin.getCurrentFocusScore()
+    final_focusdrive_position = mm_core.getPosition('FocusDrive')
 
-    score_after = af_plugin.getCurrentFocusScore()
-    focusdrive_position_after = mm_core.getPosition('FocusDrive')
-    
+    # if AFC failed, move the FocusDrive back to where it was,
+    # which is hopefully close-ish to the cell layer
+    if afc_did_succeed:
+        event_logger('AUTOFOCUS INFO: AFC was called successfully at an offset of %dum and the FocusDrive position was updated from %d to %d' % \
+            (successful_offset, initial_focusdrive_position, final_focusdrive_position))
+    else:
+        event_logger('AUTOFOCUS ERROR: AFC timed out at all offsets and the FocusDrive will be reset to %d' % \
+            initial_focusdrive_position)
+
+        move_z_stage(
+            mm_core,
+            'FocusDrive',
+            position=initial_focusdrive_position,
+            kind='absolute')
+
     if afc_logger is not None:
         afc_logger(
-            score_before=score_before,
-            score_after=score_after,
-            focusdrive_position_before=focusdrive_position_before,
-            focusdrive_position_after=focusdrive_position_after,
-            afc_error=afc_error,
-            position_ind=position_ind,
-            **af_plugin_props)
+            initial_afc_score=initial_afc_score,
+            final_afc_score=final_afc_score,
+            final_focusdrive_position=final_focusdrive_position,
+            initial_focusdrive_position=initial_focusdrive_position,
+            last_afc_error_message=afc_error_message,
+            failed_offsets=failed_offsets,
+            afc_did_succeed=afc_did_succeed,
+            position_ind=position_ind)
 
     return afc_did_succeed
 
