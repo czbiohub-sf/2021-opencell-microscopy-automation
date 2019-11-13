@@ -216,14 +216,18 @@ class PipelineFOVScorer:
 
         '''
 
+        features = {'filename': filepath.split(os.sep)[-1]}
+        if not os.path.isfile(filepath):
+            features['error'] = '%s does not exist' % filepath
+            return features
+
         im = tifffile.imread(filepath)
         try:
             mask = self.generate_background_mask(im)
             positions = self.find_nucleus_positions(mask)
-            features = self.calculate_features(positions)
+            features.update(self.calculate_features(positions))
         except Exception as error:
-            features = {'error': str(error)}
-        features['filename'] = filepath.split(os.sep)[-1]
+            features['error'] = str(error)
         return features
 
 
