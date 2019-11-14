@@ -48,18 +48,16 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     # the initial AFC score and FocusDrive position
     initial_afc_score = af_plugin.getCurrentFocusScore()
     initial_focusdrive_position = mm_core.getPosition('FocusDrive')
-    
-    event_logger('AUTOFOCUS INFO: Attempting to call AFC (initial FocusDrive position is %d)' % \
-        (initial_focusdrive_position,))
 
     # here we attempt to call AFC at various focusdrive positions.
     # the logic of this is that, when AFC times out, it is usually because
     # the stage (FocusDrive) is too low, so here, when it times out,
     # we move the stage up in 20um steps and attempt to call AFC at each step
+    successful_offset = None
     afc_error_message = None
     afc_did_succeed = False
     failed_offsets = []
-
+    
     focusdrive_offsets = [0, 20, 40, -20]
     for offset in focusdrive_offsets:
         if afc_did_succeed:
@@ -77,14 +75,14 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
                 position=focusdrive_position,
                 kind='absolute')
             # delay to help AFC adjust to the new position (see comments below)
-            time.sleep(0.5)
+            time.sleep(1.0)
 
         try:
             af_plugin.fullFocus()
             afc_did_succeed = True
             successful_offset = offset
         except py4j.protocol.Py4JJavaError as error:
-            event_logger("AUTOFOCUS INFO: AFC timed out at an offset of %dum" % offset)
+            event_logger("AUTOFOCUS INFO: AFC timed out at an offset of %sum" % offset)
             afc_error_message = str(error)
             failed_offsets.append(offset)
 
@@ -99,10 +97,10 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     # if AFC failed, move the FocusDrive back to where it was,
     # which is hopefully close-ish to the cell layer
     if afc_did_succeed:
-        event_logger('AUTOFOCUS INFO: AFC was called successfully at an offset of %dum and the FocusDrive position was updated from %d to %d' % \
+        event_logger('AUTOFOCUS INFO: AFC was called successfully at an offset of %sum and the FocusDrive position was updated from %s to %s' % \
             (successful_offset, initial_focusdrive_position, final_focusdrive_position))
     else:
-        event_logger('AUTOFOCUS ERROR: AFC timed out at all offsets and the FocusDrive will be reset to %d' % \
+        event_logger('AUTOFOCUS ERROR: AFC timed out at all offsets and the FocusDrive will be reset to %s' % \
             initial_focusdrive_position)
 
         move_z_stage(

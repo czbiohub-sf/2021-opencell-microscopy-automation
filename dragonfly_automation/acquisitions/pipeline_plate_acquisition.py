@@ -658,7 +658,7 @@ class PipelinePlateAcquisition(Acquisition):
         if afc_updated_focusdrive_position is not None:
             current_position = self.mm_core.getPosition('FocusDrive')
             self.event_logger(
-                'ACQUISITION INFO: Updating the interpolated FocusDrive position (%d) with the prior AFC-updated position (%d)' % \
+                'ACQUISITION INFO: Updating the interpolated FocusDrive position (%s) with the AFC-updated position (%s)' % \
                     (current_position, afc_updated_focusdrive_position))
             self.operations.move_z_stage(
                 self.mm_core, 
