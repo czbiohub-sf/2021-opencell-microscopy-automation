@@ -3,6 +3,7 @@ import os
 import re
 import git
 import json
+import time
 import shutil
 import datetime
 import numpy as np
@@ -74,26 +75,18 @@ class Acquisition:
         os.makedirs(self.log_dir, exist_ok=True)
 
         # event logs (plaintext)
-        self.all_events_log_file = os.path.join(
-            self.log_dir, '%s_all-events.log' % self.experiment_name)
-
-        self.error_events_log_file = os.path.join(
-            self.log_dir, '%s_error-events.log' % self.experiment_name)
-
-        self.important_events_log_file = os.path.join(
-            self.log_dir, '%s_important-events.log' % self.experiment_name)
+        self.all_events_log_file = os.path.join(self.log_dir, 'all-events.log')
+        self.error_events_log_file = os.path.join(self.log_dir, 'error-events.log')
+        self.important_events_log_file = os.path.join(self.log_dir, 'important-events.log')
         
         # acquisition metadata log (JSON)
-        self.metadata_log_file = os.path.join(
-            self.log_dir, '%s_experiment-metadata.json' % self.experiment_name)
+        self.metadata_log_file = os.path.join(self.log_dir, 'experiment-metadata.json')
         
         # acquisition log (CSV)
-        self.acquisition_log_file = os.path.join(
-            self.log_dir, '%s_acquired-images.csv' % self.experiment_name)
+        self.acquisition_log_file = os.path.join(self.log_dir, 'acquired-images.csv')
 
         # AFC log (CSV)
-        self.afc_log_file = os.path.join(
-            self.log_dir, '%s_afc-calls.csv' % self.experiment_name)
+        self.afc_log_file = os.path.join(self.log_dir, 'afc-calls.csv')
 
         # log the current commit
         repo = git.Repo('..')
@@ -102,8 +95,9 @@ class Acquisition:
         current_commit = repo.commit().hexsha
         self.acquisition_metadata_logger('git_commit', current_commit)
 
-        # log the experiment root directory
+        # log the experiment name and root directory
         self.acquisition_metadata_logger('root_directory', self.root_dir)
+        self.acquisition_metadata_logger('experiment_name', self.experiment_name)
 
         # log the directory the fov_scorer was loaded from
         self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
@@ -648,12 +642,13 @@ class PipelinePlateAcquisition(Acquisition):
 
     def go_to_position(self, position):
         '''
-        Convenience method called by acquire_positions
+        Convenience method used in `acquire_positions`
         to move to a new position and update the FocusDrive position
         '''
         self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
 
-        # update the FocusDrive position
+        # update the FocusDrive if there is an AFC-updated FocusDrive position 
+        # associated with this position (these are created in `select_positions`)
         afc_updated_focusdrive_position = position.get('afc_updated_focusdrive_position')
         if afc_updated_focusdrive_position is not None:
             current_position = self.mm_core.getPosition('FocusDrive')
@@ -665,6 +660,9 @@ class PipelinePlateAcquisition(Acquisition):
                 'FocusDrive', 
                 position=afc_updated_focusdrive_position, 
                 kind='absolute')
+
+            # delay to help AFC 'adjust' to the new position
+            time.sleep(1.0)
 
 
     def acquire_positions(self, positions):
@@ -691,9 +689,16 @@ class PipelinePlateAcquisition(Acquisition):
         position = positions[0]
         self.go_to_position(position)
 
-        # attempt to call AFC (and ignore errors)
-        self.operations.call_afc(
+        # attempt to call AFC
+        afc_did_succeed = self.operations.call_afc(
             self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind'])
+
+        # for now, ignore AFC errors
+        # TODO: think about how to handle this situation, which is very serious,
+        # since autoexposure won't work if we are out of focus
+        # (perhaps try moving to a different position?)
+        if not afc_did_succeed:
+            pass
 
         # reset the GFP channel settings
         self.gfp_channel.reset()
@@ -732,10 +737,15 @@ class PipelinePlateAcquisition(Acquisition):
             position_ind = position['ind']
             self.go_to_position(position)
 
-            # attempt to call AFC (and ignore errors)
+            # attempt to call AFC
             afc_did_succeed = self.operations.call_afc(
                 self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
 
+            # for now, ignore AFC errors
+            # TODO: consider skipping the position if AFC has failed
+            if not afc_did_succeed:
+                pass
+            
             # settings for the two fluorescence channels
             all_settings = [
                 {

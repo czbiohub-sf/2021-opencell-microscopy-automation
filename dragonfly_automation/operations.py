@@ -49,23 +49,23 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     initial_afc_score = af_plugin.getCurrentFocusScore()
     initial_focusdrive_position = mm_core.getPosition('FocusDrive')
 
-    # here we attempt to call AFC at various focusdrive positions.
+    # here we attempt to call AFC at various FocusDrive positions.
     # the logic of this is that, when AFC times out, it is usually because
-    # the stage (FocusDrive) is too low, so here, when it times out,
-    # we move the stage up in 20um steps and attempt to call AFC at each step
+    # the FocusDrive stage is too low, so here, when it times out,
+    # we move the stage up in 10um steps and attempt to call AFC at each step
     successful_offset = None
     afc_error_message = None
     afc_did_succeed = False
     failed_offsets = []
     
-    focusdrive_offsets = [0, 20, 40, -20]
+    focusdrive_offsets = [0, 10, 20, 40, -20]
     for offset in focusdrive_offsets:
         if afc_did_succeed:
             continue
 
         if offset != 0:
-            # if we're here, it means AFC already failed once (at offset = 0),
-            # which means we need to reset the FocusDrive position 
+            # if we're here, it means AFC has failed once (at offset = 0),
+            # which means we need to reset the FocusDrive to its original position 
             # and then move it up by the (now nonzero) offset
             # (note that when AFC times out, it lowers the FocusDrive by around 500um)
             focusdrive_position = initial_focusdrive_position + offset
@@ -74,7 +74,7 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
                 'FocusDrive', 
                 position=focusdrive_position,
                 kind='absolute')
-            # delay to help AFC adjust to the new position (see comments below)
+            # delay to help AFC 'adjust' to the new position (see comments below)
             time.sleep(1.0)
 
         try:
@@ -86,7 +86,6 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
             afc_error_message = str(error)
             failed_offsets.append(offset)
 
-
     # add an artificial delay before retrieving the AFC score
     # because, anecdotally, the score requires some time to update 
     # after the FocusDrive is moved
@@ -95,7 +94,7 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     final_focusdrive_position = mm_core.getPosition('FocusDrive')
 
     # if AFC failed, move the FocusDrive back to where it was,
-    # which is hopefully close-ish to the cell layer
+    # which is, at this point, the best we can do
     if afc_did_succeed:
         event_logger('AUTOFOCUS INFO: AFC was called successfully at an offset of %sum and the FocusDrive position was updated from %s to %s' % \
             (successful_offset, initial_focusdrive_position, final_focusdrive_position))

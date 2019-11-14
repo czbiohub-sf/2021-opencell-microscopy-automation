@@ -221,8 +221,9 @@ class PipelineFOVScorer:
             features['error'] = 'File does not exist'
             return features
 
-        im = tifffile.imread(filepath)
         try:
+            im = tifffile.imread(filepath)
+    
             # check whether there are any nuclei in the FOV
             nuclei_in_fov = self.are_nuclei_in_fov(im)
             if not nuclei_in_fov:
@@ -238,10 +239,13 @@ class PipelineFOVScorer:
             if not enough_nuclei_in_fov:
                 features['error'] = 'Too few nuclei in the FOV'
                 return features
+
+            # calculate features from the positions
             features.update(self.calculate_features(positions))
-        
+
         except Exception as error:
             features['error'] = str(error)
+    
         return features
 
 
