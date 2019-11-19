@@ -573,7 +573,7 @@ class PipelinePlateAcquisition(Acquisition):
             # this try-catch is a last line of defense that should never be needed
             log_info = None
             try:
-                log_info = self.fov_scorer.score_raw_fov(image, position_ind=position_ind)
+                log_info = self.fov_scorer.score_raw_fov(image, position=position)
             except Exception as error:
                 self.event_logger(
                     "SCORING ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s" % \
