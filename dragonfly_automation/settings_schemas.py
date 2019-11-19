@@ -3,6 +3,19 @@ from types import SimpleNamespace
 from collections import namedtuple
 
 
+FOVSelectionSettings = namedtuple('FOVSelectionSettings', [
+
+    # empirical minimum FOV score to define 'acceptable' FOVs
+    'min_score',
+
+    # the minimum number of positions to image in a well
+    'min_num_positions',
+
+    # the maximum number of positions to image in a well
+    'max_num_positions',
+])
+
+
 StackSettings = namedtuple('StackSettings', [
 
     # the name of the stage to use for stepping through the stack

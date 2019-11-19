@@ -11,23 +11,46 @@ from dragonfly_automation.settings_schemas import (
     StackSettings,
     ChannelSettings,
     AutoexposureSettings,
+    FOVSelectionSettings,
 )
 
 
 # -----------------------------------------------------------------------------
 #
-# z-stack range, relative to the AFC point, and step size
+# FOV selection settings
+#
+# -----------------------------------------------------------------------------
+fov_selection_settings = FOVSelectionSettings(
+    
+    # the minimum number of positions at which to acquire z-stacks in each well
+    # (ignoring the FOV scores)
+    min_num_positions=2,
+
+    # the max number of positions to acquire (again ignoring the FOV scores)
+    max_num_positions=6,
+
+    # the minimum score defines 'acceptable' FOVs
+    # the value of -0.5 here is empirical,
+    # and assumes we use a regression model to predict the score
+    min_score=-0.5
+)
+
+
+# -----------------------------------------------------------------------------
+#
+# z-stack settings for fluorescence channels
+# (range, relative to the AFC point, and step size)
 #
 # -----------------------------------------------------------------------------
 STAGE_LABEL = 'PiezoZ'
-dev_stack_settings = StackSettings(
+dev_fl_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=16.0,
     relative_bottom=-10.0,
     step_size=7.0
 )
 
-prod_stack_settings = StackSettings(
+prod_fl_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=16.0,
     relative_bottom=-6.0,

@@ -313,54 +313,51 @@ class PipelinePlateAcquisition(Acquisition):
         # log the name of the acquisition subclass
         self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
 
+        # log whether BF stacks will be acquired
+        self.acquisition_metadata_logger('brightfield_stacks_acquired', self.acquire_bf_stacks)
+
         # initialize channel managers
         self.bf_channel = ChannelSettingsManager(settings.bf_channel_settings)
         self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
         self.dapi_channel = ChannelSettingsManager(settings.dapi_channel_settings)
         
+        # FOV selection settings
+        self.fov_selection_settings = settings.fov_selection_settings
+
         # copy the autoexposure settings
         self.autoexposure_settings = settings.autoexposure_settings
 
         # brightfield stack settings
-        self.bf_stack_settings = settings.bf_stack_settings
+        self.brightfield_stack_settings = settings.bf_stack_settings
         
         # fluorescence stack settings for dev and prod
         # ('dev' settings reduce the number of slices acquired in dev mode)
         if self.env == 'prod':
-            self.fl_stack_settings = settings.prod_stack_settings
+            self.flourescence_stack_settings = settings.prod_fl_stack_settings
         if self.env == 'dev':
-            self.fl_stack_settings = settings.dev_stack_settings
+            self.flourescence_stack_settings = settings.dev_fl_stack_settings
     
-        # the maximum number of FOVs (that is, z-stacks) to acquire per well
-        # (note that if few FOVs are accepted during the FOV assessment, 
-        # we may end up with fewer than this number of stacks for some wells)
-        self.max_num_stacks_per_well = 6
-
         # stage labels for convenience
         self.xystage_label = 'XYStage'
-        self.zstage_label = self.fl_stack_settings.stage_label
-    
-        # manually log all of the settings
-        self.acquisition_metadata_logger(
+        self.zstage_label = self.flourescence_stack_settings.stage_label
+
+        # log all of the settings
+        settings_names = [
+            'fov_selection_settings', 
             'autoexposure_settings', 
-            dict(self.autoexposure_settings._asdict()))
+            'flourescence_stack_settings',
+            'brightfield_stack_settings'
+        ]
+        for settings_name in settings_names:
+            self.acquisition_metadata_logger(
+                settings_name, 
+                dict(getattr(self, settings_name)._asdict()))
 
-        self.acquisition_metadata_logger(
-            'fluorescence_stack_settings', 
-            dict(self.fl_stack_settings._asdict()))
-
-        self.acquisition_metadata_logger(
-            'brightfield_stack_settings', 
-            dict(self.bf_stack_settings._asdict()))
-    
-        self.acquisition_metadata_logger(
-            'dapi_channel',
-            self.dapi_channel.__dict__)
-
-        self.acquisition_metadata_logger(
-            'gfp_channel',
-            self.gfp_channel.__dict__)
-    
+        # log the channel settings
+        for channel_name in ['dapi_channel', 'gfp_channel', 'bf_channel']:
+            self.acquisition_metadata_logger(
+                channel_name,
+                getattr(self, channel_name).__dict__)
 
     def setup(self):
         self.event_logger('ACQUISITION INFO: Calling setup method')
@@ -517,16 +514,11 @@ class PipelinePlateAcquisition(Acquisition):
 
         '''
 
-        # generous empirical threshold to define acceptable FOVs
-        # assumes we are using a regression model to predict a -1/+1 bad/good score
-        # TODO: better documentation and move this to settings or __init__
-        abs_min_score = -0.5
-
         # the minimum number of positions to image in a well
-        min_num_positions = 2
+        min_num_positions = self.fov_selection_settings.min_num_positions
 
         # the maximum number of positions to image in a well
-        max_num_positions = 6
+        max_num_positions = self.fov_selection_settings.max_num_positions
 
         # the returned list of 'good' positions to be imaged
         positions_to_image = []
@@ -606,7 +598,7 @@ class PipelinePlateAcquisition(Acquisition):
         positions_with_score = sorted(positions_with_score, key=lambda p: -p['fov_score'])
 
         # list of acceptable positions
-        acceptable_positions = [p for p in positions_with_score if p['fov_score'] > abs_min_score]
+        acceptable_positions = [p for p in positions_with_score if p['fov_score'] > self.fov_selection_settings.min_score]
         self.event_logger('ACQUISITION INFO: Found %d acceptable FOVs' % len(acceptable_positions))
 
         # crop the list if there are more acceptable positions than needed
@@ -712,7 +704,7 @@ class PipelinePlateAcquisition(Acquisition):
             gate=self.gate,
             mm_studio=self.mm_studio,
             mm_core=self.mm_core,
-            stack_settings=self.fl_stack_settings,
+            stack_settings=self.flourescence_stack_settings,
             autoexposure_settings=self.autoexposure_settings,
             channel_settings=self.gfp_channel,
             event_logger=self.event_logger)
@@ -750,10 +742,10 @@ class PipelinePlateAcquisition(Acquisition):
             all_settings = [
                 {
                     'channel': self.dapi_channel,
-                    'stack': self.fl_stack_settings,
+                    'stack': self.flourescence_stack_settings,
                 },{
                     'channel': self.gfp_channel,
-                    'stack': self.fl_stack_settings,
+                    'stack': self.flourescence_stack_settings,
                 }
             ]
 
@@ -761,7 +753,7 @@ class PipelinePlateAcquisition(Acquisition):
             if self.acquire_bf_stacks:
                 all_settings.append({
                     'channel': self.bf_channel,
-                    'stack': self.bf_stack_settings,
+                    'stack': self.brightfield_stack_settings,
                 })
 
             # acquire a z-stack for each channel
