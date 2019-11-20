@@ -2,13 +2,15 @@
 import os
 import re
 import sys
-import git
 import glob
 import json
 import time
+import dask
 import shutil
 import tifffile
 import datetime
+import dask.diagnostics
+
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -170,21 +172,30 @@ class PipelinePlateQC:
         dst_dirpath = os.path.join(self.qc_dir, 'z-projections')
         os.makedirs(dst_dirpath, exist_ok=True)
 
-        filepaths = glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif'))
-        for filepath in filepaths:
-            tiff = image.MicroManagerTIFF(filepath)
-            tiff.parse_micromanager_metadata()
-            channel_inds = tiff.mm_metadata.channel_ind.unique()
-            for channel_ind in channel_inds:
-                stack = np.array([
-                    tiff.tiff.pages[ind].asarray() 
-                    for ind in tiff.mm_metadata.loc[tiff.mm_metadata.channel_ind==channel_ind].page_ind
-                ])
+        filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif')))
+        tasks = [dask.delayed(self.generate_z_projection(image.MicroManagerTIFF, dst_dirpath, filepath)) 
+            for filepath in filepaths]
         
-                filename = filepath.split(os.sep)[-1]
-                dst_filename = filename.replace('.ome.tif', '_C%d-PROJ-Z.tif' % channel_ind)
-                tifffile.imsave(os.path.join(dst_dirpath, dst_filename), stack.max(axis=0))
-                print('Created projection %s' % dst_filename)
+        with dask.diagnostics.ProgressBar():
+            dask.compute(*tasks)
+
+
+    @staticmethod
+    def generate_z_projection(MicroManagerTIFF, dst_dirpath, filepath):
+        '''
+        '''
+        tiff = MicroManagerTIFF(filepath)
+        tiff.parse_micromanager_metadata()
+        channel_inds = tiff.mm_metadata.channel_ind.unique()
+        for channel_ind in channel_inds:
+            stack = np.array([
+                tiff.tiff.pages[ind].asarray() 
+                for ind in tiff.mm_metadata.loc[tiff.mm_metadata.channel_ind==channel_ind].page_ind
+            ])
+    
+            filename = filepath.split(os.sep)[-1]
+            dst_filename = filename.replace('.ome.tif', '_C%d-PROJ-Z.tif' % channel_ind)
+            tifffile.imsave(os.path.join(dst_dirpath, dst_filename), stack.max(axis=0))
 
 
     def tile_fovs(self, channel_ind=0, save_plot=False):
@@ -217,12 +228,12 @@ class PipelinePlateQC:
                 well_id = '%s%s' % (row, col)
 
                 # the acquired FOVs for this well, sorted by score
-                d = dapi_aq_log.loc[dapi_aq_log.well_id==well_id].reset_index()
-                d = d.sort_values(by='score', ascending=False)
-
+                d = dapi_aq_log.loc[dapi_aq_log.well_id==well_id]
+                d = d.sort_values(by='score', ascending=False).reset_index()
+                
                 # plot the top two FOVs
                 ims = [blank_fov, blank_fov]
-                for ind, d_row in d.iterrows():
+                for ind, d_row in d.iloc[:2].iterrows():
 
                     # HACK: this hard-coded filename must match
                     # the dst_filename in generate_z_projections

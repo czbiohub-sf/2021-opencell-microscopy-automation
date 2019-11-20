@@ -25,7 +25,7 @@ def parse_args():
 
     parser.add_argument(
         '--exp-root', 
-        dest='src_root', 
+        dest='exp_root', 
         required=True)
 
     parser.add_argument(
@@ -66,7 +66,7 @@ def main():
         qc.plot_counts_and_scores(save_plot=True)
 
         print('Generating z-projections')
-        qc.generate_z_projections(args.opencell_repo_path)
+        qc.generate_z_projections(args.opencell_repo)
 
         print('Plotting top FOVs')
         qc.tile_fovs(channel_ind=0, save_plot=True)
