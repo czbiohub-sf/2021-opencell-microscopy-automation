@@ -63,16 +63,17 @@ def main():
         qc.summarize()
 
     if args.run_all:
-        
+        qc.summarize()
+
         print('Plotting FOV counts and scores')
         qc.plot_counts_and_scores(save_plot=True)
 
         print('Generating z-projections')
         qc.generate_z_projections()
 
-        print('Plotting top FOVs')
-        qc.tile_fovs(channel_ind=0, save_plot=True)
-        qc.tile_fovs(channel_ind=1, save_plot=True)
+        print('Plotting acquired FOVs')
+        qc.tile_acquired_fovs(channel_ind=0, save_plot=True)
+        qc.tile_acquired_fovs(channel_ind=1, save_plot=True)
 
 
 if __name__ == '__main__':

@@ -34,6 +34,7 @@ class PipelinePlateQC:
         self.raw_data_dir = os.path.join(self.root_dir, 'raw_data')
 
         self.exp_name = re.sub('%s+$' % os.sep, '', self.root_dir).split(os.sep)[-1]
+        self.exp_id = self.exp_name.split('_')[0]
 
         if not os.path.isdir(self.log_dir):
             raise ValueError('No log directory found for %s' % self.exp_name)
@@ -43,19 +44,19 @@ class PipelinePlateQC:
             self.raw_data_dir = None
     
         # the name of the FOV log dir in early datasets
-        fov_log_dir = os.path.join(self.log_dir, 'fov-classification')
-        if os.path.isdir(fov_log_dir):
-            self.fov_log_dir = fov_log_dir
-            self.fov_log = pd.read_csv(os.path.join(fov_log_dir, 'fov-classification-log.csv'))
+        score_log_dir = os.path.join(self.log_dir, 'fov-classification')
+        if os.path.isdir(score_log_dir):
+            self.score_log_dir = score_log_dir
+            self.score_log = pd.read_csv(os.path.join(score_log_dir, 'fov-classification-log.csv'))
 
         # the name of the FOV log dir in later datasets
-        fov_log_dir = os.path.join(self.log_dir, 'fov-scoring')        
-        if os.path.isdir(fov_log_dir):
-            self.fov_log_dir = fov_log_dir
-            self.fov_log = pd.read_csv(os.path.join(fov_log_dir, 'fov-score-log.csv'))
+        score_log_dir = os.path.join(self.log_dir, 'fov-scoring')        
+        if os.path.isdir(score_log_dir):
+            self.score_log_dir = score_log_dir
+            self.score_log = pd.read_csv(os.path.join(score_log_dir, 'fov-score-log.csv'))
         
         # if there's no FOV log dir, we're in trouble
-        if not hasattr(self, 'fov_log_dir'):
+        if not hasattr(self, 'score_log_dir'):
             raise ValueError('No FOV log dir found for %s' % self.exp_name)
         
         # create a QC dir to which to save figures
@@ -78,9 +79,9 @@ class PipelinePlateQC:
             self.afc_log = pd.read_csv(afc_log_filepath[0])
 
         # fix the FOV image filepaths in the FOV log
-        filepaths = self.fov_log.image_filepath.values
-        self.fov_log['filename'] = [
-            os.path.join(self.fov_log_dir, 'fov-images', path.split('\\')[-1]) for path in filepaths]
+        filepaths = self.score_log.image_filepath.values
+        self.score_log['filename'] = [
+            os.path.join(self.score_log_dir, 'fov-images', path.split('\\')[-1]) for path in filepaths]
 
         # the number of channels acquired
         # (this is a bit hackish, but the acquire_bf_stacks flag was not always logged)
@@ -88,20 +89,20 @@ class PipelinePlateQC:
         
         # the number of positions visited and scored in each well
         # (prior to 2019-11-19, this value was not explicitly logged anywhere, but was always 25)
-        if 'position_site_num' in self.fov_log.columns:
-            self.num_sites_per_well = self.fov_log.position_site_num.max()
+        if 'position_site_num' in self.score_log.columns:
+            self.num_sites_per_well = self.score_log.position_site_num.max() + 1
         else:
             print('Warning: assuming 25 sites per well in %s' % self.exp_name)
             self.num_sites_per_well = 25
 
-        # append the well_id to the fov_log if it is not present
+        # append the well_id to the score_log if it is not present
         # (assumes a canonical 5x5 grid of positions in the region spanned by B2 to G9)
-        if 'position_well_id' in self.fov_log.columns:
-            self.fov_log.rename(columns={'position_well_id': 'well_id'}, inplace=True)
+        if 'position_well_id' in self.score_log.columns:
+            self.score_log.rename(columns={'position_well_id': 'well_id'}, inplace=True)
         else:
-            print('Warning: manually appending well_ids to the fov_log in %s' % self.exp_name)
-            self.fov_log = pd.merge(
-                self.fov_log,
+            print('Warning: manually appending well_ids to the score_log in %s' % self.exp_name)
+            self.score_log = pd.merge(
+                self.score_log,
                 pd.DataFrame(data=hcs_site_well_ids), 
                 left_on='position_ind', 
                 right_on='ind', 
@@ -125,13 +126,13 @@ class PipelinePlateQC:
         minutes = int(np.floor((total_seconds - hours*3600)/60))
 
         print(f'''
-        Summary for {self.exp_name}
+        Summary for {self.exp_id}
         Number of channels:        {self.num_channels}
         Number of sites per well:  {self.num_sites_per_well}
         Number of acquired FOVs:   {self.aq_log.shape[0]/self.num_channels}
-        Number of scores > 0.5:    {(self.fov_log.score > 0).sum()}
-        Number of scores > -0.5:   {(self.fov_log.score > -.5).sum()}
-        Number of scored FOVs:     {self.fov_log.shape[0]}
+        Number of scores > 0.5:    {(self.score_log.score > 0).sum()}
+        Number of scores > -0.5:   {(self.score_log.score > -.5).sum()}
+        Number of scored FOVs:     {self.score_log.shape[0]}
         Acquisition duration:      {hours}h{minutes}m
         ''')
 
@@ -147,10 +148,10 @@ class PipelinePlateQC:
         axs[0].set_ylim([0, 7])
         axs[0].set_title('Number of FOVs acquired per well')
 
-        d = self.fov_log.groupby('well_id').max().reset_index()
+        d = self.score_log.groupby('well_id').max().reset_index()
         axs[1].plot(d.well_id, d.score, label='max score')
 
-        d = self.fov_log.groupby('well_id').median().reset_index()
+        d = self.score_log.groupby('well_id').median().reset_index()
         axs[1].plot(d.well_id, d.score, label='median score')
 
         axs[1].set_ylim([-1.1, 1.1])
@@ -197,7 +198,7 @@ class PipelinePlateQC:
             tifffile.imsave(os.path.join(dst_dirpath, dst_filename), stack.max(axis=0))
 
 
-    def tile_fovs(self, channel_ind=0, save_plot=False):
+    def tile_acquired_fovs(self, channel_ind=0, save_plot=False):
         '''
         Plate-like tiled array of the top two FOVs in each well
         '''
@@ -212,10 +213,10 @@ class PipelinePlateQC:
         # acquired z-stacks (channel is arbitrary, since we will only need the well_ids and site_nums)
         dapi_aq_log = self.aq_log.loc[self.aq_log.config_name=='EMCCD_Confocal40_DAPI']
 
-        # merge the FOV scores from the fov_log
+        # merge the FOV scores from the score_log
         dapi_aq_log = pd.merge(
             dapi_aq_log,
-            self.fov_log[['position_ind', 'score']], 
+            self.score_log[['position_ind', 'score']], 
             left_on='position_ind',
             right_on='position_ind',
             how='left')
@@ -254,7 +255,7 @@ class PipelinePlateQC:
         plt.savefig(os.path.join(self.qc_dir, 'Tiled-FOVs-TOP2-C%d.pdf' % channel_ind))
 
 
-    def rename_stacks(self):
+    def rename_raw_tiffs(self, preview=True):
         '''
         Rename the acquired stacks to include the sample ('true') well_id
         and target name

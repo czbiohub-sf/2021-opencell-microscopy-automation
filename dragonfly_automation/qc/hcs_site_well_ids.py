@@ -9,7 +9,10 @@ Note that 'half-plate' means the region of the plate between B2 and G9.
 
 This data was generated manually in November 2019 from an existing list of HCS-generated positions,
 and is intended to append well_ids to the FOV score logs from pipeline acquisitions prior to November 2019
-(when the well_id, and not just the position index, was included in the FOV score log).
+by merging on the position_ind (the column that, here, is named simply `ind`).
+
+Note that, starting at ML0215 (acquired on 2019-11-19), this procedure is not necessary,
+because the well_id (and not just the position_ind) is included in the FOV score log.
 
 For reference, the code that generated this list is copied below.
 
