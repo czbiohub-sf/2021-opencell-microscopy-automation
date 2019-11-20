@@ -18,6 +18,8 @@ from matplotlib import pyplot as plt
 from dragonfly_automation import utils
 from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
 
+from pipeline_process.imaging import image
+
 
 class PipelinePlateQC:
 
@@ -161,19 +163,16 @@ class PipelinePlateQC:
 
 
 
-    def generate_z_projections(self, opencell_repo_path):
+    def generate_z_projections(self):
         '''
         Generate z-projections of each channel of each acquired FOV
         '''
         
-        sys.path.append(opencell_repo_path)
-        from pipeline_process.imaging import image
-
         dst_dirpath = os.path.join(self.qc_dir, 'z-projections')
         os.makedirs(dst_dirpath, exist_ok=True)
 
         filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif')))
-        tasks = [dask.delayed(self.generate_z_projection(image.MicroManagerTIFF, dst_dirpath, filepath)) 
+        tasks = [dask.delayed(self.generate_z_projection)(dst_dirpath, filepath)
             for filepath in filepaths]
         
         with dask.diagnostics.ProgressBar():
@@ -181,10 +180,10 @@ class PipelinePlateQC:
 
 
     @staticmethod
-    def generate_z_projection(MicroManagerTIFF, dst_dirpath, filepath):
+    def generate_z_projection(dst_dirpath, filepath):
         '''
         '''
-        tiff = MicroManagerTIFF(filepath)
+        tiff = image.MicroManagerTIFF(filepath)
         tiff.parse_micromanager_metadata()
         channel_inds = tiff.mm_metadata.channel_ind.unique()
         for channel_ind in channel_inds:

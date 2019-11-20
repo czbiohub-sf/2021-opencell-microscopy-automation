@@ -15,6 +15,14 @@ import numpy as np
 import pandas as pd
 import dask.diagnostics
 
+try:
+    sys.path.append('/Users/keith.cheveralls/projects/opencell-process')
+    from pipeline_process.imaging import image
+except ImportError:
+    # if we're running in a docker container on ESS
+    sys.path.append('/home/projects/opencell-process')
+    from pipeline_process.imaging import image
+
 from dragonfly_automation.qc.pipeline_plate_qc import PipelinePlateQC
 
 
@@ -29,11 +37,6 @@ def parse_args():
         required=True)
 
     parser.add_argument(
-        '--opencell-repo', 
-        dest='opencell_repo', 
-        required=False)
-
-    parser.add_argument(
         '--inspect', 
         dest='inspect', 
         action='store_true',
@@ -44,7 +47,6 @@ def parse_args():
         dest='run_all', 
         action='store_true',
         required=False)
-
 
     parser.set_defaults(inspect=False)
     parser.set_defaults(run_all=False)
@@ -66,7 +68,7 @@ def main():
         qc.plot_counts_and_scores(save_plot=True)
 
         print('Generating z-projections')
-        qc.generate_z_projections(args.opencell_repo)
+        qc.generate_z_projections()
 
         print('Plotting top FOVs')
         qc.tile_fovs(channel_ind=0, save_plot=True)
