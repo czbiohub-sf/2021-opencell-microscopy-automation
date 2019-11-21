@@ -16,6 +16,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 from dragonfly_automation import utils
+from dragonfly_automation.qc import half_plate_layout
 from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
 
 from pipeline_process.imaging import image
@@ -23,10 +24,16 @@ from pipeline_process.imaging import image
 
 class PipelinePlateQC:
 
-    def __init__(self, root_dir):
+    def __init__(self, root_dir, which_half=None, use_custom_platemap=False):
         '''
         root_dir is the top-level experiment directory
         (of the form 'dragonfly-automation-tests/ML0196_20191009/')
+
+        which_half is required for canonical half-plate acquisitions
+            and must be either 'first' or 'second'
+
+        use_custom_platemap must be true when which_half is not specified
+            and is for non-canonical plate layouts (e.g., manual-redo acquistions)
         '''
 
         self.root_dir = root_dir
@@ -107,6 +114,22 @@ class PipelinePlateQC:
                 left_on='position_ind', 
                 right_on='ind', 
                 how='inner')
+
+        # construct the platemap from imaging_well_id to pipeline_well_id (i.e., the 'true' well_id)
+        if which_half == 'first':
+            platemap = pd.DataFrame(data=half_plate_layout.first_half)
+        elif which_half == 'second':
+            platemap = pd.DataFrame(data=half_plate_layout.second_half)
+        elif use_custom_platemap:
+            platemap_filepath = os.path.join(self.log_dir, 'custom_platemap.csv')
+            if not os.path.isfile(platemap_filepath):
+                raise ValueError('A custom platemap must exist at logs/custom_platemap.csv')
+            platemap = pd.read_csv(platemap_filepath)
+        else:
+            raise ValueError(
+                "`which_half` must be either 'first' or 'second' or else `use_custom_platemap` must be True")
+
+        self.platemap = platemap
 
 
     def summarize(self):
@@ -201,6 +224,8 @@ class PipelinePlateQC:
     def tile_acquired_fovs(self, channel_ind=0, save_plot=False):
         '''
         Plate-like tiled array of the top two FOVs in each well
+
+        TODO: for now, assumes canonical half-plate layout
         '''
 
         # hard-coded rows and columns for half-plate imaging
@@ -226,6 +251,9 @@ class PipelinePlateQC:
             for col_ind, col in enumerate(cols):
                 ax = axs[row_ind][col_ind]
                 well_id = '%s%s' % (row, col)
+                
+                # the pipeline well_id
+                pipeline_well_id = self.half_plate_imaging_well_to_pipeline_well(well_id)
 
                 # the acquired FOVs for this well, sorted by score
                 d = dapi_aq_log.loc[dapi_aq_log.well_id==well_id]
@@ -244,37 +272,112 @@ class PipelinePlateQC:
                         continue
 
                     im = tifffile.imread(filepath)
-                    ims[ind] = autogain(im, p=1)
+                    ims[ind] = self.autogain(im, p=1)
     
                 ax.imshow(np.concatenate((ims[0], border, ims[1]), axis=0), cmap='gray')
                 ax.set_xticks([])
                 ax.set_yticks([])
-                ax.set_title('%s (N = %s)' % (well_id, d.shape[0]))
+                ax.set_title('%s (N = %s) %s' % (well_id, d.shape[0], pipeline_well_id))
 
         plt.subplots_adjust(left=.01, right=.99, top=.95, bottom=.01, wspace=0.01)
         plt.savefig(os.path.join(self.qc_dir, 'Tiled-FOVs-TOP2-C%d.pdf' % channel_ind))
 
 
-    def rename_raw_tiffs(self, preview=True):
+    def half_plate_imaging_well_to_pipeline_well(self, imaging_well_id):
+
+        if imaging_well_id not in self.platemap.imaging_well_id.values:
+            print('Warning: imaging_well_id %s not found in the platemap' % imaging_well_id)
+            return 'unknown'
+
+        row = self.platemap.loc[self.platemap.imaging_well_id==imaging_well_id].iloc[0]
+        return row.pipeline_well_id
+
+
+    def rename_raw_tiffs_from_half_plate(self, plate_num, imaging_round_num, preview=True):
         '''
         Rename the acquired stacks to include the sample ('true') well_id
         and target name
         '''
-        pass
-    
-
-def autogain(im, p=0):
-    # HACK: this is more or less a copy from the same method
-    # in opencell-process repo
-    im = im.copy().astype(float)
-    minn, maxx = np.percentile(im, (p, 100 - p))
-    if minn==maxx:
-        return (im * 0).astype('uint8')
         
-    im = im - minn
-    im[im < minn] = 0
-    im = im/(maxx - minn)
-    im[im > 1] = 1
+
+        # all of the raw TIFFs
+        src_filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif')))
+
+        # create plate_id and imaging_round_id
+        plate_id = 'P%04d' % plate_num
+        imaging_round_id = 'R%02d' % imaging_round_num
+
+        # hard-coded electroporation ID
+        ep_id = 'EP01'
+
+        # hard-coded parental line
+        parental_line = 'mNG'
+
+        dst_filenames = []
+        src_filenames = [filepath.split(os.sep)[-1] for filepath in src_filepaths]
+        for src_filename in src_filenames:
+
+            # parse the raw TIFF filename
+            imaging_well_id, site_num = self.parse_raw_tiff_filename(src_filename)
+            
+            # the pipeline plate well_id that corresponds to the imaging well_id
+            well_id = self.half_plate_imaging_well_to_pipeline_well(imaging_well_id)
+
+            # pad the well_id
+            well_id = self.pad_well_id(well_id)
+
+            # create the site_id
+            site_id = 'S%02d' % site_num
+
+            # look up the target name using the plate_id and well_id
+            target_name = 'target_name'
+
+            dst_filenames.append(
+                f'{parental_line}-{plate_id}-{ep_id}-{imaging_round_id}-{self.exp_id}-{well_id}-{site_id}-{target_name}.ome.tif'
+            )
+
+        return list(zip(src_filenames, dst_filenames))
+
+
+    @staticmethod
+    def parse_raw_tiff_filename(filename):
+        '''
+        Parse the well_id and site_num from a raw TIFF filename, which is of the form
+        'MMStack_{position_ind}-{well_id}-{site_num}.ome.tif'
+        '''
+
+        result = re.match('^MMStack_([0-9]+)-([A-H][1-9][0-2]?)-([0-9]+).ome.tif$', filename)
+        if not result:
+            print('Warning: cannot parse raw TIFF filename %s' % filename)
+            return None, None
+
+        position_ind, well_id, site_num = result.groups()
+        return well_id, int(site_num)
+
     
-    im = (im*255).astype('uint8')
-    return im
+    @staticmethod
+    def autogain(im, p=0):
+        # HACK: this is more or less a copy from the same method
+        # in opencell-process repo
+        im = im.copy().astype(float)
+        minn, maxx = np.percentile(im, (p, 100 - p))
+        if minn==maxx:
+            return (im * 0).astype('uint8')
+            
+        im = im - minn
+        im[im < minn] = 0
+        im = im/(maxx - minn)
+        im[im > 1] = 1
+        
+        im = (im*255).astype('uint8')
+        return im
+
+
+    @staticmethod
+    def pad_well_id(well_id):
+        '''
+        'A1' -> 'A01'
+        '''
+        well_row, well_col = re.match('([A-H])([1-9][0-2]?)', well_id).groups()
+        well_id = '%s%02d' % (well_row, int(well_col))
+        return well_id

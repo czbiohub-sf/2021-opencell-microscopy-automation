@@ -31,10 +31,19 @@ def parse_args():
     '''
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('exp_root', type=str)
+
     parser.add_argument(
-        '--exp-root', 
-        dest='exp_root', 
-        required=True)
+        '--which-half',
+        dest='which_half',
+        default='',
+        required=False)
+
+    parser.add_argument(
+        '--use-custom-platemap',
+        dest='use_custom_platemap',
+        action='store_true',
+        required=False)
 
     parser.add_argument(
         '--inspect', 
@@ -43,11 +52,12 @@ def parse_args():
         required=False)
 
     parser.add_argument(
-        '--run', 
+        '--run-all', 
         dest='run_all', 
         action='store_true',
         required=False)
 
+    parser.set_defaults(use_custom_platemap=False)
     parser.set_defaults(inspect=False)
     parser.set_defaults(run_all=False)
     args = parser.parse_args()
@@ -57,7 +67,7 @@ def parse_args():
 def main():
 
     args = parse_args()
-    qc = PipelinePlateQC(args.exp_root)
+    qc = PipelinePlateQC(args.exp_root, which_half=args.which_half, use_custom_platemap=args.use_custom_platemap)
 
     if args.inspect:
         qc.summarize()
@@ -68,6 +78,7 @@ def main():
         print('Plotting FOV counts and scores')
         qc.plot_counts_and_scores(save_plot=True)
 
+        # TODO: file renaming using either half-plate platemap or custom platemap
         print('Generating z-projections')
         qc.generate_z_projections()
 
