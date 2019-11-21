@@ -304,17 +304,21 @@ class PipelinePlateAcquisition(Acquisition):
 
     '''
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, acquire_bf_stacks=True, skip_fov_scoring=False, **kwargs):
         super().__init__(*args, **kwargs)
 
         # whether to acquire a brightfield stack after the DAPI and GFP stacks
-        self.acquire_bf_stacks = True
+        self.acquire_bf_stacks = acquire_bf_stacks
+
+        # whether to skip FOV scoring (only for manual redos)
+        self.skip_fov_scoring = skip_fov_scoring
 
         # log the name of the acquisition subclass
         self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
 
         # log whether BF stacks will be acquired
         self.acquisition_metadata_logger('brightfield_stacks_acquired', self.acquire_bf_stacks)
+        self.acquisition_metadata_logger('fov_scoring_skipped', self.skip_fov_scoring)
 
         # initialize channel managers
         self.bf_channel = ChannelSettingsManager(settings.bf_channel_settings)
@@ -465,29 +469,37 @@ class PipelinePlateAcquisition(Acquisition):
         # loop over wells
         for well_id in unique_well_ids:
             self.current_well_id = well_id
-            self.event_logger('ACQUISITION INFO: Scoring all FOVs in well %s' % well_id, newline=True)
             
             # positions in this well
             positions = [p for p in all_positions if p['well_id'] == well_id]
 
             # score and rank the positions
-            positions_to_acquire = self.select_positions(positions)
+            if self.skip_fov_scoring:
+                self.event_logger(
+                    'ACQUISITION INFO: Skipping FOV scoring and acquiring all FOVs in well %s' % well_id, newline=True)
+                positions_to_acquire = positions
+            else:
+                self.event_logger(
+                    'ACQUISITION INFO: Scoring all FOVs in well %s' % well_id, newline=True)
+                positions_to_acquire = self.select_positions(positions)
+    
             if not len(positions_to_acquire):
                 self.event_logger('ACQUISITION WARNING: No FOVs will be imaged in well %s' % well_id)
-            else:
-                # prettify the scores for the event log
-                scores = [
-                    '%0.2f' % p['fov_score'] if p['fov_score'] is not None else 'None' 
-                    for p in positions_to_acquire
-                ]
-                scores = ', '.join(scores)
+                continue
 
-                self.event_logger(
-                    'ACQUISITION INFO: Imaging %d FOVs in well %s (scores: [%s])' % \
-                        (len(positions_to_acquire), well_id, scores),
-                    newline=True)
-    
-                self.acquire_positions(positions_to_acquire)
+            # prettify the scores for the event log
+            scores = []
+            if not self.skip_fov_scoring:
+                scores = ['%0.2f' % p['fov_score'] if p.get('fov_score') is not None else 'None' 
+                    for p in positions_to_acquire]
+
+            self.event_logger(
+                'ACQUISITION INFO: Imaging %d FOVs in well %s (scores: [%s])' % \
+                    (len(positions_to_acquire), well_id, ', '.join(scores)),
+                newline=True)
+
+            # finally, acquire the positions
+            self.acquire_positions(positions_to_acquire)
 
         self.cleanup()
     

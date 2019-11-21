@@ -231,7 +231,7 @@ class AutofocusMethod(Base):
     '''
     def fullFocus(self):
         # TODO: programmatically specify this flag
-        mock_afc_timeout = np.random.randint(0, 10) < 8
+        mock_afc_timeout = np.random.randint(0, 10) < 2
         if mock_afc_timeout:
             raise MockPy4JJavaError()
         else:
