@@ -14,7 +14,7 @@ from dragonfly_automation import operations
 from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.settings_schemas import ChannelSettingsManager
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
-
+from dragonfly_automation.qc.pipeline_plate_qc import PipelinePlateQC
 
 class Acquisition:
     '''
@@ -304,8 +304,27 @@ class PipelinePlateAcquisition(Acquisition):
 
     '''
     
-    def __init__(self, *args, acquire_bf_stacks=True, skip_fov_scoring=False, **kwargs):
+    def __init__(self, *args, platemap_type, plate_id, acquire_bf_stacks=True, skip_fov_scoring=False, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # create the external metadata
+        self.external_metadata = {'platemap_type': platemap_type}
+
+        # if the platemap is canonical half-plate imaging, 
+        # we hard-code the parental_line, electroporation_id and round_id
+        # (note that the round_id of 'R02' corresponds to imaging a thawed plate for the first time)
+        if platemap_type != 'custom':
+            self.external_metadata['parental_line'] = 'smNG'
+            self.external_metadata['electroporation_id'] = 'EP01'
+            self.external_metadata['imaging_round_id'] = 'R02'
+            self.external_metadata['plate_id'] = plate_id
+
+        # validate the metadata (raises exceptions if not valid)
+        PipelinePlateQC.validate_external_metadata(self.external_metadata)
+        
+        # save the external metadata
+        with open(os.path.join(self.root_dir, 'metadata.json'), 'w') as file:
+            json.dump(self.external_metadata, file)
 
         # whether to acquire a brightfield stack after the DAPI and GFP stacks
         self.acquire_bf_stacks = acquire_bf_stacks

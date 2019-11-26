@@ -9,6 +9,7 @@ import dask
 import shutil
 import tifffile
 import datetime
+import jsonschema
 import dask.diagnostics
 
 import numpy as np
@@ -19,24 +20,66 @@ from dragonfly_automation import utils
 from dragonfly_automation.qc import half_plate_layout
 from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
 
-from pipeline_process.imaging import image
+try:
+    from pipeline_process.imaging import image
+except ImportError:
+    print('Warning: pipeline_process package not found')
+
+
+# schema for the manually-defined metadata required for each pipeline_plate acquisition
+EXTERNAL_METADATA_SCHEMA = {
+    'type': 'object',
+    'properties': {
+
+        # one of 'first-half', 'second-half', 'full', 'custom'
+        # (if 'custom', a custom platemap must exist at '<root_dir>/custom_platemap.csv';
+        # if not 'custom', all of the properties below are required)
+        'platemap_type': {'type': 'string'},
+
+        # the parental line (as of Nov 2019, always 'smNG' for 'split mNeonGreen')
+        'parental_line': {'type': 'string'},
+
+        # the plate_id (of the form 'P0001')
+        'plate_id': {'type': 'string'},
+
+        # electroporation number (as of Nov 2019, always 'EP01')
+        'electroporation_id': {'type': 'string'},
+
+        # imaging round number corresponds to freeze-thaw count
+        # (e.g., the first time imaging a thawed plate is 'R02')
+        'imaging_round_id': {'type': 'string'},
+
+    },
+    'required': ['platemap_type'],
+}
 
 
 class PipelinePlateQC:
 
-    def __init__(self, root_dir, which_half=None, use_custom_platemap=False):
+    def __init__(self, root_dir):
         '''
         root_dir is the top-level experiment directory
         (of the form 'dragonfly-automation-tests/ML0196_20191009/')
 
-        which_half is required for canonical half-plate acquisitions
-            and must be either 'first' or 'second'
-
-        use_custom_platemap must be true when which_half is not specified
-            and is for non-canonical plate layouts (e.g., manual-redo acquistions)
         '''
 
         self.root_dir = root_dir
+
+        # load the user-defined external/global metadata
+        # this specifies the platemap_type, plate_id, ep_id, and imaging_round_id
+        metadata_filepath = os.path.join(self.root_dir, 'metadata.json')
+        if not os.path.isfile(metadata_filepath):
+            raise ValueError("No user-defined 'metadata.json' file found")
+
+        with open(metadata_filepath, 'r') as file:
+            self.external_metadata = json.load(file)
+        self.validate_external_metadata(self.external_metadata)
+        
+        # load the platemap according to the platemap_type property defined in external_metadata
+        # (that is, either the platemap for canonical half-plate imaging
+        # or a custom platemap provided by the user)
+        self.load_platemap()
+
         self.log_dir = os.path.join(self.root_dir, 'logs')
         self.raw_data_dir = os.path.join(self.root_dir, 'raw_data')
 
@@ -115,19 +158,47 @@ class PipelinePlateQC:
                 right_on='ind', 
                 how='inner')
 
+
+    @staticmethod
+    def validate_external_metadata(external_metadata):
+        '''
+        Validation for the user-defined external metadata
+
+        This validation is important because the external metadata file
+        is a freely-edited JSON file, so we need to check for typos etc
+        '''
+        md = external_metadata
+        
+        # raises a ValidationError if validation fails
+        jsonschema.validate(md, EXTERNAL_METADATA_SCHEMA)
+
+        if md.get('platemap_type') not in ['first-half', 'second-half', 'custom']:
+            raise ValueError("`platemap_type` must be one of 'first-half', 'second-half', or 'custom'")
+        
+        # check the plate_id
+        result = re.match(r'^P[0-9]{4}$', md['plate_id'])
+        if not result:
+            raise ValueError('Invalid plate_id %s')
+        
+        # TOD: check the ep_id and the round_id
+
+
+    def load_platemap(self):
+        '''
+        '''
+
         # construct the platemap from imaging_well_id to pipeline_well_id (i.e., the 'true' well_id)
-        if which_half == 'first':
+        if self.external_metadata['platemap_type'] == 'first-half':
             platemap = pd.DataFrame(data=half_plate_layout.first_half)
-        elif which_half == 'second':
+
+        if self.external_metadata['platemap_type'] == 'second-half':
             platemap = pd.DataFrame(data=half_plate_layout.second_half)
-        elif use_custom_platemap:
+
+        if self.external_metadata['platemap_type'] == 'custom':
             platemap_filepath = os.path.join(self.log_dir, 'custom_platemap.csv')
             if not os.path.isfile(platemap_filepath):
                 raise ValueError('A custom platemap must exist at logs/custom_platemap.csv')
             platemap = pd.read_csv(platemap_filepath)
-        else:
-            raise ValueError(
-                "`which_half` must be either 'first' or 'second' or else `use_custom_platemap` must be True")
 
         self.platemap = platemap
 
@@ -155,7 +226,8 @@ class PipelinePlateQC:
         Number of acquired FOVs:   {self.aq_log.shape[0]/self.num_channels}
         Number of scores > 0.5:    {(self.score_log.score > 0).sum()}
         Number of scores > -0.5:   {(self.score_log.score > -.5).sum()}
-        Number of scored FOVs:     {self.score_log.shape[0]}
+        Number of unscored FOVs:   {(self.score_log.score.isna()).sum()}
+        Number of visited FOVs:    {self.score_log.shape[0]}
         Acquisition duration:      {hours}h{minutes}m
         ''')
 
@@ -311,7 +383,7 @@ class PipelinePlateQC:
         ep_id = 'EP01'
 
         # hard-coded parental line
-        parental_line = 'mNG'
+        parental_line = 'smNG'
 
         dst_filenames = []
         src_filenames = [filepath.split(os.sep)[-1] for filepath in src_filepaths]
