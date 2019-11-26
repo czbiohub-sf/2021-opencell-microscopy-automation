@@ -22,10 +22,23 @@ NUM_SITES_PER_WELL = 3
 WELL_IDS = ['A1', 'B10']
 
 # for simulating a real experiment
-NUM_SITES_PER_WELL = 25
-WELL_IDS = ALL_WELL_IDS[:48]
+NUM_SITES_PER_WELL = 49
+WELL_IDS = [
+    ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'][::-1],
+    ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'], 
+    ['D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'][::-1],
+    ['E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9'],
+    ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9'][::-1],
+    ['G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9']
+]
+
+WELL_IDS = list(np.array(WELL_IDS).flatten())
 
 FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/dragonfly-automation-tests/20190910/ML0000_20190910-3/logs/confluency-check/confluency-snaps'
+FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/dragonfly-automation-tests/mNG-P0015-EP01-R02/ML0217/logs/fov-scoring/fov-images'
+
+# AFC timeout probability (in percent)
+AFC_TIMEOUT_PROB = 0
 
 
 class MockJavaException:
@@ -154,8 +167,10 @@ class LoggedImageMeta(Meta):
 
     def __init__(self, fov_log_dir, position_ind):
         
-        filename = 'confluency_snap_pos%05d_RAW.tif' % position_ind
-        im = tifffile.imread(os.path.join(fov_log_dir, filename))
+        # filename = 'confluency_snap_pos%05d_RAW.tif' % position_ind
+        filepath = glob.glob(os.path.join(fov_log_dir, 'FOV_%s-*_RAW.tif' % position_ind))[0]
+        print(filepath.split(os.sep)[-1])
+        im = tifffile.imread(filepath)
         self._make_memmap(im)
 
 
@@ -231,7 +246,7 @@ class AutofocusMethod(Base):
     '''
     def fullFocus(self):
         # TODO: programmatically specify this flag
-        mock_afc_timeout = np.random.randint(0, 10) < 2
+        mock_afc_timeout = np.random.randint(0, 10) < AFC_TIMEOUT_PROB
         if mock_afc_timeout:
             raise MockPy4JJavaError()
         else:
