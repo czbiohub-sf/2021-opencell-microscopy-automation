@@ -554,7 +554,7 @@ class PipelineFOVScorer:
         *** Note that this value is sensitive to the exposure settings! ***
         (presumably, mostly the exposure time and the camera gain)
         '''
-        min_otsu_thresh = 700
+        min_otsu_thresh = 1000
         otsu_thresh = skimage.filters.threshold_li(image)
         nuclei_in_fov = otsu_thresh > min_otsu_thresh
         return nuclei_in_fov
