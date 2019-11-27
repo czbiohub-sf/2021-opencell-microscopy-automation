@@ -172,15 +172,47 @@ class PipelinePlateQC:
         # raises a ValidationError if validation fails
         jsonschema.validate(md, EXTERNAL_METADATA_SCHEMA)
 
-        if md.get('platemap_type') not in ['first-half', 'second-half', 'custom']:
+        if md['platemap_type'] not in ['first-half', 'second-half', 'custom']:
             raise ValueError("`platemap_type` must be one of 'first-half', 'second-half', or 'custom'")
-        
+
+        # if there is a custom platemap, no other external_metadata properties are required        
+        if md['platemap_type'] == 'custom':
+            return
+            
         # check the plate_id
         result = re.match(r'^P[0-9]{4}$', md['plate_id'])
         if not result:
             raise ValueError('Invalid plate_id %s')
-        
-        # TOD: check the ep_id and the round_id
+    
+        # TODO: check the ep_id and the round_id
+
+
+    def load_and_validate_custom_platemap(self):
+        '''
+        Custom platemaps are intended for manual-redo imaging
+        in which an arbtrary subset of wells on the imaging plate are imaged, 
+        each of which may correspond to an arbitrary pipeline well_id from *any* pipeline plate
+
+        The total absence of constraints/assumptions requires that all of the metadata properties
+        that are 'normally' defined in the external_metadata object (see external_metadata_schema)
+        be explicitly defined in the platemap for each well
+
+        '''
+        platemap_filepath = glob.glob(os.path.join(self.root_dir, '*platemap.csv'))
+        if len(platemap_filepath) != 1:
+            raise ValueError("Exactly one custom platemap must exist when platemap_type is 'custom'")
+        platemap = pd.read_csv(platemap_filepath[0])
+
+        # check for required and unexpected columns
+        # (there must be a column for each property 
+        # that would otherwise have been defined in the external_metadata)
+        required_columns = set(EXTERNAL_METADATA_SCHEMA['properties'].keys()).difference(['platemap_type'])
+        if required_columns.difference(platemap.columns):
+            raise ValueError('Missing columns in the custom platemap')
+
+        # TODO: validate plate_id, ep_id, and round_id columns
+        # TODO: check that the well_ids are all valid
+        return platemap
 
 
     def load_platemap(self):
@@ -188,17 +220,23 @@ class PipelinePlateQC:
         '''
 
         # construct the platemap from imaging_well_id to pipeline_well_id (i.e., the 'true' well_id)
-        if self.external_metadata['platemap_type'] == 'first-half':
-            platemap = pd.DataFrame(data=half_plate_layout.first_half)
 
-        if self.external_metadata['platemap_type'] == 'second-half':
-            platemap = pd.DataFrame(data=half_plate_layout.second_half)
 
-        if self.external_metadata['platemap_type'] == 'custom':
-            platemap_filepath = os.path.join(self.log_dir, 'custom_platemap.csv')
-            if not os.path.isfile(platemap_filepath):
-                raise ValueError('A custom platemap must exist at logs/custom_platemap.csv')
-            platemap = pd.read_csv(platemap_filepath)
+        if self.external_metadata['platemap_type'] != 'custom':
+
+            if self.external_metadata['platemap_type'] == 'first-half':
+                platemap = pd.DataFrame(data=half_plate_layout.first_half)
+
+            if self.external_metadata['platemap_type'] == 'second-half':
+                platemap = pd.DataFrame(data=half_plate_layout.second_half)
+
+            for key, value in self.external_metadata.items():
+                if key == 'platemap_type':
+                    continue
+                platemap[key] = value
+
+        else:
+            platemap = self.load_and_validate_custom_platemap()
 
         self.platemap = platemap
 
@@ -219,8 +257,11 @@ class PipelinePlateQC:
         hours = int(np.floor(total_seconds/3600))
         minutes = int(np.floor((total_seconds - hours*3600)/60))
 
+        plate_ids = self.external_metadata.get('plate_id') or self.platemap.plate_id.unique()
         print(f'''
-        Summary for {self.exp_id}
+        Summary for {self.exp_id} 
+        Platemap:                  {self.external_metadata['platemap_type']}
+        Plate(s):                  {plate_ids}
         Number of channels:        {self.num_channels}
         Number of sites per well:  {self.num_sites_per_well}
         Number of acquired FOVs:   {self.aq_log.shape[0]/self.num_channels}

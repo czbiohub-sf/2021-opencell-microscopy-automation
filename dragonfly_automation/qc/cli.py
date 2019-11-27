@@ -31,19 +31,7 @@ def parse_args():
     '''
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('exp_root', type=str)
-
-    parser.add_argument(
-        '--which-half',
-        dest='which_half',
-        default='',
-        required=False)
-
-    parser.add_argument(
-        '--use-custom-platemap',
-        dest='use_custom_platemap',
-        action='store_true',
-        required=False)
+    parser.add_argument('root_dir', type=str)
 
     parser.add_argument(
         '--inspect', 
@@ -57,7 +45,6 @@ def parse_args():
         action='store_true',
         required=False)
 
-    parser.set_defaults(use_custom_platemap=False)
     parser.set_defaults(inspect=False)
     parser.set_defaults(run_all=False)
     args = parser.parse_args()
@@ -67,7 +54,7 @@ def parse_args():
 def main():
 
     args = parse_args()
-    qc = PipelinePlateQC(args.exp_root, which_half=args.which_half, use_custom_platemap=args.use_custom_platemap)
+    qc = PipelinePlateQC(args.root_dir)
 
     if args.inspect:
         qc.summarize()
