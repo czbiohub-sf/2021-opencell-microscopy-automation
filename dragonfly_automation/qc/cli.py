@@ -33,20 +33,19 @@ def parse_args():
 
     parser.add_argument('root_dir', type=str)
 
-    parser.add_argument(
-        '--inspect', 
-        dest='inspect', 
-        action='store_true',
-        required=False)
+    # CLI args whose presence in the command sets them to True
+    action_arg_names = ['inspect', 'project', 'plot', 'run_all']
 
-    parser.add_argument(
-        '--run-all', 
-        dest='run_all', 
-        action='store_true',
-        required=False)
+    for arg_name in action_arg_names:
+        parser.add_argument(
+            '--%s' % arg_name.replace('_', '-'), 
+            dest=arg_name,
+            action='store_true',
+            required=False)
 
-    parser.set_defaults(inspect=False)
-    parser.set_defaults(run_all=False)
+    for arg_name in action_arg_names:
+        parser.set_defaults(**{arg_name: False})
+    
     args = parser.parse_args()
     return args
 
@@ -59,8 +58,15 @@ def main():
     if args.inspect:
         qc.summarize()
 
+    if args.project:
+        qc.generate_z_projections()
+
+    if args.plot:
+        qc.plot_counts_and_scores(save_plot=True)
+        qc.tile_acquired_fovs(channel_ind=0, save_plot=True)
+        qc.tile_acquired_fovs(channel_ind=1, save_plot=True)
+
     if args.run_all:
-        qc.summarize()
 
         print('Plotting FOV counts and scores')
         qc.plot_counts_and_scores(save_plot=True)

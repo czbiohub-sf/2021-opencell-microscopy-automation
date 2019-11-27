@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from dragonfly_automation import utils
 from dragonfly_automation.qc import half_plate_layout
 from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
 
