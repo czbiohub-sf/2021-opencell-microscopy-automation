@@ -340,9 +340,9 @@ class PipelinePlateQC:
         TODO: for now, assumes canonical half-plate layout
         '''
 
-        # hard-coded rows and columns for half-plate imaging
-        rows = 'BCDEFG'
-        cols = range(2, 10)
+        # hackish way to parse the well_ids
+        rows = sorted(list(set([well_id[0] for well_id in self.platemap.imaging_well_id])))
+        cols = sorted(list(set([int(well_id[1:]) for well_id in self.platemap.imaging_well_id])))
 
         blank_fov = np.zeros((1024, 1024), dtype='uint8')
         border = (np.ones((30, 1024))*255).astype('uint8')
@@ -358,7 +358,7 @@ class PipelinePlateQC:
             right_on='position_ind',
             how='left')
             
-        fig, axs = plt.subplots(len(rows), len(cols), figsize=(20, 20))
+        fig, axs = plt.subplots(len(rows), len(cols), figsize=(len(cols)*2, len(rows)*4))
         for row_ind, row in enumerate(rows):
             for col_ind, col in enumerate(cols):
                 ax = axs[row_ind][col_ind]
