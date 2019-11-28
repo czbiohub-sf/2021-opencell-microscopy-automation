@@ -220,27 +220,76 @@ class StageVisitationManager:
         print('FocusDrive position after AFC: %s' % pos_after)
 
 
+
+def _interp2d_interpolator(positions):
+    '''
+    Interpolate using piecewise linear interpolation
+
+    Note that this method requires at least one internal (non-edge) position
+    to work correctly
+    '''
+    interpolator = interpolate.interp2d(
+        positions[:, 0], 
+        positions[:, 1], 
+        positions[:, 2], 
+        kind='linear')
+    return interpolator
+
+
+def _least_squares_interpolator(positions):
+    '''
+    Interpolate using least-squares fit
+
+    This is appropriate for small regions for which it is not practical/possible
+    to measure the FocusDrive position at internal (non-edge) wells
+    '''
+    A = np.vstack(
+        [positions[:, 0], positions[:, 1], np.ones(positions.shape[0])]).T
+
+    # these are the z-positions we want to interpolate
+    y = positions[:, 2]
+
+    # this is the least-squares solution
+    p, _, _, _ = np.linalg.lstsq(A, y, rcond=None)
+
+    # this method crudely mimics the behavior of interp2d.__call__
+    def interpolator(x, y):
+        x = np.atleast_1d(x)
+        y = np.atleast_1d(y)
+
+        Z = np.zeros((len(x), len(y)))
+        for row_ind in range(Z.shape[0]):
+            for col_ind in range(Z.shape[1]):
+                Z[row_ind, col_ind] = x[col_ind]*p[0] + y[row_ind]*p[1] + p[2]
+        return Z
+
+    return interpolator
+
+
 def preview_interpolation(
     measured_focusdrive_positions, 
     top_left_well_id, 
-    bottom_right_well_id):
+    bottom_right_well_id,
+    method):
     '''
     '''
-    measured_positions = np.array([
-        (*well_id_to_position(well_id), zpos) 
-            for well_id, zpos in measured_focusdrive_positions.items()])
 
-    interpolator = interpolate.interp2d(
-        measured_positions[:, 0], 
-        measured_positions[:, 1], 
-        measured_positions[:, 2], 
-        kind='linear')
+    positions = []
+    for well_id, zpos in measured_focusdrive_positions.items():
+        positions.append((*well_id_to_position(well_id), zpos))
+    positions = np.array(positions)
 
-    topl_x, topl_y = well_id_to_position(top_left_well_id)
-    botr_x, botr_y = well_id_to_position(bottom_right_well_id)
+    if method == 'interp2d':
+        interpolator = _interp2d_interpolator(positions)
+    elif method == 'least-squares':
+        interpolator = _least_squares_interpolator(positions)
 
-    x = np.linspace(topl_x, botr_x, 50)
-    y = np.linspace(topl_y, botr_y, 50)
+    top_left_x, top_left_y = well_id_to_position(top_left_well_id)
+    bot_right_x, bot_right_y = well_id_to_position(bottom_right_well_id)
+
+    x = np.linspace(top_left_x, bot_right_x, 50)
+    y = np.linspace(top_left_y, bot_right_y, 50)
+
     X, Y = np.meshgrid(x, y)
     Z = interpolator(x, y)
 
@@ -251,8 +300,7 @@ def preview_interpolation(
         X, Y, Z, rstride=1, cstride=1,
         cmap='viridis', edgecolor='none')
 
-    ax.scatter3D(
-        measured_positions[:, 0], measured_positions[:, 1], measured_positions[:, 2], color='red')
+    ax.scatter3D(positions[:, 0], positions[:, 1], positions[:, 2], color='red')
 
 
 def interpolate_focusdrive_positions_from_all(
@@ -260,6 +308,7 @@ def interpolate_focusdrive_positions_from_all(
     measured_focusdrive_positions, 
     top_left_well_id,
     bottom_right_well_id,
+    method=None,
     offset=0):
     '''
 
@@ -277,15 +326,15 @@ def interpolate_focusdrive_positions_from_all(
     '''
 
     # create an array of numeric (x,y,z) positions from the well_ids
-    measured_positions = np.array([
-        (*well_id_to_position(well_id), pos) 
-            for well_id, pos in measured_focusdrive_positions.items()])
+    positions = []
+    for well_id, zpos in measured_focusdrive_positions.items():
+        positions.append((*well_id_to_position(well_id), zpos))
+    positions = np.array(positions)
 
-    interpolator = interpolate.interp2d(
-        measured_positions[:, 0], 
-        measured_positions[:, 1], 
-        measured_positions[:, 2], 
-        kind='linear')
+    if method == 'interp2d':
+        interpolator = _interp2d_interpolator(positions)
+    elif method == 'least-squares':
+        interpolator = _least_squares_interpolator(positions)
 
     with open(position_list_filepath) as file:
         position_list = json.load(file)
