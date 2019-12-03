@@ -304,18 +304,31 @@ class PipelinePlateAcquisition(Acquisition):
 
     '''
     
-    def __init__(self, *args, platemap_type, plate_id, acquire_bf_stacks=True, skip_fov_scoring=False, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self, 
+        data_dir, 
+        fov_scorer, 
+        pml_id,
+        plate_id,
+        platemap_type, 
+        env='dev', 
+        verbose=True, 
+        test_mode=None, 
+        acquire_bf_stacks=True, 
+        skip_fov_scoring=False):
+        
+        # construct the root directory for this acquisition
+        root_dir = os.path.join(data_dir, pml_id)
+        super().__init__(root_dir, fov_scorer, env=env, verbose=verbose, test_mode=test_mode)
 
         # create the external metadata
-        self.external_metadata = {'platemap_type': platemap_type}
+        self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
 
         # if the platemap is canonical half-plate imaging, 
         # we hard-code the parental_line, electroporation_id and round_id
         # (note that the round_id of 'R02' corresponds to imaging a thawed plate for the first time)
         if platemap_type != 'custom':
-            self.external_metadata['parental_line'] = 'smNG'
-            self.external_metadata['electroporation_id'] = 'EP01'
+            self.external_metadata['parental_line'] = 'HEK-smNG'
             self.external_metadata['imaging_round_id'] = 'R02'
             self.external_metadata['plate_id'] = plate_id
 

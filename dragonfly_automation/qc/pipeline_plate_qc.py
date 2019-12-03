@@ -29,27 +29,27 @@ except ImportError:
 EXTERNAL_METADATA_SCHEMA = {
     'type': 'object',
     'properties': {
+        
+        # the manually-generated experiment ID (of the form 'PML0001')
+        'pml_id': {'type': 'string'},
 
         # one of 'first-half', 'second-half', 'full', 'custom'
-        # (if 'custom', a custom platemap must exist at '<root_dir>/custom_platemap.csv';
-        # if not 'custom', all of the properties below are required)
+        # if 'custom', a custom platemap must exist at '<root_dir>/custom_platemap.csv'
+        # if not 'custom', all of the properties below are required
         'platemap_type': {'type': 'string'},
 
-        # the parental line (as of Nov 2019, always 'smNG' for 'split mNeonGreen')
+        # the parental line (as of Nov 2019, always 'HEK-smNG' for 'split mNeonGreen')
         'parental_line': {'type': 'string'},
 
         # the plate_id (of the form 'P0001')
         'plate_id': {'type': 'string'},
-
-        # electroporation number (as of Nov 2019, always 'EP01')
-        'electroporation_id': {'type': 'string'},
 
         # imaging round number corresponds to freeze-thaw count
         # (e.g., the first time imaging a thawed plate is 'R02')
         'imaging_round_id': {'type': 'string'},
 
     },
-    'required': ['platemap_type'],
+    'required': ['pml_id', 'platemap_type'],
 }
 
 
@@ -58,7 +58,7 @@ class PipelinePlateQC:
     def __init__(self, root_dir):
         '''
         root_dir is the top-level experiment directory
-        (of the form 'dragonfly-automation-tests/ML0196_20191009/')
+        (of the form 'ml_group/KC/dragonfly-automation-tests/PML0196/')
 
         '''
 
@@ -171,19 +171,25 @@ class PipelinePlateQC:
         # raises a ValidationError if validation fails
         jsonschema.validate(md, EXTERNAL_METADATA_SCHEMA)
 
+        # validate the pml_id
+        result = re.match(r'^PML[0-9]{4}$', md['pml_id'])
+        if not result:
+            raise ValueError('Invalid pml_id %s' % md['pml_id'])
+        
+        # validate the platemap_type
         if md['platemap_type'] not in ['first-half', 'second-half', 'custom']:
             raise ValueError("`platemap_type` must be one of 'first-half', 'second-half', or 'custom'")
 
-        # if there is a custom platemap, no other external_metadata properties are required        
+        # if there is a custom platemap, no other external metadata properties are required        
         if md['platemap_type'] == 'custom':
             return
             
-        # check the plate_id
+        # validate the plate_id
         result = re.match(r'^P[0-9]{4}$', md['plate_id'])
         if not result:
-            raise ValueError('Invalid plate_id %s')
+            raise ValueError('Invalid plate_id %s' % md['plate_id'])
     
-        # TODO: check the ep_id and the round_id
+        # TODO: validate the parental_line and imaging_round_id
 
 
     def load_and_validate_custom_platemap(self):
@@ -230,8 +236,6 @@ class PipelinePlateQC:
                 platemap = pd.DataFrame(data=half_plate_layout.second_half)
 
             for key, value in self.external_metadata.items():
-                if key == 'platemap_type':
-                    continue
                 platemap[key] = value
 
         else:
