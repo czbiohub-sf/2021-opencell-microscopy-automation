@@ -108,9 +108,6 @@ class Acquisition:
         # create the operations instance (with logging enabled)
         self.operations = operations.Operations(self.event_logger)
 
-        # create the datastore
-        self._initialize_datastore()
-
 
     def event_logger(self, message, newline=False):
         '''
@@ -264,6 +261,9 @@ class Acquisition:
         e.g., setting the autofocus mode, camera mode, various synchronization commands
         '''
         self.acquisition_metadata_logger('setup_timestamp', utils.timestamp())
+
+        # create the datastore
+        self._initialize_datastore()
 
 
     def run(self):
