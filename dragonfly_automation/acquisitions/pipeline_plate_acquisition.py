@@ -35,7 +35,7 @@ class Acquisition:
 
     '''
 
-    def __init__(self, root_dir, fov_scorer, env='dev', verbose=True, test_mode=None):
+    def __init__(self, root_dir, env='dev', verbose=True, test_mode=None):
         '''
 
         datastore : py4j datastore object
@@ -53,16 +53,15 @@ class Acquisition:
 
         self.env = env
         self.verbose = verbose
-        self.fov_scorer = fov_scorer
 
         # the name of the experiment is the name of the directory
         self.experiment_name = os.path.split(self.root_dir)[-1]
 
+        # subdirectory for logfiles
         self.log_dir = os.path.join(self.root_dir, 'logs')
-        self.data_dir = os.path.join(self.root_dir, 'raw_data')
 
-        # assign the log_dir to the fov_scorer instance
-        fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
+        # subdirectory for raw data (where the datastore will be created)
+        self.data_dir = os.path.join(self.root_dir, 'raw_data')
 
         # check whether data and/or logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
@@ -98,9 +97,6 @@ class Acquisition:
         # log the experiment name and root directory
         self.acquisition_metadata_logger('root_directory', self.root_dir)
         self.acquisition_metadata_logger('experiment_name', self.experiment_name)
-
-        # log the directory the fov_scorer was loaded from
-        self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
@@ -319,7 +315,7 @@ class PipelinePlateAcquisition(Acquisition):
         
         # construct the root directory for this acquisition
         root_dir = os.path.join(data_dir, pml_id)
-        super().__init__(root_dir, fov_scorer, env=env, verbose=verbose, test_mode=test_mode)
+        super().__init__(root_dir, env=env, verbose=verbose, test_mode=test_mode)
 
         # create the external metadata
         self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
@@ -344,6 +340,13 @@ class PipelinePlateAcquisition(Acquisition):
 
         # whether to skip FOV scoring (only for manual redos)
         self.skip_fov_scoring = skip_fov_scoring
+
+        # create the log_dir for the fov_scorer instance
+        self.fov_scorer = fov_scorer
+        self.fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
+
+        # log the directory the fov_scorer was loaded from
+        self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
 
         # log the name of the acquisition subclass
         self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
@@ -394,6 +397,7 @@ class PipelinePlateAcquisition(Acquisition):
             self.acquisition_metadata_logger(
                 channel_name,
                 getattr(self, channel_name).__dict__)
+
 
     def setup(self):
         self.event_logger('ACQUISITION INFO: Calling setup method')
