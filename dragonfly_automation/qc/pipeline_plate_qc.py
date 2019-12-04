@@ -66,11 +66,11 @@ class PipelinePlateQC:
 
         # load the user-defined external/global metadata
         # this specifies the platemap_type, plate_id, ep_id, and imaging_round_id
-        metadata_filepath = os.path.join(self.root_dir, 'metadata.json')
-        if not os.path.isfile(metadata_filepath):
+        metadata_filepath = glob.glob(os.path.join(self.root_dir, '*metadata.json'))
+        if not metadata_filepath:
             raise ValueError("No user-defined 'metadata.json' file found")
 
-        with open(metadata_filepath, 'r') as file:
+        with open(metadata_filepath[0], 'r') as file:
             self.external_metadata = json.load(file)
         self.validate_external_metadata(self.external_metadata)
         
@@ -211,9 +211,9 @@ class PipelinePlateQC:
         # check for required and unexpected columns
         # (there must be a column for each property 
         # that would otherwise have been defined in the external_metadata)
-        required_columns = set(EXTERNAL_METADATA_SCHEMA['properties'].keys()).difference(['platemap_type'])
+        required_columns = set(EXTERNAL_METADATA_SCHEMA['properties'].keys()).difference(['pml_id', 'platemap_type'])
         if required_columns.difference(platemap.columns):
-            raise ValueError('Missing columns in the custom platemap')
+            raise ValueError('Missing columns in the custom platemap in %s' % self.root_dir)
 
         # TODO: validate plate_id, ep_id, and round_id columns
         # TODO: check that the well_ids are all valid
@@ -260,20 +260,27 @@ class PipelinePlateQC:
         hours = int(np.floor(total_seconds/3600))
         minutes = int(np.floor((total_seconds - hours*3600)/60))
 
+        num_fovs = self.score_log.shape[0]
         plate_ids = self.external_metadata.get('plate_id') or self.platemap.plate_id.unique()
-        print(f'''
-        Summary for {self.exp_id} 
-        Platemap:                  {self.external_metadata['platemap_type']}
-        Plate(s):                  {plate_ids}
-        Number of channels:        {self.num_channels}
-        Number of sites per well:  {self.num_sites_per_well}
-        Number of acquired FOVs:   {self.aq_log.shape[0]/self.num_channels}
-        Number of scores > 0.5:    {(self.score_log.score > 0).sum()}
-        Number of scores > -0.5:   {(self.score_log.score > -.5).sum()}
-        Number of unscored FOVs:   {(self.score_log.score.isna()).sum()}
-        Number of visited FOVs:    {self.score_log.shape[0]}
-        Acquisition duration:      {hours}h{minutes}m
-        ''')
+
+        summary = {
+            'plate': plate_ids,
+            'platemap_type': self.external_metadata['platemap_type'],
+            'num_channels': self.num_channels,
+            'num_sites_per_well': self.num_sites_per_well,
+            'num_acquired_fovs': self.aq_log.shape[0]/self.num_channels,
+            'num_visited_fovs': num_fovs,
+            'pct_scores_gt_phalf': int(100*(self.score_log.score > 0).sum() / num_fovs),
+            'pct_scores_gt_nhalf': int(100*(self.score_log.score > -.5).sum() / num_fovs),
+            'pct_unscored_fovs': int(100*(self.score_log.score.isna()).sum() / num_fovs),
+            'acquisition_duration': f'{hours}h{minutes}m',
+        }
+
+        print(f'Summary for {self.exp_id}')
+        for key, val in summary.items():
+            print(f'{key:<25}{val}')
+
+
 
 
     def plot_counts_and_scores(self, save_plot=False):
@@ -300,7 +307,6 @@ class PipelinePlateQC:
 
         if save_plot:
             plt.savefig(os.path.join(self.qc_dir, 'scores-and-counts.pdf'))
-
 
 
     def generate_z_projections(self):
