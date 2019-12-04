@@ -310,11 +310,12 @@ class PipelinePlateAcquisition(Acquisition):
         env='dev', 
         verbose=True, 
         test_mode=None, 
+        attempt_count=1,
         acquire_bf_stacks=True, 
         skip_fov_scoring=False):
         
         # construct the root directory for this acquisition
-        root_dir = os.path.join(data_dir, pml_id)
+        root_dir = os.path.join(data_dir, '%s-%s' % (pml_id, attempt_count))
         super().__init__(root_dir, env=env, verbose=verbose, test_mode=test_mode)
 
         # create the external metadata
