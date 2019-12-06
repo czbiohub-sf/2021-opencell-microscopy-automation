@@ -314,10 +314,6 @@ class PipelinePlateAcquisition(Acquisition):
         acquire_bf_stacks=True, 
         skip_fov_scoring=False):
         
-        # construct the root directory for this acquisition
-        root_dir = os.path.join(data_dir, '%s-%s' % (pml_id, attempt_count))
-        super().__init__(root_dir, env=env, verbose=verbose, test_mode=test_mode)
-
         # create the external metadata
         self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
 
@@ -325,13 +321,17 @@ class PipelinePlateAcquisition(Acquisition):
         # we hard-code the parental_line, electroporation_id and round_id
         # (note that the round_id of 'R02' corresponds to imaging a thawed plate for the first time)
         if platemap_type != 'custom':
-            self.external_metadata['parental_line'] = 'HEK-smNG'
+            self.external_metadata['parental_line'] = 'czML0383'
             self.external_metadata['imaging_round_id'] = 'R02'
             self.external_metadata['plate_id'] = plate_id
 
         # validate the metadata (raises exceptions if not valid)
         PipelinePlateQC.validate_external_metadata(self.external_metadata)
         
+        # construct the root directory for this acquisition
+        root_dir = os.path.join(data_dir, '%s-%s' % (pml_id, attempt_count))
+        super().__init__(root_dir, env=env, verbose=verbose, test_mode=test_mode)
+
         # save the external metadata
         with open(os.path.join(self.root_dir, 'metadata.json'), 'w') as file:
             json.dump(self.external_metadata, file)

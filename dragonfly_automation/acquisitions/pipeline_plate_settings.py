@@ -27,7 +27,7 @@ fov_selection_settings = FOVSelectionSettings(
     min_num_positions=2,
 
     # the max number of positions to acquire (again ignoring the FOV scores)
-    max_num_positions=6,
+    max_num_positions=4,
 
     # the minimum score defines 'acceptable' FOVs
     # the value of -0.5 here is empirical,
@@ -52,8 +52,8 @@ dev_fl_stack_settings = StackSettings(
 
 prod_fl_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
-    relative_top=16.0,
-    relative_bottom=-6.0,
+    relative_top=12.0,
+    relative_bottom=-8.0,
     step_size=0.2
 )
 
