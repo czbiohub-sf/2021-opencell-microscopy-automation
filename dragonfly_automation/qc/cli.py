@@ -15,16 +15,7 @@ import numpy as np
 import pandas as pd
 import dask.diagnostics
 
-try:
-    sys.path.append('/Users/keith.cheveralls/projects/opencell-process')
-    from pipeline_process.imaging import image
-except ImportError:
-    # if we're running in a docker container on ESS
-    sys.path.append('/home/projects/opencell-process')
-    from pipeline_process.imaging import image
-
 from dragonfly_automation.qc.pipeline_plate_qc import PipelinePlateQC
-
 
 def parse_args():
     '''

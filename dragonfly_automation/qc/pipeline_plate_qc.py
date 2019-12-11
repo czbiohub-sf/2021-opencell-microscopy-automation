@@ -19,10 +19,13 @@ from matplotlib import pyplot as plt
 from dragonfly_automation.qc import half_plate_layout
 from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
 
-try:
-    from pipeline_process.imaging import image
-except ImportError:
-    print('Warning: pipeline_process package not found')
+# local opencell repo
+sys.path.append('/Users/keith.cheveralls/projects/opencell')
+
+# opencell repo from a docker container on ESS
+sys.path.append('/home/projects/opencell')
+
+from opencell.imaging import image
 
 
 # schema for the manually-defined metadata required for each pipeline_plate acquisition
