@@ -25,7 +25,7 @@ sys.path.append('/Users/keith.cheveralls/projects/opencell')
 # opencell repo from a docker container on ESS
 sys.path.append('/home/projects/opencell')
 
-from opencell.imaging import image
+from opencell.imaging import micromanager
 
 
 # schema for the manually-defined metadata required for each pipeline_plate acquisition
@@ -332,7 +332,7 @@ class PipelinePlateQC:
     def generate_z_projection(dst_dirpath, filepath):
         '''
         '''
-        tiff = image.MicroManagerTIFF(filepath)
+        tiff = micromanager.MicroManagerTIFF(filepath)
         tiff.parse_micromanager_metadata()
         channel_inds = tiff.mm_metadata.channel_ind.unique()
         for channel_ind in channel_inds:
