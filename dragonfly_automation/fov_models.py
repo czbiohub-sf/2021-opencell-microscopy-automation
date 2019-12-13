@@ -216,10 +216,14 @@ class PipelineFOVScorer:
 
         '''
 
-        features = {'filename': filepath.split(os.sep)[-1]}
+        result = {
+            'filename': filepath.split(os.sep)[-1],
+            'score': None,
+        }
+    
         if not os.path.isfile(filepath):
-            features['error'] = 'File does not exist'
-            return features
+            result['error'] = 'File does not exist'
+            return result
 
         try:
             im = tifffile.imread(filepath)
@@ -227,8 +231,8 @@ class PipelineFOVScorer:
             # check whether there are any nuclei in the FOV
             nuclei_in_fov = self.are_nuclei_in_fov(im)
             if not nuclei_in_fov:
-                features['error'] = 'No nuclei in the FOV'
-                return features
+                result['error'] = 'No nuclei in the FOV'
+                return result
 
             # calculate the background mask and nucleus positions
             mask = self.generate_background_mask(im)
@@ -237,16 +241,20 @@ class PipelineFOVScorer:
             # determine if the are too few nuclei in the mask to proceed
             enough_nuclei_in_fov = self.are_enough_nuclei_in_fov(positions)
             if not enough_nuclei_in_fov:
-                features['error'] = 'Too few nuclei in the FOV'
-                return features
+                result['error'] = 'Too few nuclei in the FOV'
+                return result
 
-            # calculate features from the positions
-            features.update(self.calculate_features(positions))
+            # calculate features and predict the score
+            features = self.calculate_features(positions)
+            result.update(features)
+
+            score = self.predict_score(features)
+            result['score'] = score
 
         except Exception as error:
-            features['error'] = str(error)
+            result['error'] = str(error)
     
-        return features
+        return result
 
 
     def train(self):

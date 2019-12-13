@@ -256,7 +256,6 @@ def _least_squares_interpolator(positions):
     def interpolator(x, y):
         x = np.atleast_1d(x)
         y = np.atleast_1d(y)
-
         Z = np.zeros((len(x), len(y)))
         for row_ind in range(Z.shape[0]):
             for col_ind in range(Z.shape[1]):
