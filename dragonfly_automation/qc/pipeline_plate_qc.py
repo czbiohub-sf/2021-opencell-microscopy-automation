@@ -41,7 +41,7 @@ EXTERNAL_METADATA_SCHEMA = {
         # if not 'custom', all of the properties below are required
         'platemap_type': {'type': 'string'},
 
-        # the parental line (as of Nov 2019, always 'HEK-smNG' for 'split mNeonGreen')
+        # the parental line (as of Jan 2020, always 'czML0383')
         'parental_line': {'type': 'string'},
 
         # the plate_id (of the form 'P0001')
@@ -67,13 +67,16 @@ class PipelinePlateQC:
 
         self.root_dir = root_dir
 
+        # the directory name should be the same as the pml_id
+        self.root_dirname = re.sub('%s+$' % os.sep, '', self.root_dir).split(os.sep)[-1]
+
         # load the user-defined external/global metadata
         # this specifies the platemap_type, plate_id, ep_id, and imaging_round_id
-        metadata_filepath = glob.glob(os.path.join(self.root_dir, '*metadata.json'))
+        metadata_filepath = os.path.join(self.root_dir, 'metadata.json')
         if not metadata_filepath:
             raise ValueError("No user-defined 'metadata.json' file found")
 
-        with open(metadata_filepath[0], 'r') as file:
+        with open(metadata_filepath, 'r') as file:
             self.external_metadata = json.load(file)
         self.validate_external_metadata(self.external_metadata)
         
@@ -82,38 +85,37 @@ class PipelinePlateQC:
         # or a custom platemap provided by the user)
         self.load_platemap()
 
+        # the log dir (which must exist)
         self.log_dir = os.path.join(self.root_dir, 'logs')
-        self.raw_data_dir = os.path.join(self.root_dir, 'raw_data')
-
-        self.exp_name = re.sub('%s+$' % os.sep, '', self.root_dir).split(os.sep)[-1]
-        self.exp_id = self.exp_name.split('_')[0]
-
         if not os.path.isdir(self.log_dir):
-            raise ValueError('No log directory found for %s' % self.exp_name)
+            raise ValueError('No log directory found in %s' % self.root_dir)
             
+        # the raw data subdir (which may not exist)
+        self.raw_data_dir = os.path.join(self.root_dir, 'raw_data')
         if not os.path.isdir(self.raw_data_dir):
-            print('Warning: no raw data directory found for %s' % self.exp_name)
+            print('Warning: no raw data directory found in %s' % self.root_dir)
             self.raw_data_dir = None
     
-        # the name of the FOV log dir in early datasets
+        # the name of the FOV-scoring log dir in early datasets
         score_log_dir = os.path.join(self.log_dir, 'fov-classification')
         if os.path.isdir(score_log_dir):
             self.score_log_dir = score_log_dir
             self.score_log = pd.read_csv(os.path.join(score_log_dir, 'fov-classification-log.csv'))
 
-        # the name of the FOV log dir in later datasets
+        # the name of the FOV-scoring log dir in later datasets
         score_log_dir = os.path.join(self.log_dir, 'fov-scoring')        
         if os.path.isdir(score_log_dir):
             self.score_log_dir = score_log_dir
             self.score_log = pd.read_csv(os.path.join(score_log_dir, 'fov-score-log.csv'))
         
-        # if there's no FOV log dir, we're in trouble
+        # rarely, for acquisitions in which FOVs were selected manually,
+        # there is no FOV-scoring log
         if not hasattr(self, 'score_log_dir'):
-            raise ValueError('No FOV log dir found for %s' % self.exp_name)
-        
-        # create a QC dir to which to save figures
-        self.qc_dir = os.path.join(self.root_dir, 'QC')
-        os.makedirs(self.qc_dir, exist_ok=True)
+            print('Warning: no FOV log dir found in %s' % self.root_dir)
+            self.has_score_log = False
+        else:
+            self.has_score_log = True
+            self.score_log_summary = self.parse_score_log()
 
         # load the acquisition log
         self.aq_log = pd.read_csv(glob.glob(os.path.join(self.log_dir, '*acquired-images.csv'))[0])
@@ -126,39 +128,62 @@ class PipelinePlateQC:
         afc_log_filepath = glob.glob(os.path.join(self.log_dir, '*afc-calls.csv'))
         if not len(afc_log_filepath):
             self.afc_log = None
-            print('Warning: no AFC log found for %s' % self.exp_name)
+            print('Warning: no AFC log found in %s' % self.root_dir)
         else:
             self.afc_log = pd.read_csv(afc_log_filepath[0])
-
-        # fix the FOV image filepaths in the FOV log
-        filepaths = self.score_log.image_filepath.values
-        self.score_log['filename'] = [
-            os.path.join(self.score_log_dir, 'fov-images', path.split('\\')[-1]) for path in filepaths]
 
         # the number of channels acquired
         # (this is a bit hackish, but the acquire_bf_stacks flag was not always logged)
         self.num_channels = len(self.aq_log.config_name.unique())
-        
+
+        # create a QC directory to which to save figures
+        self.qc_dir = os.path.join(self.root_dir, 'QC')
+        os.makedirs(self.qc_dir, exist_ok=True)
+
+    
+    def parse_score_log(self):
+        '''
+        Extract statistics from the log of FOV scores
+        '''
+
+        # fix the FOV image filepaths in the FOV log
+        filenames = [path.split('\\')[-1] for path in self.score_log.image_filepath]
+        self.score_log['filename'] = [
+            os.path.join(self.score_log_dir, 'fov-images', filename) for filename in filenames]
+
         # the number of positions visited and scored in each well
         # (prior to 2019-11-19, this value was not explicitly logged anywhere, but was always 25)
         if 'position_site_num' in self.score_log.columns:
-            self.num_sites_per_well = self.score_log.position_site_num.max() + 1
+            num_sites_per_well = self.score_log.position_site_num.max() + 1
         else:
-            print('Warning: assuming 25 sites per well in %s' % self.exp_name)
-            self.num_sites_per_well = 25
+            print('Warning: assuming 25 sites per well in %s' % self.root_dirname)
+            num_sites_per_well = 25
 
         # append the well_id to the score_log if it is not present
         # (assumes a canonical 5x5 grid of positions in the region spanned by B2 to G9)
         if 'position_well_id' in self.score_log.columns:
             self.score_log.rename(columns={'position_well_id': 'well_id'}, inplace=True)
         else:
-            print('Warning: manually appending well_ids to the score_log in %s' % self.exp_name)
+            print('Warning: manually appending well_ids to the score_log in %s' % self.root_dirname)
             self.score_log = pd.merge(
                 self.score_log,
                 pd.DataFrame(data=hcs_site_well_ids), 
                 left_on='position_ind', 
                 right_on='ind', 
                 how='inner')
+
+        # summary of the score log
+        num_fovs = self.score_log.shape[0]
+        summary = {
+            'num_visited_fovs': num_fovs,
+            'num_sites_per_well': num_sites_per_well,
+            'pct_scores_gt_phalf': int(100*(self.score_log.score > .5).sum() / num_fovs),
+            'pct_scores_le_nhalf': int(100*(self.score_log.score < -.5).sum() / num_fovs),
+            'pct_unscored_fovs': int(100*(self.score_log.score.isna()).sum() / num_fovs),
+        }
+
+        return summary
+
 
 
     @staticmethod
@@ -177,11 +202,11 @@ class PipelinePlateQC:
         # validate the pml_id
         result = re.match(r'^PML[0-9]{4}$', md['pml_id'])
         if not result:
-            raise ValueError('Invalid pml_id %s' % md['pml_id'])
+            raise ValueError('Invalid pml_id %s in %s' % (md['pml_id'], self.root_dirname))
         
         # validate the platemap_type
         if md['platemap_type'] not in ['first-half', 'second-half', 'custom']:
-            raise ValueError("`platemap_type` must be one of 'first-half', 'second-half', or 'custom'")
+            raise ValueError("Invalid platemap_type '%s' in %s" % (md['platemap_type'], self.root_dirname))
 
         # if there is a custom platemap, no other external metadata properties are required        
         if md['platemap_type'] == 'custom':
@@ -190,7 +215,7 @@ class PipelinePlateQC:
         # validate the plate_id
         result = re.match(r'^P[0-9]{4}$', md['plate_id'])
         if not result:
-            raise ValueError('Invalid plate_id %s' % md['plate_id'])
+            raise ValueError('Invalid plate_id %s in %s' % (md['plate_id'], self.root_dirname))
     
         # TODO: validate the parental_line and imaging_round_id
 
@@ -207,14 +232,18 @@ class PipelinePlateQC:
 
         '''
         platemap_filepath = glob.glob(os.path.join(self.root_dir, '*platemap.csv'))
-        if len(platemap_filepath) != 1:
-            raise ValueError("Exactly one custom platemap must exist when platemap_type is 'custom'")
+        if not platemap_filepath:
+            raise ValueError('No custom platemap found in %s' % self.root_dirname)
+        if len(platemap_filepath) > 1:
+            print('Warning: more than one custom platemap found in %s' % self.root_dirname)
         platemap = pd.read_csv(platemap_filepath[0])
 
         # check for required and unexpected columns
         # (there must be a column for each property 
         # that would otherwise have been defined in the external_metadata)
-        required_columns = set(EXTERNAL_METADATA_SCHEMA['properties'].keys()).difference(['pml_id', 'platemap_type'])
+        required_columns = set(EXTERNAL_METADATA_SCHEMA['properties'].keys())\
+            .difference(['pml_id', 'platemap_type'])
+    
         if required_columns.difference(platemap.columns):
             raise ValueError('Missing columns in the custom platemap in %s' % self.root_dir)
 
@@ -225,24 +254,22 @@ class PipelinePlateQC:
 
     def load_platemap(self):
         '''
+        Load the platemap as a pandas dataframe
+        that maps imaging_well_id to pipeline_well_id (i.e., the 'true' well_id)
         '''
 
-        # construct the platemap from imaging_well_id to pipeline_well_id (i.e., the 'true' well_id)
-
-
         if self.external_metadata['platemap_type'] != 'custom':
-
             if self.external_metadata['platemap_type'] == 'first-half':
                 platemap = pd.DataFrame(data=half_plate_layout.first_half)
-
             if self.external_metadata['platemap_type'] == 'second-half':
                 platemap = pd.DataFrame(data=half_plate_layout.second_half)
-
-            for key, value in self.external_metadata.items():
-                platemap[key] = value
-
         else:
             platemap = self.load_and_validate_custom_platemap()
+
+        # append the remaining global metadata attributes
+        # (for first-half or second-half, this includes the parental_line and the plate_id)
+        for key, value in self.external_metadata.items():
+            platemap[key] = value
 
         self.platemap = platemap
 
@@ -256,34 +283,30 @@ class PipelinePlateQC:
         if self.exp_metadata.get('cleanup_timestamp'):
            tf = datetime.datetime.strptime(self.exp_metadata['cleanup_timestamp'], '%Y-%m-%d %H:%M:%S')    
         else:
-            print('Warning: there is no cleanup_timestamp in the experiment metadata for %s' % self.exp_name)
+            print('Warning: there is no cleanup_timestamp in the experiment metadata in %s' % self.root_dirname)
             tf = t0
 
         total_seconds = (tf - t0).seconds
         hours = int(np.floor(total_seconds/3600))
         minutes = int(np.floor((total_seconds - hours*3600)/60))
-
-        num_fovs = self.score_log.shape[0]
         plate_ids = self.external_metadata.get('plate_id') or self.platemap.plate_id.unique()
 
         summary = {
-            'plate': plate_ids,
+            'timestamp': self.exp_metadata['setup_timestamp'],
+            'plate_id': plate_ids,
             'platemap_type': self.external_metadata['platemap_type'],
             'num_channels': self.num_channels,
-            'num_sites_per_well': self.num_sites_per_well,
             'num_acquired_fovs': self.aq_log.shape[0]/self.num_channels,
-            'num_visited_fovs': num_fovs,
-            'pct_scores_gt_phalf': int(100*(self.score_log.score > 0).sum() / num_fovs),
-            'pct_scores_gt_nhalf': int(100*(self.score_log.score > -.5).sum() / num_fovs),
-            'pct_unscored_fovs': int(100*(self.score_log.score.isna()).sum() / num_fovs),
             'acquisition_duration': f'{hours}h{minutes}m',
         }
 
-        print(f'Summary for {self.exp_id}')
+        # append the score log summary
+        if self.has_score_log:
+            summary.update(self.score_log_summary)
+
+        print(f'Summary for {self.root_dirname}')
         for key, val in summary.items():
             print(f'{key:<25}{val}')
-
-
 
 
     def plot_counts_and_scores(self, save_plot=False):
@@ -292,21 +315,24 @@ class PipelinePlateQC:
         '''
         fig, axs = plt.subplots(2, 1, figsize=(16, 6))
 
+        ax = axs[0]
+        ax.set_title('Number of FOVs acquired per well')
         d = self.aq_log.groupby('well_id').count().reset_index()
-        axs[0].plot(d.well_id, d.timestamp/3)
-        axs[0].set_ylim([0, 7])
-        axs[0].set_title('Number of FOVs acquired per well')
+        ax.plot(d.well_id, d.timestamp/self.num_channels)
+        ax.set_ylim([0, 7])
 
-        d = self.score_log.groupby('well_id').max().reset_index()
-        axs[1].plot(d.well_id, d.score, label='max score')
+        ax = axs[1]
+        ax.set_title('Median and maximum FOV score per well')
+        if self.has_score_log:
+            d = self.score_log.groupby('well_id').max().reset_index()
+            ax.plot(d.well_id, d.score, label='max score')
 
-        d = self.score_log.groupby('well_id').median().reset_index()
-        axs[1].plot(d.well_id, d.score, label='median score')
+            d = self.score_log.groupby('well_id').median().reset_index()
+            ax.plot(d.well_id, d.score, label='median score')
 
-        axs[1].set_ylim([-1.1, 1.1])
-        plt.legend()
-        axs[1].set_title('Median and maximum FOV score per well')
-        plt.subplots_adjust(hspace=.3)
+            ax.set_ylim([-1.1, 1.1])
+            plt.subplots_adjust(hspace=.3)
+            plt.legend()
 
         if save_plot:
             plt.savefig(os.path.join(self.qc_dir, 'scores-and-counts.pdf'))
