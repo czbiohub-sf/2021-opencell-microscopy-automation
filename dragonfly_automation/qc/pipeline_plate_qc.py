@@ -21,11 +21,9 @@ from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
 
 # local opencell repo
 sys.path.append('/Users/keith.cheveralls/projects/opencell')
-
 # opencell repo from a docker container on ESS
 sys.path.append('/home/projects/opencell')
-
-from opencell.imaging import micromanager
+from opencell.imaging import images
 
 
 # schema for the manually-defined metadata required for each pipeline_plate acquisition
@@ -346,19 +344,19 @@ class PipelinePlateQC:
         dst_dirpath = os.path.join(self.qc_dir, 'z-projections')
         os.makedirs(dst_dirpath, exist_ok=True)
 
-        filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif')))
-        tasks = [dask.delayed(self.generate_z_projection)(dst_dirpath, filepath)
-            for filepath in filepaths]
+        src_filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif')))
+        tasks = [dask.delayed(self.generate_z_projection)(src_filepath, dst_dirpath)
+            for src_filepath in src_filepaths]
         
         with dask.diagnostics.ProgressBar():
             dask.compute(*tasks)
 
 
     @staticmethod
-    def generate_z_projection(dst_dirpath, filepath):
+    def generate_z_projection(src_filepath, dst_dirpath):
         '''
         '''
-        tiff = micromanager.MicroManagerTIFF(filepath)
+        tiff = images.MicroManagerTIFF(src_filepath)
         tiff.parse_micromanager_metadata()
         channel_inds = tiff.mm_metadata.channel_ind.unique()
         for channel_ind in channel_inds:
@@ -367,8 +365,8 @@ class PipelinePlateQC:
                 for ind in tiff.mm_metadata.loc[tiff.mm_metadata.channel_ind==channel_ind].page_ind
             ])
     
-            filename = filepath.split(os.sep)[-1]
-            dst_filename = filename.replace('.ome.tif', '_C%d-PROJ-Z.tif' % channel_ind)
+            src_filename = src_filepath.split(os.sep)[-1]
+            dst_filename = src_filename.replace('.ome.tif', '_PROJ-CH%d.tif' % channel_ind)
             tifffile.imsave(os.path.join(dst_dirpath, dst_filename), stack.max(axis=0))
 
 
@@ -404,7 +402,7 @@ class PipelinePlateQC:
                 well_id = '%s%s' % (row, col)
                 
                 # the pipeline well_id
-                pipeline_well_id = self.half_plate_imaging_well_to_pipeline_well(well_id)
+                sample_well_id = self.sample_well_id_from_imaging_well_id(well_id)
 
                 # the acquired FOVs for this well, sorted by score
                 d = dapi_aq_log.loc[dapi_aq_log.well_id==well_id]
@@ -428,13 +426,13 @@ class PipelinePlateQC:
                 ax.imshow(np.concatenate((ims[0], border, ims[1]), axis=0), cmap='gray')
                 ax.set_xticks([])
                 ax.set_yticks([])
-                ax.set_title('%s (N = %s) %s' % (well_id, d.shape[0], pipeline_well_id))
+                ax.set_title('%s (N = %s) %s' % (well_id, d.shape[0], sample_well_id))
 
         plt.subplots_adjust(left=.01, right=.99, top=.95, bottom=.01, wspace=0.01)
         plt.savefig(os.path.join(self.qc_dir, 'Tiled-FOVs-TOP2-C%d.pdf' % channel_ind))
 
 
-    def half_plate_imaging_well_to_pipeline_well(self, imaging_well_id):
+    def sample_well_id_from_imaging_well_id(self, imaging_well_id):
 
         if imaging_well_id not in self.platemap.imaging_well_id.values:
             print('Warning: imaging_well_id %s not found in the platemap' % imaging_well_id)
@@ -444,25 +442,13 @@ class PipelinePlateQC:
         return row.pipeline_well_id
 
 
-    def rename_raw_tiffs_from_half_plate(self, plate_num, imaging_round_num, preview=True):
+    def rename_raw_tiffs(self, preview=True):
         '''
-        Rename the acquired stacks to include the sample ('true') well_id
-        and target name
+        Rename the acquired stacks to include the plate_id and the sample well_id
         '''
-        
 
         # all of the raw TIFFs
         src_filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif')))
-
-        # create plate_id and imaging_round_id
-        plate_id = 'P%04d' % plate_num
-        imaging_round_id = 'R%02d' % imaging_round_num
-
-        # hard-coded electroporation ID
-        ep_id = 'EP01'
-
-        # hard-coded parental line
-        parental_line = 'smNG'
 
         dst_filenames = []
         src_filenames = [filepath.split(os.sep)[-1] for filepath in src_filepaths]
@@ -471,21 +457,18 @@ class PipelinePlateQC:
             # parse the raw TIFF filename
             imaging_well_id, site_num = self.parse_raw_tiff_filename(src_filename)
             
-            # the pipeline plate well_id that corresponds to the imaging well_id
-            well_id = self.half_plate_imaging_well_to_pipeline_well(imaging_well_id)
+            # the platemap row corresponding to this imaging well_id
+            row = self.platemap.loc[self.platemap.imaging_well_id==imaging_well_id].iloc[0]
+            if not row.shape[0]:
+                dst_filename = None
+                print('Warning: no platemap row for imaging_well_id %s' % imaging_well_id)
 
-            # pad the well_id
-            well_id = self.pad_well_id(well_id)
-
-            # create the site_id
-            site_id = 'S%02d' % site_num
-
-            # look up the target name using the plate_id and well_id
-            target_name = 'target_name'
-
-            dst_filenames.append(
-                f'{parental_line}-{plate_id}-{ep_id}-{imaging_round_id}-{self.exp_id}-{well_id}-{site_id}-{target_name}.ome.tif'
-            )
+            else:
+                well_id = self.pad_well_id(row.pipeline_well_id)
+                site_id = 'S%02d' % site_num
+                dst_filename = \
+                    f'{row.parental_line}-{row.plate_id}-{well_id}-{row.pml_id}-{site_id}__{src_filename}'
+            dst_filenames.append(dst_filename)
 
         return list(zip(src_filenames, dst_filenames))
 
