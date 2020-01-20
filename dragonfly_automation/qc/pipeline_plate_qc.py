@@ -26,6 +26,7 @@ sys.path.append('/home/projects/opencell')
 from opencell.imaging import images
 
 
+
 # schema for the manually-defined metadata required for each pipeline_plate acquisition
 EXTERNAL_METADATA_SCHEMA = {
     'type': 'object',
@@ -442,16 +443,35 @@ class PipelinePlateQC:
         return row.pipeline_well_id
 
 
-    def rename_raw_tiffs(self, preview=True):
+    def construct_raw_tiff_metadata(self, renamed=False, overwrite=False):
         '''
-        Rename the acquired stacks to include the plate_id and the sample well_id
+        Construct the metadata for each raw TIFF file,
+        including the site_id and the filename to which the raw TIFF should be renamed
+
+        The new filenames prepend the parental_line, plate_id, well_id, pml_id and site_id
+        to the original raw filenames, separated by a double underscore:
+        {parental_line-plate_id-well_id-pml_id-site_id}__{raw_filename}
+
+        renamed : whether the raw TIFFs were previously renamed
+        overwrite : whether to overwrite the existing cached raw_metadata (if any)
         '''
 
-        # all of the raw TIFFs
-        src_filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif')))
+        # find all of the raw TIFF files
+        raw_tiff_pattern = 'MMStack*.ome.tif'
+        if renamed:
+            raw_tiff_pattern = '*__MMStack*.ome.tif'
 
-        dst_filenames = []
+        src_filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, raw_tiff_pattern)))
         src_filenames = [filepath.split(os.sep)[-1] for filepath in src_filepaths]
+
+        # reconstruct the original raw filenames
+        if renamed:
+            src_filenames = [filename.split('__')[-1] for filename in src_filenames]
+
+        if not src_filenames:
+            raise ValueError('Warning: no raw TIFF files found in %s' % self.root_dir)
+
+        raw_tiff_metadata_rows = []
         for src_filename in src_filenames:
 
             # parse the raw TIFF filename
@@ -464,13 +484,32 @@ class PipelinePlateQC:
                 print('Warning: no platemap row for imaging_well_id %s' % imaging_well_id)
 
             else:
-                well_id = self.pad_well_id(row.pipeline_well_id)
                 site_id = 'S%02d' % site_num
-                dst_filename = \
-                    f'{row.parental_line}-{row.plate_id}-{well_id}-{row.pml_id}-{site_id}__{src_filename}'
-            dst_filenames.append(dst_filename)
+                pipeline_well_id = self.pad_well_id(row.pipeline_well_id)
 
-        return list(zip(src_filenames, dst_filenames))
+                # construct the filename to which to rename the raw TIFF
+                dst_filename = \
+                    f'{row.parental_line}-{row.plate_id}-{pipeline_well_id}-{row.pml_id}-{site_id}__{src_filename}'
+
+                raw_tiff_metadata_row = dict(row)
+                raw_tiff_metadata_row.update({
+                    'site_id': site_id,
+                    'src_filename': src_filename,
+                    'dst_filename': dst_filename,
+                    'src_dirpath': os.path.join(self.root_dirname, 'raw_data'),
+                })
+                raw_tiff_metadata_rows.append(raw_tiff_metadata_row)
+
+        raw_tiff_metadata = pd.DataFrame(data=raw_tiff_metadata_rows)
+        raw_tiff_metadata.sort_values(by=['plate_id', 'pipeline_well_id', 'site_id'], inplace=True)
+
+        filepath = os.path.join(self.root_dir, 'raw_tiff_metadata.csv')
+        if overwrite:
+            if os.path.isfile(filepath):
+                print('Warning: %s already exists' % filepath)
+            raw_tiff_metadata.to_csv(filepath, index=False)
+
+        return raw_tiff_metadata
 
 
     @staticmethod
@@ -488,7 +527,21 @@ class PipelinePlateQC:
         position_ind, well_id, site_num = result.groups()
         return well_id, int(site_num)
 
-    
+
+    def rename_raw_tiffs(self):
+        '''
+        Rename the raw TIFF files according to the dst_filenames 
+        generated in construct_raw_tiff_metadata
+        '''
+        raw_tiff_metadata = self.construct_raw_tiff_metadata(renamed=False)
+        for ind, row in raw_tiff_metadata.iterrows():
+            print('Renaming %s' % row.src_filename)
+            src_filepath = os.path.join(self.raw_data_dir, row.src_filename)
+            dst_filepath = os.path.join(self.raw_data_dir, row.dst_filename)
+            os.rename(src_filepath, dst_filepath)
+        return raw_tiff_metadata
+
+
     @staticmethod
     def autogain(im, p=0):
         # HACK: this is more or less a copy from the same method
