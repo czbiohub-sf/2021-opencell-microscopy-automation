@@ -443,7 +443,7 @@ class PipelinePlateQC:
         return row.pipeline_well_id
 
 
-    def construct_raw_tiff_metadata(self, renamed=False, overwrite=False):
+    def construct_fov_metadata(self, renamed=False, overwrite=False):
         '''
         Construct the metadata for each raw TIFF file,
         including the site_id and the filename to which the raw TIFF should be renamed
@@ -471,7 +471,7 @@ class PipelinePlateQC:
         if not src_filenames:
             raise ValueError('Warning: no raw TIFF files found in %s' % self.root_dir)
 
-        raw_tiff_metadata_rows = []
+        fov_metadata = []
         for src_filename in src_filenames:
 
             # parse the raw TIFF filename
@@ -491,25 +491,27 @@ class PipelinePlateQC:
                 dst_filename = \
                     f'{row.parental_line}-{row.plate_id}-{pipeline_well_id}-{row.pml_id}-{site_id}__{src_filename}'
 
-                raw_tiff_metadata_row = dict(row)
-                raw_tiff_metadata_row.update({
-                    'site_id': site_id,
+                fov_metadata_row = dict(row)
+                fov_metadata_row.update({
+                    'site_num': site_num,
                     'src_filename': src_filename,
                     'dst_filename': dst_filename,
                     'src_dirpath': os.path.join(self.root_dirname, 'raw_data'),
                 })
-                raw_tiff_metadata_rows.append(raw_tiff_metadata_row)
+                fov_metadata.append(fov_metadata_row)
+        fov_metadata = pd.DataFrame(data=fov_metadata)
 
-        raw_tiff_metadata = pd.DataFrame(data=raw_tiff_metadata_rows)
-        raw_tiff_metadata.sort_values(by=['plate_id', 'pipeline_well_id', 'site_id'], inplace=True)
+        # pad the well_ids and sort
+        for column in ['imaging_well_id', 'pipeline_well_id']:
+            fov_metadata[column] = [self.pad_well_id(well_id) for well_id in fov_metadata[column]]
+        fov_metadata.sort_values(by=['plate_id', 'pipeline_well_id', 'site_num'], inplace=True)
 
-        filepath = os.path.join(self.root_dir, 'raw_tiff_metadata.csv')
-        if overwrite:
-            if os.path.isfile(filepath):
-                print('Warning: %s already exists' % filepath)
-            raw_tiff_metadata.to_csv(filepath, index=False)
-
-        return raw_tiff_metadata
+        filepath = os.path.join(self.root_dir, 'fov-metadata.csv')
+        if os.path.isfile(filepath) and not overwrite:
+            print('Warning: cached fov metadata already exists and will not be overwritten')
+        else:
+            fov_metadata.to_csv(filepath, index=False)
+        return fov_metadata
 
 
     @staticmethod
@@ -531,15 +533,15 @@ class PipelinePlateQC:
     def rename_raw_tiffs(self):
         '''
         Rename the raw TIFF files according to the dst_filenames 
-        generated in construct_raw_tiff_metadata
+        generated in construct_fov_metadata
         '''
-        raw_tiff_metadata = self.construct_raw_tiff_metadata(renamed=False)
-        for ind, row in raw_tiff_metadata.iterrows():
+        metadata = self.construct_fov_metadata(renamed=False)
+        for ind, row in metadata.iterrows():
             print('Renaming %s' % row.src_filename)
             src_filepath = os.path.join(self.raw_data_dir, row.src_filename)
             dst_filepath = os.path.join(self.raw_data_dir, row.dst_filename)
             os.rename(src_filepath, dst_filepath)
-        return raw_tiff_metadata
+        return metadata
 
 
     @staticmethod
