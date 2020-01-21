@@ -65,6 +65,8 @@ class PipelinePlateQC:
         '''
 
         self.root_dir = root_dir
+        if not os.path.isdir(root_dir):
+            raise ValueError('The directory %s does not exist' % root_dir)
 
         # the directory name should be the same as the pml_id
         self.root_dirname = re.sub('%s+$' % os.sep, '', self.root_dir).split(os.sep)[-1]
@@ -107,7 +109,7 @@ class PipelinePlateQC:
             self.score_log_dir = score_log_dir
             self.score_log = pd.read_csv(os.path.join(score_log_dir, 'fov-score-log.csv'))
         
-        # rarely, for acquisitions in which FOVs were selected manually,
+        # for acquisitions in which FOVs were selected manually,
         # there is no FOV-scoring log
         if not hasattr(self, 'score_log_dir'):
             print('Warning: no FOV log dir found in %s' % self.root_dir)
@@ -131,6 +133,10 @@ class PipelinePlateQC:
         else:
             self.afc_log = pd.read_csv(afc_log_filepath[0])
 
+        # load the manual flags, if any
+        manual_flags_filepath = os.path.join(self.root_dir, 'manual-flags.json')
+        self.manual_flags = self.load_manual_flags(manual_flags_filepath)
+    
         # the number of channels acquired
         # (this is a bit hackish, but the acquire_bf_stacks flag was not always logged)
         self.num_channels = len(self.aq_log.config_name.unique())
@@ -139,7 +145,44 @@ class PipelinePlateQC:
         self.qc_dir = os.path.join(self.root_dir, 'QC')
         os.makedirs(self.qc_dir, exist_ok=True)
 
-    
+
+    def load_manual_flags(self, filepath):
+        '''
+        Manual flags are optional and appear in a user-defined JSON object
+        that lists imaging plate row_ids and well_ids from which all FOVs should be discarded
+        (and, crucially, not inserted into the database).
+
+        The purpose of these flags is to identify FOVs that are 'bad' or unacceptable
+        for a reason that is difficult or impossible to identify computationally. 
+
+        The schema of the JSON object is
+        {
+            "flags": [
+                {
+                    "rows": ["B", "C"],
+                    "reason": "Free-form user-defined explanation"
+                },{
+                    "wells": ["A1", "G9"],
+                    "reason": "Free-form user-defined explanation"
+                },
+            ]
+        }
+        '''
+        manual_flags = {'well_ids': [], 'row_ids': []}
+        if not os.path.isfile(filepath):
+            return manual_flags
+
+        with open(filepath, 'r') as file:
+            d = json.load(file)
+        flags = d.get('flags') or []
+
+        [manual_flags['row_ids'].extend(flag.get('rows') or []) for flag in flags]
+        [manual_flags['well_ids'].extend(flag.get('wells') or []) for flag in flags]    
+
+        print('Warning: the following manual flags were found: %s' % manual_flags)
+        return manual_flags
+
+
     def parse_score_log(self):
         '''
         Extract statistics from the log of FOV scores
@@ -184,9 +227,7 @@ class PipelinePlateQC:
         return summary
 
 
-
-    @staticmethod
-    def validate_external_metadata(external_metadata):
+    def validate_external_metadata(self, external_metadata):
         '''
         Validation for the user-defined external metadata
 
@@ -221,8 +262,8 @@ class PipelinePlateQC:
 
     def load_and_validate_custom_platemap(self):
         '''
-        Custom platemaps are intended for manual-redo imaging
-        in which an arbtrary subset of wells on the imaging plate are imaged, 
+        Custom platemaps are required for any acquisition
+        in which an arbitrary subset of wells on the imaging plate were imaged, 
         each of which may correspond to an arbitrary pipeline well_id from *any* pipeline plate
 
         The total absence of constraints/assumptions requires that all of the metadata properties
@@ -302,6 +343,11 @@ class PipelinePlateQC:
         # append the score log summary
         if self.has_score_log:
             summary.update(self.score_log_summary)
+
+        # append the manual flags (usually empty)
+        summary.update({
+            'manually_flagged_rows': self.manual_flags['row_ids'],
+            'manually_flagged_wells': self.manual_flags['well_ids']})
 
         print(f'Summary for {self.root_dirname}')
         for key, val in summary.items():
@@ -452,7 +498,7 @@ class PipelinePlateQC:
         to the original raw filenames, separated by a double underscore:
         {parental_line-plate_id-well_id-pml_id-site_id}__{raw_filename}
 
-        renamed : whether the raw TIFFs were previously renamed
+        renamed : whether the raw TIFFs have already been renamed
         overwrite : whether to overwrite the existing cached raw_metadata (if any)
         '''
 
@@ -481,15 +527,15 @@ class PipelinePlateQC:
             row = self.platemap.loc[self.platemap.imaging_well_id==imaging_well_id].iloc[0]
             if not row.shape[0]:
                 dst_filename = None
-                print('Warning: no platemap row for imaging_well_id %s' % imaging_well_id)
+                print('Warning: there is an FOV but no platemap entry for imaging_well_id %s' % imaging_well_id)
 
             else:
                 site_id = 'S%02d' % site_num
-                pipeline_well_id = self.pad_well_id(row.pipeline_well_id)
+                well_id = self.pad_well_id(row.pipeline_well_id)
 
                 # construct the filename to which to rename the raw TIFF
                 dst_filename = \
-                    f'{row.parental_line}-{row.plate_id}-{pipeline_well_id}-{row.pml_id}-{site_id}__{src_filename}'
+                    f'{row.parental_line}-{row.plate_id}-{well_id}-{row.pml_id}-{site_id}__{src_filename}'
 
                 fov_metadata_row = dict(row)
                 fov_metadata_row.update({
@@ -500,6 +546,20 @@ class PipelinePlateQC:
                 })
                 fov_metadata.append(fov_metadata_row)
         fov_metadata = pd.DataFrame(data=fov_metadata)
+
+        # check for imaging_well_ids in the platemap without any FOVs
+        # (these are presumably wells in which, for some reason, no FOVs were acquired)
+        missing_wells = set(self.platemap.imaging_well_id).difference(fov_metadata.imaging_well_id)
+        if missing_wells:
+            print('Warning: no FOVs found for imaging wells %s' % (missing_wells,))
+
+        # flag imaging wells that should *not* be inserted into the opencell database
+        fov_metadata['manually_flagged'] = False
+        if self.manual_flags is not None:
+            for ind, row in fov_metadata.iterrows():
+                imaging_row_id = row.imaging_well_id[0]
+                if row.imaging_well_id in self.manual_flags['well_ids'] or imaging_row_id in self.manual_flags['row_ids']:
+                    fov_metadata.at[ind, 'manually_flagged'] = True
 
         # pad the well_ids and sort
         for column in ['imaging_well_id', 'pipeline_well_id']:
