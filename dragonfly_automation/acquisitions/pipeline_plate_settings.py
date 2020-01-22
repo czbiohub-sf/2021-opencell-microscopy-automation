@@ -53,7 +53,7 @@ dev_fl_stack_settings = StackSettings(
 prod_fl_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=12.0,
-    relative_bottom=-8.0,
+    relative_bottom=-9.0,
     step_size=0.2
 )
 
@@ -122,12 +122,9 @@ bf_channel_settings = ChannelSettings(
 # -----------------------------------------------------------------------------
 autoexposure_settings = AutoexposureSettings(
 
-    # min intensity defines under-exposure;
-    # chosen to be about 20x the background (or readout noise) when the EM gain is 400
-    min_intensity=2**14,
-
-    # max intensity defines over-exposure; 
-    # chosen to leave a (literal) bit of wiggle room
+    # min and max intensities that define under- and over-exposure
+    # both are set to 2**15 to leave a (literal) bit of wiggle room
+    min_intensity=2**15,
     max_intensity=2**15,
 
     # min and max exposure times 
@@ -136,8 +133,8 @@ autoexposure_settings = AutoexposureSettings(
     max_exposure_time=500.0,
     default_exposure_time=DEFAULT_EXPOSURE_TIME,
 
-    # min laser power is just a guess
-    min_laser_power=1,
+    # minimum laser power (in percent)
+    min_laser_power=0.1,
 
     # exposure step (for over-exposure) is from Nathan
     relative_exposure_step=0.8,
