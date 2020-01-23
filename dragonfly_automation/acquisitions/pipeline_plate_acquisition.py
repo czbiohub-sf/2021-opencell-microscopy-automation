@@ -14,7 +14,7 @@ from dragonfly_automation import operations
 from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.settings_schemas import ChannelSettingsManager
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
-from dragonfly_automation.qc.pipeline_plate_qc import PipelinePlateQC
+
 
 class Acquisition:
     '''
@@ -324,9 +324,6 @@ class PipelinePlateAcquisition(Acquisition):
             self.external_metadata['parental_line'] = 'czML0383'
             self.external_metadata['imaging_round_id'] = 'R02'
             self.external_metadata['plate_id'] = plate_id
-
-        # validate the metadata (raises exceptions if not valid)
-        PipelinePlateQC.validate_external_metadata(self.external_metadata)
         
         # construct the root directory for this acquisition
         root_dir = os.path.join(data_dir, '%s-%s' % (pml_id, attempt_count))
