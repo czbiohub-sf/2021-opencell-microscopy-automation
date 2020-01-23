@@ -428,8 +428,14 @@ class PipelinePlateQC:
         rows = sorted(list(set([well_id[0] for well_id in self.platemap.imaging_well_id])))
         cols = sorted(list(set([int(well_id[1:]) for well_id in self.platemap.imaging_well_id])))
 
-        blank_fov = np.zeros((1024, 1024), dtype='uint8')
-        border = (np.ones((30, 1024))*255).astype('uint8')
+        downsample_by = 2
+        im_sz = int(1024/downsample_by)
+        blank_fov = np.zeros((im_sz, im_sz), dtype='uint8')
+
+        # hard-coded borders for the 2x2 tile of FOVs from each well
+        border_width = 10
+        vertical_border = (255*np.ones((im_sz, border_width))).astype('uint8')
+        horizontal_border = (255*np.ones((border_width, 2*im_sz + border_width))).astype('uint8')
         
         # acquired z-stacks (channel is arbitrary, since we will only need the well_ids and site_nums)
         dapi_aq_log = self.aq_log.loc[self.aq_log.config_name=='EMCCD_Confocal40_DAPI']
@@ -441,52 +447,75 @@ class PipelinePlateQC:
             left_on='position_ind',
             right_on='position_ind',
             how='left')
-            
-        fig, axs = plt.subplots(len(rows), len(cols), figsize=(len(cols)*2, len(rows)*4))
+        
+        # note that figsize is (width, height)
+        fig, axs = plt.subplots(len(rows), len(cols), figsize=(len(cols)*4, len(rows)*4))
         for row_ind, row in enumerate(rows):
             for col_ind, col in enumerate(cols):
                 ax = axs[row_ind][col_ind]
-                well_id = '%s%s' % (row, col)
-                
-                # the pipeline well_id
-                sample_well_id = self.sample_well_id_from_imaging_well_id(well_id)
 
+                # the imaging plate well_id
+                imaging_well_id = '%s%s' % (row, col)
+                
                 # the acquired FOVs for this well, sorted by score
-                d = dapi_aq_log.loc[dapi_aq_log.well_id==well_id]
-                d = d.sort_values(by='score', ascending=False).reset_index()
-                
-                # plot the top two FOVs
-                ims = [blank_fov, blank_fov]
-                for ind, d_row in d.iloc[:2].iterrows():
+                d = dapi_aq_log.loc[dapi_aq_log.well_id==imaging_well_id].sort_values(by='score', ascending=False)
+  
+                # load the z-projetions of the four top-scoring FOVs
+                ims = 4*[blank_fov]
+                for ind, d_row in d.reset_index().iloc[:4].iterrows():
 
-                    # HACK: this hard-coded filename must match
-                    # the dst_filename in generate_z_projections
-                    filename = f'MMStack_{d_row.position_ind}-{d_row.well_id}-{d_row.site_num}_C{channel_ind}-PROJ-Z.tif'
-                    filepath = os.path.join(self.qc_dir, 'z-projections', filename)
-                    if not os.path.isfile(filepath):
-                        print('Warning: no z-projection found for %s' % filename)
-                        continue
+                    # HACK: manually construct filenames to match the dst_filenames
+                    # generated in self.generate_z_projections
+                    filenames = [
+                        f'MMStack_{d_row.position_ind}-{imaging_well_id}-{d_row.site_num}_C{channel_ind}-PROJ-Z.tif',
+                        f'MMStack_{d_row.position_ind}-{imaging_well_id}-{d_row.site_num}_PROJ-CH{channel_ind}.tif',
+                    ]
+                    im = None
+                    for filename in filenames:
+                        filepath = os.path.join(self.qc_dir, 'z-projections', filename)
+                        if not os.path.isfile(filepath):
+                            continue
+                        im = tifffile.imread(filepath)[::downsample_by, ::downsample_by]
+                        ims[ind] = self.autogain(im, p=1)
 
-                    im = tifffile.imread(filepath)
-                    ims[ind] = self.autogain(im, p=1)
-    
-                ax.imshow(np.concatenate((ims[0], border, ims[1]), axis=0), cmap='gray')
+                    if im is None:
+                        print('Warning: no z-projection found for %s' % filenames[0])
+
+                # concat the images into a 2x2 tiled array    
+                tile = np.concatenate(
+                    (
+                        np.concatenate((ims[0], vertical_border, ims[1]), axis=1),
+                        horizontal_border,
+                        np.concatenate((ims[2], vertical_border, ims[3]), axis=1),
+                    ), 
+                    axis=0)
+
+                # plot the tiled images
+                ax.imshow(tile, cmap='gray')
                 ax.set_xticks([])
                 ax.set_yticks([])
-                ax.set_title('%s (N = %s) %s' % (well_id, d.shape[0], sample_well_id))
 
-        plt.subplots_adjust(left=.01, right=.99, top=.95, bottom=.01, wspace=0.01)
-        plt.savefig(os.path.join(self.qc_dir, 'Tiled-FOVs-TOP2-C%d.pdf' % channel_ind))
+                # the pipeline plate_id and well_id
+                plate_id, sample_well_id = self.sample_well_id_from_imaging_well_id(imaging_well_id)
+                ax.set_title('%s (%s-%s) (N = %s)' % (imaging_well_id, plate_id, sample_well_id, d.shape[0]), fontsize=16)
+
+        plt.subplots_adjust(left=.01, right=.99, top=.95, bottom=.01, wspace=0.01, hspace=0.15)
+        plt.savefig(os.path.join(self.qc_dir, '%s-top-scoring-FOVs-CH%d.pdf' % (self.root_dirname, channel_ind)))
 
 
     def sample_well_id_from_imaging_well_id(self, imaging_well_id):
-
-        if imaging_well_id not in self.platemap.imaging_well_id.values:
+        '''
+        Get the sample plate_id and well_id for a given imaging well_id
+        '''
+        plate_id, sample_well_id = None, None
+        if imaging_well_id in self.platemap.imaging_well_id.values:        
+            row = self.platemap.loc[self.platemap.imaging_well_id == imaging_well_id].iloc[0]
+            plate_id = row.plate_id
+            sample_well_id = row.pipeline_well_id
+        else:
             print('Warning: imaging_well_id %s not found in the platemap' % imaging_well_id)
-            return 'unknown'
-
-        row = self.platemap.loc[self.platemap.imaging_well_id==imaging_well_id].iloc[0]
-        return row.pipeline_well_id
+        
+        return plate_id, sample_well_id
 
 
     def construct_fov_metadata(self, renamed=False, overwrite=False):
