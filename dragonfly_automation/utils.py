@@ -247,21 +247,26 @@ def _least_squares_interpolator(positions):
         [positions[:, 0], positions[:, 1], np.ones(positions.shape[0])]).T
 
     # these are the z-positions we want to interpolate
-    y = positions[:, 2]
+    z = positions[:, 2]
 
     # this is the least-squares solution
-    p, _, _, _ = np.linalg.lstsq(A, y, rcond=None)
+    p, _, _, _ = np.linalg.lstsq(A, z, rcond=None)
 
     # this method crudely mimics the behavior of interp2d.__call__
     def interpolator(x, y):
         x = np.atleast_1d(x)
         y = np.atleast_1d(y)
-        Z = np.zeros((len(x), len(y)))
+        Z = np.zeros((len(y), len(x)))
         for row_ind in range(Z.shape[0]):
             for col_ind in range(Z.shape[1]):
                 Z[row_ind, col_ind] = x[col_ind]*p[0] + y[row_ind]*p[1] + p[2]
+        if len(x) == 1 and len(y) == 1:
+            Z = Z[0]
+        elif len(x) == 1:
+            Z = Z[:, 0]
+        elif len(y) == 1:
+            Z = Z[0, :]
         return Z
-
     return interpolator
 
 
@@ -278,27 +283,17 @@ def preview_interpolation(
         positions.append((*well_id_to_position(well_id), zpos))
     positions = np.array(positions)
 
-    if method == 'interp2d':
-        interpolator = _interp2d_interpolator(positions)
-    elif method == 'least-squares':
-        interpolator = _least_squares_interpolator(positions)
-
     top_left_x, top_left_y = well_id_to_position(top_left_well_id)
     bot_right_x, bot_right_y = well_id_to_position(bottom_right_well_id)
 
     x = np.linspace(top_left_x, bot_right_x, 50)
     y = np.linspace(top_left_y, bot_right_y, 50)
-
     X, Y = np.meshgrid(x, y)
-    Z = interpolator(x, y)
+    Z = interpolate.griddata(positions[:, :2], positions[:, 2], (X, Y), method=method)
 
     fig = plt.figure()
     ax = plt.axes(projection='3d')
-
-    ax.plot_surface(
-        X, Y, Z, rstride=1, cstride=1,
-        cmap='viridis', edgecolor='none')
-
+    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
     ax.scatter3D(positions[:, 0], positions[:, 1], positions[:, 2], color='red')
 
 
@@ -330,11 +325,6 @@ def interpolate_focusdrive_positions_from_all(
         positions.append((*well_id_to_position(well_id), zpos))
     positions = np.array(positions)
 
-    if method == 'interp2d':
-        interpolator = _interp2d_interpolator(positions)
-    elif method == 'least-squares':
-        interpolator = _least_squares_interpolator(positions)
-
     with open(position_list_filepath) as file:
         position_list = json.load(file)
 
@@ -344,11 +334,12 @@ def interpolate_focusdrive_positions_from_all(
         x, y = well_id_to_position(well_id)
 
         # the interpolated z-position of the current well
-        interpolated_position = interpolator(x, y)[0] + offset
+        interpolated_position = interpolate.griddata(positions[:, :2], positions[:, 2], (x, y), method=method)
+        interpolated_position += offset
 
         # the config entry for the 'FocusDrive' device (this is the motorized z-stage)
         focusdrive_config = {
-            'X': interpolated_position,
+            'X': float(interpolated_position),
             'Y': 0,
             'Z': 0,
             'AXES': 1,
