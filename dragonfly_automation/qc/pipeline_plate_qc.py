@@ -81,11 +81,6 @@ class PipelinePlateQC:
             self.external_metadata = json.load(file)
         self.validate_external_metadata(self.external_metadata)
         
-        # load the platemap according to the platemap_type property defined in external_metadata
-        # (that is, either the platemap for canonical half-plate imaging
-        # or a custom platemap provided by the user)
-        self.load_platemap()
-
         # the log dir (which must exist)
         self.log_dir = os.path.join(self.root_dir, 'logs')
         if not os.path.isdir(self.log_dir):
@@ -132,6 +127,11 @@ class PipelinePlateQC:
             print('Warning: no AFC log found in %s' % self.root_dir)
         else:
             self.afc_log = pd.read_csv(afc_log_filepath[0])
+
+        # load the platemap 
+        # (note that if platemap_type is 'none', an identity platemap is created
+        # that includes all well_ids that appears in self.aq_log.well_id)
+        self.load_platemap()
 
         # load the manual flags, if any
         manual_flags_filepath = os.path.join(self.root_dir, 'manual-flags.json')
@@ -245,7 +245,7 @@ class PipelinePlateQC:
             raise ValueError('Invalid pml_id %s in %s' % (md['pml_id'], self.root_dirname))
         
         # validate the platemap_type
-        if md['platemap_type'] not in ['first-half', 'second-half', 'custom']:
+        if md['platemap_type'] not in ['first-half', 'second-half', 'custom', 'none']:
             raise ValueError("Invalid platemap_type '%s' in %s" % (md['platemap_type'], self.root_dirname))
 
         # if there is a custom platemap, no other external metadata properties are required        
@@ -298,18 +298,27 @@ class PipelinePlateQC:
         that maps imaging_well_id to pipeline_well_id (i.e., the 'true' well_id)
         '''
 
-        if self.external_metadata['platemap_type'] != 'custom':
-            if self.external_metadata['platemap_type'] == 'first-half':
-                platemap = pd.DataFrame(data=half_plate_layout.first_half)
-            if self.external_metadata['platemap_type'] == 'second-half':
-                platemap = pd.DataFrame(data=half_plate_layout.second_half)
-        else:
+        platemap_type = self.external_metadata['platemap_type']
+        if platemap_type == 'first-half':
+            platemap = pd.DataFrame(data=half_plate_layout.first_half)
+        elif platemap_type == 'second-half':
+            platemap = pd.DataFrame(data=half_plate_layout.second_half)
+        elif platemap_type == 'custom':
             platemap = self.load_and_validate_custom_platemap()
+        elif platemap_type == 'none':
+            print('Warning: platemap_type is None')
+            print('An identity platemap will be constructed for all well_ids in the acquisition log')
+            well_ids = self.aq_log.well_id.unique()
+            plate_layout = [{'imaging_well_id': well_id, 'pipeline_well_id': well_id} for well_id in well_ids]
+            platemap = pd.DataFrame(data=plate_layout)
+        else:
+            raise ValueError("Invalid platemap_type '%s'" % platemap_type)
 
         # append the remaining global metadata attributes
         # (for first-half or second-half, this includes the parental_line and the plate_id)
         for key, value in self.external_metadata.items():
-            platemap[key] = value
+            if key not in platemap.columns:
+                platemap[key] = value
 
         self.platemap = platemap
 
