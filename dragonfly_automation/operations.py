@@ -122,11 +122,37 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     return afc_did_succeed
 
 
-def acquire_image(gate, mm_studio, mm_core):
+def acquire_image(gate, mm_studio, mm_core, event_logger):
     '''
-    Acquire an image using the current laser/camera/exposure settings
-    and return the image data as a numpy memmap
+    This method just wraps _acquire_image and attempts to call it multiple times
 
+    The motivation for this is that, on 2020-01-31, a MicroManager timeout error occurred
+    during the call to mm_studio.live().snap that, while it allowed the call to return as usual,
+    did not result in an image appearing in the queue, so that getLastMeta always returned None,
+    and the _acquire_image method raised an uncaught TypeError that crashed the acquisition script
+    '''
+
+    data = None
+    num_tries = 10
+    wait_time = 10
+    for _ in range(num_tries):
+        try:
+            data = _acquire_image(gate, mm_studio, mm_core)
+            break
+        except Exception as error:
+            event_logger('ACQUIRE_IMAGE ERROR: %s' % str(error))
+            time.sleep(wait_time)
+
+    if data is None:
+        event_logger('FATAL ERROR: All attempts to call _acquire_image failed')
+        raise Exception('All attempts to call _acquire_image failed')
+    return data
+
+
+def _acquire_image(gate, mm_studio, mm_core):
+    '''
+    'snap' an image using the current laser/camera/exposure settings
+    and return the image data as a numpy memmap
     '''
 
     # KC: not sure if this is necessary but it seems wise
@@ -136,7 +162,7 @@ def acquire_image(gate, mm_studio, mm_core):
     num_tries = 10
 
     # time in seconds to wait between calls to gate.getLastMeta()
-    wait_time = .05
+    wait_time = .10
 
     # clear the mm2python queue
     # this ensure that gate.getLastMeta returns either None
@@ -144,7 +170,7 @@ def acquire_image(gate, mm_studio, mm_core):
     gate.clearQueue()
 
     # acquire an image using the current exposure settings
-    # (note that this method does not exit until the exposure is complete)
+    # note that this method does not exit until the exposure is complete
     mm_studio.live().snap(True)
 
     # retrieve the mm2python metadata corresponding to the image acquired above
@@ -165,7 +191,7 @@ def acquire_image(gate, mm_studio, mm_core):
             meta = gate.getLastMeta()
             if meta is not None:
                 break
-
+    
     # if meta is still None, we're in big trouble
     if meta is None:
         raise TypeError('The meta object returned by gate.getLastMeta() is None')
@@ -400,7 +426,7 @@ def autoexposure(
             kind='absolute')
 
         # acquire an image and check the exposure
-        image = acquire_image(gate, mm_studio, mm_core)
+        image = acquire_image(gate, mm_studio, mm_core, event_logger)
 
         # use a percentile to calculate the 'max' intensity 
         # as a defense against hot pixels, anomalous bright spots/dust, etc

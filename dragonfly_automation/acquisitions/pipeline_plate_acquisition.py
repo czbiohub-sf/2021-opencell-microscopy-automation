@@ -632,7 +632,8 @@ class PipelinePlateAcquisition(Acquisition):
                 position['afc_updated_focusdrive_position'] = afc_updated_focusdrive_position
 
             # acquire an image of the DAPI signal
-            image = self.operations.acquire_image(self.gate, self.mm_studio, self.mm_core)
+            image = self.operations.acquire_image(
+                self.gate, self.mm_studio, self.mm_core, self.event_logger)
 
             # score the FOV
             # note that, given all of the error handling in PipelineFOVScorer, 
