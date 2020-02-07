@@ -21,9 +21,8 @@ ALL_WELL_IDS = [
 NUM_SITES_PER_WELL = 3
 WELL_IDS = ['A1', 'B10']
 
-# for simulating a real experiment
-NUM_SITES_PER_WELL = 49
-WELL_IDS = [
+# all well_ids visited in a canonical half-plate acquisition, in snake-like order
+HALF_PLATE_WELL_IDS = [
     ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'][::-1],
     ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'], 
     ['D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'][::-1],
@@ -32,10 +31,10 @@ WELL_IDS = [
     ['G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9']
 ]
 
-WELL_IDS = list(np.array(WELL_IDS).flatten())
-
-FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/dragonfly-automation-tests/20190910/ML0000_20190910-3/logs/confluency-check/confluency-snaps'
-FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/dragonfly-automation-tests/mNG-P0015-EP01-R02/ML0217/logs/fov-scoring/fov-images'
+# for simulating a real experiment
+NUM_SITES_PER_WELL = 36
+WELL_IDS = list(np.array(HALF_PLATE_WELL_IDS).flatten())
+FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/raw-pipeline-microscopy/PML0234/logs/fov-scoring/fov-images/'
 
 # AFC timeout probability (in percent)
 AFC_TIMEOUT_PROB = 0

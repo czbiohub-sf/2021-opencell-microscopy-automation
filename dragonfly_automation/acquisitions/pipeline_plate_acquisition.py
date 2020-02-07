@@ -448,13 +448,18 @@ class PipelinePlateAcquisition(Acquisition):
         return well_id, site_num
 
 
-    def run(self):
+    def run(self, mode='prod'):
         '''
         The main acquisition workflow
 
         Overview
         --------
 
+        Parameters
+        ----------
+        mode : one of 'test' or 'prod'
+            in test mode, only the first well is visted, and only one z-stack is acquired
+            (at a position that is *not* among those selected by self.select_positions)
 
         Assumptions
         -----------
@@ -472,7 +477,7 @@ class PipelinePlateAcquisition(Acquisition):
         # construct properties for each position
         # NOTE that the order of the positions is determined by the HCS Site Generator
         # and must be preserved to prevent dangerously long x-y stage movements
-        all_positions = []
+        all_plate_positions = []
         mm_position_list = self.mm_studio.getPositionList()
         for position_ind in range(mm_position_list.getNumberOfPositions()):
             
@@ -484,7 +489,7 @@ class PipelinePlateAcquisition(Acquisition):
             # (used in acquire_stack to determine the name of the TIFF file)
             position_name = f'{position_ind}-{well_id}-{site_num}'
 
-            all_positions.append({
+            all_plate_positions.append({
                 'ind': position_ind,
                 'label': position_label,
                 'name': position_name,
@@ -494,28 +499,34 @@ class PipelinePlateAcquisition(Acquisition):
 
         # list of *order-preserved* unique well_ids 
         # (assumes that all positions in each well appear together in a single contiguous block)
-        unique_well_ids = [all_positions[0]['well_id']]
-        for position in all_positions:
+        unique_well_ids = [all_plate_positions[0]['well_id']]
+        for position in all_plate_positions:
             well_id = position['well_id']
             if well_id != unique_well_ids[-1]:
                 unique_well_ids.append(well_id)
 
-        # loop over wells
+        # only visit the first well in test mode
+        if mode == 'test':
+            unique_well_ids = unique_well_ids[:1]
+            self.event_logger(
+                'ACQUISITION WARNING: Acquisition is running in test mode and only the first well will be visited',
+                newline=True)
+
         for well_id in unique_well_ids:
             self.current_well_id = well_id
             
             # positions in this well
-            positions = [p for p in all_positions if p['well_id'] == well_id]
+            all_well_positions = [p for p in all_plate_positions if p['well_id'] == well_id]
 
             # score and rank the positions
             if self.skip_fov_scoring:
                 self.event_logger(
                     'ACQUISITION INFO: Skipping FOV scoring and acquiring all FOVs in well %s' % well_id, newline=True)
-                positions_to_acquire = positions
+                positions_to_acquire = all_well_positions
             else:
                 self.event_logger(
                     'ACQUISITION INFO: Scoring all FOVs in well %s' % well_id, newline=True)
-                positions_to_acquire = self.select_positions(positions)
+                positions_to_acquire = self.select_positions(all_well_positions)
     
             if not len(positions_to_acquire):
                 self.event_logger('ACQUISITION WARNING: No FOVs will be imaged in well %s' % well_id)
@@ -532,9 +543,18 @@ class PipelinePlateAcquisition(Acquisition):
                     (len(positions_to_acquire), well_id, ', '.join(scores)),
                 newline=True)
 
-            # finally, acquire the positions
+            # in test mode, acquire a single unselected FOV
+            if mode == 'test':
+                self.event_logger(
+                    'ACQUISITION WARNING: running in test mode, so replacing selected positions with one unselected position',
+                    newline=True)
+                names = [position['name'] for position in positions_to_acquire]
+                for position in all_well_positions:
+                    if position['name'] not in names:
+                        positions_to_acquire = [position]
+                        break
+            
             self.acquire_positions(positions_to_acquire)
-
         self.cleanup()
     
 
