@@ -447,11 +447,11 @@ class PipelinePlateQC:
         horizontal_border = (255*np.ones((border_width, 2*im_sz + border_width))).astype('uint8')
         
         # acquired z-stacks (channel is arbitrary, since we will only need the well_ids and site_nums)
-        dapi_aq_log = self.aq_log.loc[self.aq_log.config_name=='EMCCD_Confocal40_DAPI']
+        gfp_aq_log = self.aq_log.loc[self.aq_log.config_name == 'EMCCD_Confocal40_GFP']
 
         # merge the FOV scores from the score_log
-        dapi_aq_log = pd.merge(
-            dapi_aq_log,
+        gfp_aq_log = pd.merge(
+            gfp_aq_log,
             self.score_log[['position_ind', 'score']], 
             left_on='position_ind',
             right_on='position_ind',
@@ -459,25 +459,26 @@ class PipelinePlateQC:
         
         # note that figsize is (width, height)
         fig, axs = plt.subplots(len(rows), len(cols), figsize=(len(cols)*4, len(rows)*4))
-        for row_ind, row in enumerate(rows):
-            for col_ind, col in enumerate(cols):
+        for row_ind, row_label in enumerate(rows):
+            for col_ind, col_label in enumerate(cols):
                 ax = axs[row_ind][col_ind]
 
-                # the imaging plate well_id
-                imaging_well_id = '%s%s' % (row, col)
+                # construct the imaging plate well_id
+                imaging_well_id = '%s%s' % (row_label, col_label)
                 
                 # the acquired FOVs for this well, sorted by score
-                d = dapi_aq_log.loc[dapi_aq_log.well_id==imaging_well_id].sort_values(by='score', ascending=False)
-  
+                well_aq_log = gfp_aq_log.loc[gfp_aq_log.well_id == imaging_well_id]
+                well_aq_log = well_aq_log.sort_values(by='score', ascending=False).reset_index()
+
                 # load the z-projetions of the four top-scoring FOVs
                 ims = 4*[blank_fov]
-                for ind, d_row in d.reset_index().iloc[:4].iterrows():
+                for ind, row in well_aq_log.iloc[:4].iterrows():
 
                     # HACK: manually construct filenames to match the dst_filenames
                     # generated in self.generate_z_projections
                     filenames = [
-                        f'MMStack_{d_row.position_ind}-{imaging_well_id}-{d_row.site_num}_C{channel_ind}-PROJ-Z.tif',
-                        f'MMStack_{d_row.position_ind}-{imaging_well_id}-{d_row.site_num}_PROJ-CH{channel_ind}.tif',
+                        f'MMStack_{row.position_ind}-{imaging_well_id}-{row.site_num}_C{channel_ind}-PROJ-Z.tif',
+                        f'MMStack_{row.position_ind}-{imaging_well_id}-{row.site_num}_PROJ-CH{channel_ind}.tif',
                     ]
                     im = None
                     for filename in filenames:
@@ -504,9 +505,21 @@ class PipelinePlateQC:
                 ax.set_xticks([])
                 ax.set_yticks([])
 
+                parenthetical_info = 'No FOVs'
+                if  well_aq_log.shape[0]:
+                    gfp_laser_power = well_aq_log.iloc[0].laser_power
+                    gfp_laser_power = '%d' % gfp_laser_power if gfp_laser_power > 1 else '%0.2f' % gfp_laser_power
+                    gfp_exposure_time = '%d' % well_aq_log.iloc[0].exposure_time
+                    parenthetical_info = '%sms at %s%%' % (gfp_exposure_time, gfp_laser_power)
+
                 # the pipeline plate_id and well_id
                 plate_id, sample_well_id = self.sample_well_id_from_imaging_well_id(imaging_well_id)
-                ax.set_title('%s (%s-%s) (N = %s)' % (imaging_well_id, plate_id, sample_well_id, d.shape[0]), fontsize=16)
+                plate_info = 'Not in platemap'
+                if plate_id is not None:
+                    plate_info = 'P%d-%s' % (int(plate_id[1:]), sample_well_id)
+
+                title = f' {imaging_well_id}  |  {plate_info}  |  {parenthetical_info} '
+                ax.set_title(title, fontsize=16)
 
         plt.subplots_adjust(left=.01, right=.99, top=.95, bottom=.01, wspace=0.01, hspace=0.15)
         plt.savefig(os.path.join(self.qc_dir, '%s-top-scoring-FOVs-CH%d.pdf' % (self.root_dirname, channel_ind)))
