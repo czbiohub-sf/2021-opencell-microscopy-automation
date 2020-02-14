@@ -187,6 +187,8 @@ class StageVisitationManager:
         ind = self.well_id_to_position_ind(self.current_well_id)
         print('Going to well %s' % self.current_well_id)
 
+        # this try-except catches timeout errors triggered by large stage movements
+        # (these errors are harmless)
         try:
             operations.go_to_position(self.mms, self.mmc, ind)
         except py4j.protocol.Py4JJavaError:
@@ -198,8 +200,9 @@ class StageVisitationManager:
         '''
         find the index of the first position in a given well
         '''
-        for ind, p in enumerate(self.position_list['POSITIONS']):
-            if p['LABEL'].startswith(well_id):
+        for ind, position in enumerate(self.position_list['POSITIONS']):
+            position_well_id, position_site_num = parse_hcs_site_label(position['LABEL'])
+            if position_well_id == well_id:
                 break
         return ind
         
@@ -329,12 +332,17 @@ def interpolate_focusdrive_positions_from_all(
         position_list = json.load(file)
 
     for ind, pos in enumerate(position_list['POSITIONS']):
-        
         well_id, site_num = parse_hcs_site_label(pos['LABEL'])
         x, y = well_id_to_position(well_id)
 
         # the interpolated z-position of the current well
-        interpolated_position = interpolate.griddata(positions[:, :2], positions[:, 2], (x, y), method=method)
+        interpolated_position = interpolate.griddata(
+            positions[:, :2], 
+            positions[:, 2], 
+            (x, y), 
+            method=method)
+
+        # add the optional user-defined constant offset
         interpolated_position += offset
 
         # the config entry for the 'FocusDrive' device (this is the motorized z-stage)
@@ -345,7 +353,6 @@ def interpolate_focusdrive_positions_from_all(
             'AXES': 1,
             'DEVICE': 'FocusDrive',
         }
-
         position_list['POSITIONS'][ind]['DEVICES'].append(focusdrive_config)
     
     # save the new position_list
