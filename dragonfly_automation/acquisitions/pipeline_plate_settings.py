@@ -129,7 +129,7 @@ autoexposure_settings = AutoexposureSettings(
 
     # min and max exposure times 
     # (min of 40ms is to avoid artifacts from the spinning disk)
-    min_exposure_time=40.0,
+    min_exposure_time=50.0,
     max_exposure_time=500.0,
     default_exposure_time=DEFAULT_EXPOSURE_TIME,
 
