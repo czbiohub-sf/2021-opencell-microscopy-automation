@@ -309,7 +309,10 @@ class PipelinePlateQC:
             print('Warning: platemap_type is None')
             print('An identity platemap will be constructed for all well_ids in the acquisition log')
             well_ids = self.aq_log.well_id.unique()
-            plate_layout = [{'imaging_well_id': well_id, 'pipeline_well_id': well_id} for well_id in well_ids]
+            plate_layout = [{
+                'imaging_well_id': well_id, 
+                'pipeline_well_id': well_id
+            } for well_id in well_ids]
             platemap = pd.DataFrame(data=plate_layout)
         else:
             raise ValueError("Invalid platemap_type '%s'" % platemap_type)

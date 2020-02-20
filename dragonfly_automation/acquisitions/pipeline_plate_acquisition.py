@@ -88,11 +88,12 @@ class Acquisition:
         self.afc_log_file = os.path.join(self.log_dir, 'afc-calls.csv')
 
         # log the current commit
-        repo = git.Repo('..')
-        if not repo:
-            raise ValueError('This script cannot be run outside of a git repo')
-        current_commit = repo.commit().hexsha
-        self.acquisition_metadata_logger('git_commit', current_commit)
+        try:
+            repo = git.Repo('..')
+            current_commit = repo.commit().hexsha
+            self.acquisition_metadata_logger('git_commit', current_commit)
+        except Exception:
+            print('Warning: no git repo found and git commit hash will not be logged')
 
         # log the experiment name and root directory
         self.acquisition_metadata_logger('root_directory', self.root_dir)
