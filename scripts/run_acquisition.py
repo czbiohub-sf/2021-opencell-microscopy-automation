@@ -68,8 +68,8 @@ def main():
     dirpath = None
     attempt_count = 0
     while dirpath is None or os.path.isdir(dirpath):
-        dirpath = os.path.join(args.data_dir, '%s-%s' % (args.pml_id, attempt_count))
         attempt_count += 1
+        dirpath = os.path.join(args.data_dir, '%s-%s' % (args.pml_id, attempt_count))
 
     fov_scorer = PipelineFOVScorer(mode='prediction')
     fov_scorer.load(os.path.join(REPO_ROOT, 'models', '2019-10-08'))
