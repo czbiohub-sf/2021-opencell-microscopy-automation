@@ -77,7 +77,6 @@ LASER_LINE = 'Andor ILE-A'
 CAMERA_NAME = 'Andor EMCCD'
 DEFAULT_LASER_POWER = 10
 DEFAULT_CAMERA_GAIN = 400.0
-DEFAULT_EXPOSURE_TIME = 50.0
 
 dapi_channel_settings = ChannelSettings(
     config_group=CONFIG_GROUP,
@@ -85,9 +84,9 @@ dapi_channel_settings = ChannelSettings(
     camera_name=CAMERA_NAME,
     laser_line=LASER_LINE,
     laser_name='Laser 405-Power Setpoint',
+    default_camera_gain=DEFAULT_CAMERA_GAIN,
     default_laser_power=DEFAULT_LASER_POWER,
-    default_exposure_time=DEFAULT_EXPOSURE_TIME,
-    default_camera_gain=DEFAULT_CAMERA_GAIN
+    default_exposure_time=100.0
 )
 
 gfp_channel_settings = ChannelSettings(
@@ -97,8 +96,8 @@ gfp_channel_settings = ChannelSettings(
     laser_line=LASER_LINE,
     laser_name='Laser 488-Power Setpoint',
     default_laser_power=DEFAULT_LASER_POWER,
-    default_exposure_time=DEFAULT_EXPOSURE_TIME,
-    default_camera_gain=DEFAULT_CAMERA_GAIN
+    default_camera_gain=DEFAULT_CAMERA_GAIN,
+    default_exposure_time=50.0
 )
 
 # provisional brightfield settings
@@ -131,7 +130,7 @@ autoexposure_settings = AutoexposureSettings(
     # (min of 40ms is to avoid artifacts from the spinning disk)
     min_exposure_time=50.0,
     max_exposure_time=500.0,
-    default_exposure_time=DEFAULT_EXPOSURE_TIME,
+    default_exposure_time=50.0,
 
     # minimum laser power (in percent)
     min_laser_power=0.1,

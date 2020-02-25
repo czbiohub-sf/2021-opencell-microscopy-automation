@@ -360,6 +360,7 @@ class Position:
 
     def goToPosition(self, position, mm_core):
         # print("Position.goToPosition(label='%s')" % position.label)
+        # raise MockPy4JJavaError()
         pass
 
 

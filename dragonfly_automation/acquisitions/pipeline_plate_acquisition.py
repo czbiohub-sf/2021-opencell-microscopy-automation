@@ -4,6 +4,7 @@ import re
 import git
 import json
 import time
+import py4j
 import shutil
 import datetime
 import numpy as np
@@ -612,7 +613,15 @@ class PipelinePlateAcquisition(Acquisition):
         # score the FOV at each position
         for position in positions:
             position_ind = position['ind']
-            self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+
+            # catch timeout errors when the position is too close
+            # to the lower bound of the stage range
+            try:
+                self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+            except py4j.protocol.Py4JJavaError:
+                self.event_logger(
+                    'SCORING ERROR: The XYStage timed out at position %s' % position['name'])
+                continue
 
             # update the FocusDrive position (this should help AFC to focus faster)
             if afc_updated_focusdrive_position is not None:

@@ -18,6 +18,10 @@ from matplotlib import pyplot as plt
 
 from dragonfly_automation import utils
 
+# absolute threshold used in the `are_nuclei_in_fov` method
+MIN_OTSU_THRESH = 700
+
+
 def printr(s):
     sys.stdout.write('\r%s' % s)
 
@@ -562,9 +566,8 @@ class PipelineFOVScorer:
         *** Note that this value is sensitive to the exposure settings! ***
         (presumably, mostly the exposure time and the camera gain)
         '''
-        min_otsu_thresh = 1000
         otsu_thresh = skimage.filters.threshold_li(image)
-        nuclei_in_fov = otsu_thresh > min_otsu_thresh
+        nuclei_in_fov = otsu_thresh > MIN_OTSU_THRESH
         return nuclei_in_fov
 
 
