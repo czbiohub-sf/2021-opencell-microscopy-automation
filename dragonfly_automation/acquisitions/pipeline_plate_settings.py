@@ -68,7 +68,7 @@ bf_stack_settings = StackSettings(
 
 # -----------------------------------------------------------------------------
 #
-# Channel settings for DAPI and GFP
+# Channel settings for hoechst and GFP
 #
 # -----------------------------------------------------------------------------
 # common names and settings shared between channels
@@ -78,7 +78,7 @@ CAMERA_NAME = 'Andor EMCCD'
 DEFAULT_LASER_POWER = 10
 DEFAULT_CAMERA_GAIN = 400.0
 
-dapi_channel_settings = ChannelSettings(
+hoechst_channel_settings = ChannelSettings(
     config_group=CONFIG_GROUP,
     config_name='EMCCD_Confocal40_DAPI',
     camera_name=CAMERA_NAME,

@@ -226,7 +226,7 @@ def acquire_stack(
     mm_studio, mm_core, datastore : 
     stack_settings : 
     channel_ind : int
-        a position-unique channel index (usually 0 for DAPI an 1 for GFP)
+        a position-unique channel index (usually 0 for hoechst an 1 for GFP)
     position_ind : int
         the experiment-unique position index
     position_name : str

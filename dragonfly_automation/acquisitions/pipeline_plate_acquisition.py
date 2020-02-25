@@ -295,7 +295,7 @@ class PipelinePlateAcquisition(Acquisition):
     '''
     This is a re-implementation of Nathan's pipeline plate acquisition script
 
-    It acquires DAPI and GFP z-stacks at some number of positions
+    It acquires hoechst and GFP z-stacks at some number of positions
     in some number of wells on a 96-well plate.
 
     See the comments in self.run for more details
@@ -335,7 +335,7 @@ class PipelinePlateAcquisition(Acquisition):
         with open(os.path.join(self.root_dir, 'metadata.json'), 'w') as file:
             json.dump(self.external_metadata, file)
 
-        # whether to acquire a brightfield stack after the DAPI and GFP stacks
+        # whether to acquire a brightfield stack after the hoechst and GFP stacks
         self.acquire_bf_stacks = acquire_bf_stacks
 
         # whether to skip FOV scoring (only for manual redos)
@@ -358,7 +358,7 @@ class PipelinePlateAcquisition(Acquisition):
         # initialize channel managers
         self.bf_channel = ChannelSettingsManager(settings.bf_channel_settings)
         self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
-        self.dapi_channel = ChannelSettingsManager(settings.dapi_channel_settings)
+        self.hoechst_channel = ChannelSettingsManager(settings.hoechst_channel_settings)
         
         # FOV selection settings
         self.fov_selection_settings = settings.fov_selection_settings
@@ -393,7 +393,7 @@ class PipelinePlateAcquisition(Acquisition):
                 dict(getattr(self, settings_name)._asdict()))
 
         # log the channel settings
-        for channel_name in ['dapi_channel', 'gfp_channel', 'bf_channel']:
+        for channel_name in ['hoechst_channel', 'gfp_channel', 'bf_channel']:
             self.acquisition_metadata_logger(
                 channel_name,
                 getattr(self, channel_name).__dict__)
@@ -607,8 +607,8 @@ class PipelinePlateAcquisition(Acquisition):
         if afc_did_succeed:
             afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
 
-        # change to the DAPI channel for FOV scoring
-        self.operations.change_channel(self.mm_core, self.dapi_channel)
+        # change to the hoechst channel for FOV scoring
+        self.operations.change_channel(self.mm_core, self.hoechst_channel)
 
         # score the FOV at each position
         for position in positions:
@@ -641,7 +641,7 @@ class PipelinePlateAcquisition(Acquisition):
                 afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
                 position['afc_updated_focusdrive_position'] = afc_updated_focusdrive_position
 
-            # acquire an image of the DAPI signal
+            # acquire an image of the hoechst signal
             image = self.operations.acquire_image(
                 self.gate, self.mm_studio, self.mm_core, self.event_logger)
 
@@ -818,7 +818,7 @@ class PipelinePlateAcquisition(Acquisition):
             # settings for the two fluorescence channels
             all_settings = [
                 {
-                    'channel': self.dapi_channel,
+                    'channel': self.hoechst_channel,
                     'stack': self.flourescence_stack_settings,
                 },{
                     'channel': self.gfp_channel,
