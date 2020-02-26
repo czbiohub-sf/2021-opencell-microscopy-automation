@@ -462,6 +462,12 @@ class PipelinePlateQC:
         
         # note that figsize is (width, height)
         fig, axs = plt.subplots(len(rows), len(cols), figsize=(len(cols)*4, len(rows)*4))
+
+        if len(rows) == 1:
+            axs = axs[None, :]
+        if len(cols) == 1:
+            axs = axs[:, None]
+
         for row_ind, row_label in enumerate(rows):
             for col_ind, col_label in enumerate(cols):
                 ax = axs[row_ind][col_ind]
