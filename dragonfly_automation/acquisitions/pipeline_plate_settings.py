@@ -75,7 +75,6 @@ bf_stack_settings = StackSettings(
 CONFIG_GROUP = 'Channels-EMCCD'
 LASER_LINE = 'Andor ILE-A'
 CAMERA_NAME = 'Andor EMCCD'
-DEFAULT_LASER_POWER = 10
 DEFAULT_CAMERA_GAIN = 400.0
 
 hoechst_channel_settings = ChannelSettings(
@@ -85,7 +84,7 @@ hoechst_channel_settings = ChannelSettings(
     laser_line=LASER_LINE,
     laser_name='Laser 405-Power Setpoint',
     default_camera_gain=DEFAULT_CAMERA_GAIN,
-    default_laser_power=DEFAULT_LASER_POWER,
+    default_laser_power=10,
     default_exposure_time=100.0
 )
 
@@ -95,22 +94,21 @@ gfp_channel_settings = ChannelSettings(
     camera_name=CAMERA_NAME,
     laser_line=LASER_LINE,
     laser_name='Laser 488-Power Setpoint',
-    default_laser_power=DEFAULT_LASER_POWER,
     default_camera_gain=DEFAULT_CAMERA_GAIN,
+    default_laser_power=15,
     default_exposure_time=50.0
 )
 
-# provisional brightfield settings
-# TODO: check that the config name is the right one
+# brightfield settings
 bf_channel_settings = ChannelSettings(
     config_group=CONFIG_GROUP,
     config_name='EMCCD_BF',
     camera_name=CAMERA_NAME,
     laser_line=None,
     laser_name=None,
+    default_camera_gain=DEFAULT_CAMERA_GAIN,
     default_laser_power=None,
-    default_exposure_time=100.0,
-    default_camera_gain=400.0
+    default_exposure_time=100.0
 )
 
 
