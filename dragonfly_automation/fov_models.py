@@ -506,6 +506,10 @@ class PipelineFOVScorer:
         if raw_image is not None:
             tifffile.imsave(logged_image_filepath('RAW'), raw_image)
 
+        # log an annotated version of the raw image
+        log_annotated_image = False
+        if log_annotated_image:
+
             # create a uint8 version 
             # (uint16 images can't be opened in Windows image preview)
             scaled_image = utils.to_uint8(raw_image)
