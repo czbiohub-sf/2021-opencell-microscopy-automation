@@ -26,7 +26,6 @@ sys.path.append('/home/projects/opencell')
 from opencell.imaging import images
 
 
-
 # schema for the manually-defined metadata required for each pipeline_plate acquisition
 EXTERNAL_METADATA_SCHEMA = {
     'type': 'object',
@@ -453,12 +452,14 @@ class PipelinePlateQC:
         gfp_aq_log = self.aq_log.loc[self.aq_log.config_name == 'EMCCD_Confocal40_GFP']
 
         # merge the FOV scores from the score_log
-        gfp_aq_log = pd.merge(
-            gfp_aq_log,
-            self.score_log[['position_ind', 'score']], 
-            left_on='position_ind',
-            right_on='position_ind',
-            how='left')
+        gfp_aq_log['score'] = 0
+        if self.has_score_log:
+            gfp_aq_log = pd.merge(
+                gfp_aq_log,
+                self.score_log[['position_ind', 'score']], 
+                left_on='position_ind',
+                right_on='position_ind',
+                how='left')
         
         # note that figsize is (width, height)
         fig, axs = plt.subplots(len(rows), len(cols), figsize=(len(cols)*4, len(rows)*4))
