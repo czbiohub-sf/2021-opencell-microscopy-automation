@@ -15,7 +15,12 @@ import numpy as np
 import pandas as pd
 import dask.diagnostics
 
+HERE = os.path.abspath(os.path.dirname(__file__))
+REPO_ROOT = os.path.join(HERE, os.pardir)
+sys.path.insert(0, REPO_ROOT)
+
 from dragonfly_automation.qc.pipeline_plate_qc import PipelinePlateQC
+
 
 def parse_args():
     '''
