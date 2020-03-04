@@ -280,9 +280,11 @@ class PipelinePlateQC:
         # check for required and unexpected columns
         # (there must be a column for each property 
         # that would otherwise have been defined in the external_metadata)
-        required_columns = set(EXTERNAL_METADATA_SCHEMA['properties'].keys())\
+        required_columns = (
+            set(EXTERNAL_METADATA_SCHEMA['properties'].keys())
             .difference(['pml_id', 'platemap_type'])
-    
+        )
+
         if required_columns.difference(platemap.columns):
             raise ValueError('Missing columns in the custom platemap in %s' % self.root_dir)
 
@@ -449,10 +451,9 @@ class PipelinePlateQC:
         horizontal_border = (255*np.ones((border_width, 2*im_sz + border_width))).astype('uint8')
         
         # acquired z-stacks (channel is arbitrary, since we will only need the well_ids and site_nums)
-        gfp_aq_log = self.aq_log.loc[self.aq_log.config_name == 'EMCCD_Confocal40_GFP']
+        gfp_aq_log = self.aq_log.loc[self.aq_log.config_name == 'EMCCD_Confocal40_GFP'].copy()
 
         # merge the FOV scores from the score_log
-        gfp_aq_log['score'] = 0
         if self.has_score_log:
             gfp_aq_log = pd.merge(
                 gfp_aq_log,
@@ -460,7 +461,9 @@ class PipelinePlateQC:
                 left_on='position_ind',
                 right_on='position_ind',
                 how='left')
-        
+        else:
+            gfp_aq_log['score'] = 0
+    
         # note that figsize is (width, height)
         fig, axs = plt.subplots(len(rows), len(cols), figsize=(len(cols)*4, len(rows)*4))
 
@@ -477,7 +480,7 @@ class PipelinePlateQC:
                 imaging_well_id = '%s%s' % (row_label, col_label)
                 
                 # the acquired FOVs for this well, sorted by score
-                well_aq_log = gfp_aq_log.loc[gfp_aq_log.well_id == imaging_well_id]
+                well_aq_log = gfp_aq_log.loc[gfp_aq_log.well_id == imaging_well_id].copy()
                 well_aq_log = well_aq_log.sort_values(by='score', ascending=False).reset_index()
 
                 # load the z-projetions of the four top-scoring FOVs
@@ -595,8 +598,10 @@ class PipelinePlateQC:
                 well_id = self.pad_well_id(row.pipeline_well_id)
 
                 # construct the filename to which to rename the raw TIFF
-                dst_filename = \
-                    f'{row.parental_line}-{row.plate_id}-{well_id}-{row.pml_id}-{site_id}__{src_filename}'
+                dst_filename = (
+                    f'{row.parental_line}-{row.plate_id}-{well_id}-{row.pml_id}-{site_id}'
+                    f'__{src_filename}'
+                )
 
                 fov_metadata_row = dict(row)
                 fov_metadata_row.update({

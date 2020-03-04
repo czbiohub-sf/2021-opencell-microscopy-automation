@@ -63,7 +63,6 @@ def main():
         qc.tile_acquired_fovs(channel_ind=1, save_plot=True)
 
     if args.run_all:
-
         print('Plotting FOV counts and scores')
         qc.plot_counts_and_scores(save_plot=True)
 
