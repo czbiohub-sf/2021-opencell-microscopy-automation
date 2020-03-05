@@ -3,6 +3,7 @@ import re
 import sys
 import glob
 import json
+import time
 import shutil
 import datetime
 import tifffile
@@ -42,6 +43,9 @@ def parse_args():
 
     # run mode: 'test' or 'prod'
     parser.add_argument('--mode', dest='mode', type=str, default='prod', required=False)
+
+    # time delay, in minutes, to add before starting the acquisition
+    parser.add_argument('--delay', dest='delay', type=int, default=None, required=False)
 
     # CLI args whose presence in the command sets them to True
     action_arg_names = ['acquire_bf_stacks', 'skip_fov_scoring']
@@ -89,6 +93,11 @@ def main():
         attempt_count=attempt_count)
 
     aq.setup()
+    
+    if args.delay is not None:
+        print('Delaying acquisition by %d minutes' % args.delay)
+        time.sleep(args.delay*60)
+
     aq.run(mode=args.mode)
 
 
