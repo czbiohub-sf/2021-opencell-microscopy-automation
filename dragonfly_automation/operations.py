@@ -25,9 +25,12 @@ def go_to_position(mm_studio, mm_core, position_ind):
     mm_position = mm_position_list.getPosition(position_ind)
 
     # move the stage to the new position
-    # note that `goToPosition` moves the stages specified in the position list,
-    # which are the 'XYStage' and 'FocusDrive' devices (and not the 'PiezoZ' stage)
-    mm_position.goToPosition(mm_position, mm_core)
+    # note that `goToPosition` moves the stages specified in the position list
+    # we try twice because, for large stage movements, MicroManager will throw a timeout error
+    try:
+        mm_position.goToPosition(mm_position, mm_core)
+    except py4j.protocol.Py4JJavaError:
+        mm_position.goToPosition(mm_position, mm_core)
 
 
 def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=None):
