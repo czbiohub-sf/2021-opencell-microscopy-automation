@@ -1,4 +1,6 @@
 
+import time
+
 from dragonfly_automation.gateway import mock_gateway
 
 try:
@@ -52,7 +54,25 @@ class Py4jWrapper:
             self.logger(message)
 
             # make the method call and handle the result
-            result = attr(*args)
+            num_tries = 10
+            wait_time = 60
+            call_succeeded = False
+            for _ in range(num_tries):
+                try:
+                    result = attr(*args)
+                    call_succeeded = True
+                    break
+                except Exception as error:
+                    self.logger('ERROR: An error occurred calling method `%s`: %s' % (name, str(error)))
+                    time.sleep(wait_time)
+
+            # this indicates a persistent MicroManager error,
+            # and is a situation from which we cannot recover
+            if not call_succeeded:
+                message = 'Call to method `%s` failed after %s tries' % (name, num_tries)
+                self.logger('FATAL ERROR: %s' % message)
+                raise Exception(message)
+
             if result == self.wrapped_obj:
                 return self
             elif self.is_class_instance(result):
