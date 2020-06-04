@@ -190,7 +190,8 @@ class PipelinePlateQC:
         # fix the FOV image filepaths in the FOV log
         filenames = [path.split('\\')[-1] for path in self.score_log.image_filepath]
         self.score_log['filename'] = [
-            os.path.join(self.score_log_dir, 'fov-images', filename) for filename in filenames]
+            os.path.join(self.score_log_dir, 'fov-images', filename) for filename in filenames
+        ]
 
         # the number of positions visited and scored in each well
         # (prior to 2019-11-19, this value was not explicitly logged anywhere, but was always 25)
@@ -205,13 +206,17 @@ class PipelinePlateQC:
         if 'position_well_id' in self.score_log.columns:
             self.score_log.rename(columns={'position_well_id': 'well_id'}, inplace=True)
         else:
-            print('Warning: manually appending well_ids to the score_log in %s' % self.root_dirname)
+            print(
+                'Warning: manually appending well_ids to the score_log in %s'
+                % self.root_dirname
+            )
             self.score_log = pd.merge(
                 self.score_log,
                 pd.DataFrame(data=hcs_site_well_ids), 
                 left_on='position_ind', 
                 right_on='ind', 
-                how='inner')
+                how='inner'
+            )
 
         # summary of the score log
         num_fovs = self.score_log.shape[0]
@@ -222,7 +227,6 @@ class PipelinePlateQC:
             'pct_scores_le_nhalf': int(100*(self.score_log.score < -.5).sum() / num_fovs),
             'pct_unscored_fovs': int(100*(self.score_log.score.isna()).sum() / num_fovs),
         }
-
         return summary
 
 
@@ -245,7 +249,10 @@ class PipelinePlateQC:
         
         # validate the platemap_type
         if md['platemap_type'] not in ['first-half', 'second-half', 'custom', 'none']:
-            raise ValueError("Invalid platemap_type '%s' in %s" % (md['platemap_type'], self.root_dirname))
+            raise ValueError(
+                "Invalid platemap_type '%s' in %s"
+                % (md['platemap_type'], self.root_dirname)
+            )
 
         # if there is a custom platemap, no other external metadata properties are required        
         if md['platemap_type'] == 'custom':
@@ -308,12 +315,18 @@ class PipelinePlateQC:
             platemap = self.load_and_validate_custom_platemap()
         elif platemap_type == 'none':
             print('Warning: platemap_type is None')
-            print('An identity platemap will be constructed for all well_ids in the acquisition log')
+            print(
+                'An identity platemap will be constructed for all well_ids '
+                'in the acquisition log'
+            )
             well_ids = self.aq_log.well_id.unique()
-            plate_layout = [{
-                'imaging_well_id': well_id, 
-                'pipeline_well_id': well_id
-            } for well_id in well_ids]
+            plate_layout = [
+                {
+                    'imaging_well_id': well_id, 
+                    'pipeline_well_id': well_id
+                }
+                for well_id in well_ids
+            ]
             platemap = pd.DataFrame(data=plate_layout)
         else:
             raise ValueError("Invalid platemap_type '%s'" % platemap_type)
@@ -330,13 +343,20 @@ class PipelinePlateQC:
     def summarize(self):
 
         # start time
-        t0 = datetime.datetime.strptime(self.exp_metadata['setup_timestamp'], '%Y-%m-%d %H:%M:%S')
+        t0 = datetime.datetime.strptime(
+            self.exp_metadata['setup_timestamp'], '%Y-%m-%d %H:%M:%S'
+        )
 
         # experiments that crashed may lack cleanup timestamps
         if self.exp_metadata.get('cleanup_timestamp'):
-           tf = datetime.datetime.strptime(self.exp_metadata['cleanup_timestamp'], '%Y-%m-%d %H:%M:%S')    
+           tf = datetime.datetime.strptime(
+               self.exp_metadata['cleanup_timestamp'], '%Y-%m-%d %H:%M:%S'
+            )    
         else:
-            print('Warning: there is no cleanup_timestamp in the experiment metadata in %s' % self.root_dirname)
+            print(
+                'Warning: there is no cleanup_timestamp in the experiment metadata in %s'
+                % self.root_dirname
+            )
             tf = t0
 
         total_seconds = (tf - t0).seconds
@@ -360,7 +380,8 @@ class PipelinePlateQC:
         # append the manual flags (usually empty)
         summary.update({
             'manually_flagged_rows': self.manual_flags['row_ids'],
-            'manually_flagged_wells': self.manual_flags['well_ids']})
+            'manually_flagged_wells': self.manual_flags['well_ids']
+        })
 
         print(f'Summary for {self.root_dirname}')
         for key, val in summary.items():
@@ -405,9 +426,10 @@ class PipelinePlateQC:
         os.makedirs(dst_dirpath, exist_ok=True)
 
         src_filepaths = sorted(glob.glob(os.path.join(self.raw_data_dir, '*.ome.tif')))
-        tasks = [dask.delayed(self.generate_z_projection)(src_filepath, dst_dirpath)
-            for src_filepath in src_filepaths]
-        
+        tasks = [
+            dask.delayed(self.generate_z_projection)(src_filepath, dst_dirpath)
+            for src_filepath in src_filepaths
+        ]
         with dask.diagnostics.ProgressBar():
             dask.compute(*tasks)
 
@@ -453,8 +475,8 @@ class PipelinePlateQC:
         border_width = 10
         vertical_border = (255*np.ones((im_sz, border_width))).astype('uint8')
         horizontal_border = (255*np.ones((border_width, 2*im_sz + border_width))).astype('uint8')
-        
-        # acquired z-stacks (channel is arbitrary, since we will only need the well_ids and site_nums)
+
+        # acquired z-stacks (channel is arbitrary, since we only need the well_ids and site_nums)
         gfp_aq_log = self.aq_log.loc[self.aq_log.config_name == 'EMCCD_Confocal40_GFP'].copy()
 
         # merge the FOV scores from the score_log
@@ -517,7 +539,8 @@ class PipelinePlateQC:
                         horizontal_border,
                         np.concatenate((ims[2], vertical_border, ims[3]), axis=1),
                     ), 
-                    axis=0)
+                    axis=0
+                )
 
                 # plot the tiled images
                 ax.imshow(tile, cmap='gray')
@@ -525,9 +548,12 @@ class PipelinePlateQC:
                 ax.set_yticks([])
 
                 parenthetical_info = 'No FOVs'
-                if  well_aq_log.shape[0]:
+                if well_aq_log.shape[0]:
                     gfp_laser_power = well_aq_log.iloc[0].laser_power
-                    gfp_laser_power = '%d' % gfp_laser_power if gfp_laser_power > 1 else '%0.2f' % gfp_laser_power
+                    gfp_laser_power = (
+                        '%d' % gfp_laser_power if gfp_laser_power > 1
+                        else '%0.2f' % gfp_laser_power
+                    )
                     gfp_exposure_time = '%d' % well_aq_log.iloc[0].exposure_time
                     parenthetical_info = '%sms at %s%%' % (gfp_exposure_time, gfp_laser_power)
 
@@ -541,7 +567,12 @@ class PipelinePlateQC:
                 ax.set_title(title, fontsize=16)
 
         plt.subplots_adjust(left=.01, right=.99, top=.95, bottom=.01, wspace=0.01, hspace=0.15)
-        plt.savefig(os.path.join(self.qc_dir, '%s-top-scoring-FOVs-CH%d.pdf' % (self.root_dirname, channel_ind)))
+        plt.savefig(
+            os.path.join(
+                self.qc_dir, 
+                '%s-top-scoring-FOVs-CH%d.pdf' % (self.root_dirname, channel_ind)
+            )
+        )
 
 
     def sample_well_id_from_imaging_well_id(self, imaging_well_id):
@@ -555,7 +586,6 @@ class PipelinePlateQC:
             sample_well_id = row.pipeline_well_id
         else:
             print('Warning: imaging_well_id %s not found in the platemap' % imaging_well_id)
-        
         return plate_id, sample_well_id
 
 
@@ -597,7 +627,10 @@ class PipelinePlateQC:
             row = self.platemap.loc[self.platemap.imaging_well_id==imaging_well_id].iloc[0]
             if not row.shape[0]:
                 dst_filename = None
-                print('Warning: there is an FOV but no platemap entry for imaging_well_id %s' % imaging_well_id)
+                print(
+                    'Warning: there is an FOV but no platemap entry for imaging_well_id %s'
+                    % imaging_well_id
+                )
 
             else:
                 site_id = 'S%02d' % site_num
@@ -621,7 +654,10 @@ class PipelinePlateQC:
 
         # check for imaging_well_ids in the platemap without any FOVs
         # (these are presumably wells in which, for some reason, no FOVs were acquired)
-        missing_wells = set(self.platemap.imaging_well_id).difference(fov_metadata.imaging_well_id)
+        missing_wells = (
+            set(self.platemap.imaging_well_id)
+            .difference(fov_metadata.imaging_well_id)
+        )
         if missing_wells:
             print('Warning: no FOVs found for imaging wells %s' % (missing_wells,))
 
@@ -630,12 +666,15 @@ class PipelinePlateQC:
         if self.manual_flags is not None:
             for ind, row in fov_metadata.iterrows():
                 imaging_row_id = row.imaging_well_id[0]
-                if row.imaging_well_id in self.manual_flags['well_ids'] or imaging_row_id in self.manual_flags['row_ids']:
+                if (
+                    row.imaging_well_id in self.manual_flags['well_ids']
+                    or imaging_row_id in self.manual_flags['row_ids']
+                ):
                     fov_metadata.at[ind, 'manually_flagged'] = True
 
         # pad the well_ids and sort
         for column in ['imaging_well_id', 'pipeline_well_id']:
-            fov_metadata[column] = [self.pad_well_id(well_id) for well_id in fov_metadata[column]]
+            fov_metadata[column] = fov_metadata[column].apply(self.pad_well_id)
         fov_metadata.sort_values(by=['plate_id', 'pipeline_well_id', 'site_num'], inplace=True)
 
         filepath = os.path.join(self.root_dir, 'fov-metadata.csv')
