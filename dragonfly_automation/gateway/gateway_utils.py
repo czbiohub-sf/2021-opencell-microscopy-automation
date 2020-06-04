@@ -63,6 +63,9 @@ class Py4jWrapper:
                     call_succeeded = True
                     break
                 except Exception as error:
+                    # HACK: do not intercept AFC errors (these are handled in call_afc)
+                    if name == 'fullFocus':
+                        raise
                     self.logger('ERROR: An error occurred calling method `%s`: %s' % (name, str(error)))
                     time.sleep(wait_time)
 

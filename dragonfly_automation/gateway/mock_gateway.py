@@ -37,7 +37,7 @@ WELL_IDS = list(np.array(HALF_PLATE_WELL_IDS).flatten())
 FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/raw-pipeline-microscopy/PML0234/logs/fov-scoring/fov-images/'
 
 # AFC timeout probability (in percent)
-AFC_TIMEOUT_PROB = 0
+AFC_TIMEOUT_PROB = 20
 
 
 class MockJavaException:
@@ -245,7 +245,7 @@ class AutofocusMethod(Base):
     '''
     def fullFocus(self):
         # TODO: programmatically specify this flag
-        mock_afc_timeout = np.random.randint(0, 10) < AFC_TIMEOUT_PROB
+        mock_afc_timeout = np.random.randint(0, 100) < AFC_TIMEOUT_PROB
         if mock_afc_timeout:
             raise MockPy4JJavaError()
         else:
