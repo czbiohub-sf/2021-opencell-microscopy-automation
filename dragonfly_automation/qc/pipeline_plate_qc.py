@@ -416,18 +416,22 @@ class PipelinePlateQC:
     def generate_z_projection(src_filepath, dst_dirpath):
         '''
         '''
-        tiff = images.MicroManagerTIFF(src_filepath)
+        src_filename = src_filepath.split(os.sep)[-1]
+
+        tiff = images.RawPipelineTIFF(src_filepath, verbose=False)
         tiff.parse_micromanager_metadata()
-        channel_inds = tiff.mm_metadata.channel_ind.unique()
-        for channel_ind in channel_inds:
-            stack = np.array([
-                tiff.tiff.pages[ind].asarray() 
-                for ind in tiff.mm_metadata.loc[tiff.mm_metadata.channel_ind==channel_ind].page_ind
-            ])
-    
-            src_filename = src_filepath.split(os.sep)[-1]
-            dst_filename = src_filename.replace('.ome.tif', '_PROJ-CH%d.tif' % channel_ind)
-            tifffile.imsave(os.path.join(dst_dirpath, dst_filename), stack.max(axis=0))
+        tiff.validate_micromanager_metadata()
+        tiff.split_channels()
+
+        if tiff.did_split_channels:
+            for ind, channel in enumerate([tiff.laser_405, tiff.laser_488]):
+                dst_filename = src_filename.replace('.ome.tif', '_PROJ-CH%d.tif' % ind)
+                dst_filepath = os.path.join(dst_dirpath, dst_filename)
+                tiff.project_stack(channel_name=channel, axis='z', dst_filepath=dst_filepath)
+        else:
+            print("Warning: could not split channels of raw TIFF '%s'" % src_filename)
+
+        tiff.tiff.close()
 
 
     def tile_acquired_fovs(self, channel_ind=0, save_plot=False):
@@ -467,9 +471,11 @@ class PipelinePlateQC:
         # note that figsize is (width, height)
         fig, axs = plt.subplots(len(rows), len(cols), figsize=(len(cols)*4, len(rows)*4))
 
-        if len(rows) == 1:
+        if len(rows) == 1 and len(cols) == 1:
+            axs = [[axs]]
+        elif len(rows) == 1:
             axs = axs[None, :]
-        if len(cols) == 1:
+        elif len(cols) == 1:
             axs = axs[:, None]
 
         for row_ind, row_label in enumerate(rows):
