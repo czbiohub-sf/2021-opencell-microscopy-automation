@@ -512,7 +512,7 @@ class PipelineFOVScorer:
 
             # create a uint8 version 
             # (uint16 images can't be opened in Windows image preview)
-            scaled_image = utils.to_uint8(raw_image)
+            scaled_image = utils.to_uint8(raw_image, percentile=1)
             tifffile.imsave(logged_image_filepath('UINT8'), scaled_image)
 
             # create and save the annotated image
@@ -759,7 +759,8 @@ class PipelineFOVScorer:
         if im is not None:
             mask = self.generate_background_mask(im)
             ax.imshow(
-                skimage.color.label2rgb(~mask, image=utils.to_uint8(im), colors=('black', 'yellow')))
+                skimage.color.label2rgb(~mask, image=utils.to_uint8(im), colors=('black', 'yellow'))
+            )
 
         # plot the positions themselves
         ax.scatter(positions[:, 1], positions[:, 0], color='red')

@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
+from dragonfly_automation import utils
 from dragonfly_automation.qc import half_plate_layout
 from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
 
@@ -527,7 +528,7 @@ class PipelinePlateQC:
                         if not os.path.isfile(filepath):
                             continue
                         im = tifffile.imread(filepath)[::downsample_by, ::downsample_by]
-                        ims[ind] = self.autogain(im, p=1)
+                        ims[ind] = utils.to_uint8(im, percentile=1)
 
                     if im is None:
                         print('Warning: no z-projection found for %s' % filenames[0])
@@ -713,24 +714,6 @@ class PipelinePlateQC:
             dst_filepath = os.path.join(self.raw_data_dir, row.dst_filename)
             os.rename(src_filepath, dst_filepath)
         return metadata
-
-
-    @staticmethod
-    def autogain(im, p=0):
-        # HACK: this is more or less a copy from the same method
-        # in opencell-process repo
-        im = im.copy().astype(float)
-        minn, maxx = np.percentile(im, (p, 100 - p))
-        if minn==maxx:
-            return (im * 0).astype('uint8')
-            
-        im = im - minn
-        im[im < minn] = 0
-        im = im/(maxx - minn)
-        im[im > 1] = 1
-        
-        im = (im*255).astype('uint8')
-        return im
 
 
     @staticmethod

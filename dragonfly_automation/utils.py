@@ -18,15 +18,14 @@ def timestamp():
     return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
-def to_uint8(im):
+def to_uint8(im, percentile=0):
 
     dtype = 'uint8'
     max_value = 255
     im = im.copy().astype(float)
 
-    percentile = 1
     minn, maxx = np.percentile(im, (percentile, 100 - percentile))
-    if minn==maxx:
+    if minn == maxx:
         return (im * 0).astype(dtype)
 
     im = im - minn
@@ -41,7 +40,8 @@ def interpolate_focusdrive_positions_from_corners(
     position_list_filepath, 
     region_shape, 
     num_positions_per_well,
-    corner_positions):
+    corner_positions
+):
     '''
     This method refactors the 'StageTiltDragonfly.py' script
 
@@ -277,7 +277,8 @@ def preview_interpolation(
     measured_focusdrive_positions, 
     top_left_well_id, 
     bottom_right_well_id,
-    method):
+    method
+):
     '''
     '''
 
