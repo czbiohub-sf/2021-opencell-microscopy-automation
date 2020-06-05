@@ -30,7 +30,9 @@ def parse_args():
     parser.add_argument('root_dir', type=str)
 
     # CLI args whose presence in the command sets them to True
-    action_arg_names = ['inspect', 'project', 'plot', 'run_all']
+    action_arg_names = [
+        'inspect', 'project', 'plot', 'construct_metadata', 'overwrite', 'run_all'
+    ]
 
     for arg_name in action_arg_names:
         parser.add_argument(
@@ -62,6 +64,9 @@ def main():
         qc.tile_acquired_fovs(channel_ind=0, save_plot=True)
         qc.tile_acquired_fovs(channel_ind=1, save_plot=True)
 
+    if args.construct_metadata:
+        qc.construct_fov_metadata(renamed=False, overwrite=args.overwrite)
+
     if args.run_all:
         print('Plotting FOV counts and scores')
         qc.plot_counts_and_scores(save_plot=True)
@@ -73,6 +78,7 @@ def main():
         print('Plotting acquired FOVs')
         qc.tile_acquired_fovs(channel_ind=0, save_plot=True)
         qc.tile_acquired_fovs(channel_ind=1, save_plot=True)
+        qc.construct_fov_metadata(renamed=False, overwrite=False)
 
 
 if __name__ == '__main__':
