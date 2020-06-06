@@ -23,7 +23,7 @@ from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
 # local opencell repo
 sys.path.append('/Users/keith.cheveralls/projects/opencell')
 # opencell repo from a docker container on ESS
-sys.path.append('/home/projects/opencell')
+sys.path.append('/gpfsML/ML_group/KC/projects/opencell')
 from opencell.imaging import images
 
 
