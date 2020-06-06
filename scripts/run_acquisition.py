@@ -29,7 +29,8 @@ def parse_args():
         dest='data_dir',
         type=str,
         required=False,
-        default=os.path.join('D:', 'PipelineML', 'data'))
+        default=os.path.join('D:', 'PipelineML', 'data')
+    )
 
     parser.add_argument('--pml-id', dest='pml_id', type=str, required=True)
     parser.add_argument('--plate-id', dest='plate_id', type=str, required=True)
@@ -38,7 +39,7 @@ def parse_args():
     # environment type - 'dev' or 'prod' - whether to mock the microscope
     parser.add_argument('--env', dest='env', type=str, default='prod', required=False)
 
-    # test mode when env='dev' (how to mock the microscope)
+    # test mode when env='dev' (determines how the mocked FOV snaps are generated)
     parser.add_argument('--test-mode', type=str, default=None, required=False)
 
     # run mode: 'test' or 'prod'
@@ -55,7 +56,8 @@ def parse_args():
             '--%s' % arg_name.replace('_', '-'), 
             dest=arg_name,
             action='store_true',
-            required=False)
+            required=False
+        )
 
     for arg_name in action_arg_names:
         parser.set_defaults(**{arg_name: False})
@@ -90,7 +92,8 @@ def main():
         platemap_type=args.platemap_type,
         acquire_bf_stacks=args.acquire_bf_stacks,
         skip_fov_scoring=args.skip_fov_scoring,
-        attempt_count=attempt_count)
+        attempt_count=attempt_count
+    )
 
     aq.setup()
     

@@ -105,7 +105,8 @@ class Acquisition:
             env=self.env, 
             wrap=True, 
             logger=self.event_logger,
-            test_mode=test_mode)
+            test_mode=test_mode
+        )
 
         # create the operations instance (with logging enabled)
         self.operations = operations.Operations(self.event_logger)
@@ -133,8 +134,10 @@ class Acquisition:
             message = '\n%s' % message
  
         # manually-defined 'important' event categories
-        important_labels = ['ACQUISITION', 'SCORING', 'AUTOFOCUS', 'AUTOEXPOSURE', 'ERROR', 'WARNING']
-        
+        important_labels = [
+            'ACQUISITION', 'SCORING', 'AUTOFOCUS', 'AUTOEXPOSURE', 'ERROR', 'WARNING',
+        ]
+
         message_is_important = False
         for label in important_labels:
             if label in message:
@@ -252,7 +255,8 @@ class Acquisition:
         self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
             self.data_dir,
             should_generate_separate_metadata, 
-            should_split_positions)
+            should_split_positions
+        )
 
         self.mm_studio.displays().createDisplay(self.datastore)
         
@@ -314,8 +318,9 @@ class PipelinePlateAcquisition(Acquisition):
         test_mode=None, 
         attempt_count=1,
         acquire_bf_stacks=True, 
-        skip_fov_scoring=False):
-        
+        skip_fov_scoring=False
+    ):
+
         # create the external metadata
         self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
 
@@ -389,14 +394,14 @@ class PipelinePlateAcquisition(Acquisition):
         ]
         for settings_name in settings_names:
             self.acquisition_metadata_logger(
-                settings_name, 
-                dict(getattr(self, settings_name)._asdict()))
+                settings_name, dict(getattr(self, settings_name)._asdict())
+            )
 
         # log the channel settings
         for channel_name in ['hoechst_channel', 'gfp_channel', 'bf_channel']:
             self.acquisition_metadata_logger(
-                channel_name,
-                getattr(self, channel_name).__dict__)
+                channel_name, getattr(self, channel_name).__dict__
+            )
 
 
     def setup(self):
@@ -511,8 +516,10 @@ class PipelinePlateAcquisition(Acquisition):
         if mode == 'test':
             unique_well_ids = unique_well_ids[:1]
             self.event_logger(
-                'ACQUISITION WARNING: Acquisition is running in test mode and only the first well will be visited',
-                newline=True)
+                'ACQUISITION WARNING: Acquisition is running in test mode, '
+                'so only the first well will be visited',
+                newline=True
+            )
 
         for well_id in unique_well_ids:
             self.current_well_id = well_id
@@ -523,7 +530,10 @@ class PipelinePlateAcquisition(Acquisition):
             # score and rank the positions
             if self.skip_fov_scoring:
                 self.event_logger(
-                    'ACQUISITION INFO: Skipping FOV scoring and acquiring all FOVs in well %s' % well_id, newline=True)
+                    'ACQUISITION INFO: Skipping FOV scoring and acquiring all FOVs in well %s'
+                    % well_id, 
+                    newline=True
+                )
                 positions_to_acquire = all_well_positions
             else:
                 self.event_logger(
@@ -537,19 +547,24 @@ class PipelinePlateAcquisition(Acquisition):
             # prettify the scores for the event log
             scores = []
             if not self.skip_fov_scoring:
-                scores = ['%0.2f' % p['fov_score'] if p.get('fov_score') is not None else 'None' 
-                    for p in positions_to_acquire]
+                scores = [
+                    '%0.2f' % p['fov_score'] if p.get('fov_score') is not None else 'None' 
+                    for p in positions_to_acquire
+                ]
 
             self.event_logger(
-                'ACQUISITION INFO: Imaging %d FOVs in well %s (scores: [%s])' % \
-                    (len(positions_to_acquire), well_id, ', '.join(scores)),
-                newline=True)
+                'ACQUISITION INFO: Imaging %d FOVs in well %s (scores: [%s])'
+                 % (len(positions_to_acquire), well_id, ', '.join(scores)),
+                newline=True
+            )
 
             # in test mode, acquire a single unselected FOV
             if mode == 'test':
                 self.event_logger(
-                    'ACQUISITION WARNING: running in test mode, so replacing selected positions with one unselected position',
-                    newline=True)
+                    'ACQUISITION WARNING: running in test mode, so the selected positions '
+                    'will be replaced with one unselected position',
+                    newline=True
+                )
                 names = [position['name'] for position in positions_to_acquire]
                 for position in all_well_positions:
                     if position['name'] not in names:
@@ -600,7 +615,8 @@ class PipelinePlateAcquisition(Acquisition):
 
         # call AFC
         afc_did_succeed = self.operations.call_afc(
-            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
+            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
+        )
 
         # if AFC succeeded, get the AFC-updated FocusDrive position
         afc_updated_focusdrive_position = None
@@ -620,7 +636,8 @@ class PipelinePlateAcquisition(Acquisition):
                 self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
             except py4j.protocol.Py4JJavaError:
                 self.event_logger(
-                    'SCORING ERROR: The XYStage timed out at position %s' % position['name'])
+                    'SCORING ERROR: The XYStage timed out at position %s' % position['name']
+                )
                 continue
 
             # update the FocusDrive position (this should help AFC to focus faster)
@@ -629,11 +646,13 @@ class PipelinePlateAcquisition(Acquisition):
                     self.mm_core, 
                     'FocusDrive', 
                     position=afc_updated_focusdrive_position, 
-                    kind='absolute')
+                    kind='absolute'
+                )
 
             # attempt to call AFC
             afc_did_succeed = self.operations.call_afc(
-                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
+                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
+            )
 
             # update the AFC-updated FocusDrive position and log it for later use
             # in self.acquire_positions
@@ -643,7 +662,8 @@ class PipelinePlateAcquisition(Acquisition):
 
             # acquire an image of the hoechst signal
             image = self.operations.acquire_image(
-                self.gate, self.mm_studio, self.mm_core, self.event_logger)
+                self.gate, self.mm_studio, self.mm_core, self.event_logger
+            )
 
             # score the FOV
             # note that, given all of the error handling in PipelineFOVScorer, 
@@ -653,8 +673,9 @@ class PipelinePlateAcquisition(Acquisition):
                 log_info = self.fov_scorer.score_raw_fov(image, position=position)
             except Exception as error:
                 self.event_logger(
-                    "SCORING ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s" % \
-                        (position['name'], error))
+                    "SCORING ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s"
+                    % (position['name'], error)
+                )
 
             # retrieve the score and note it in the event log
             if log_info is not None:
@@ -664,8 +685,9 @@ class PipelinePlateAcquisition(Acquisition):
                 # prettify the score for the event log
                 score = '%0.2f' % score if score is not None else score
                 self.event_logger(
-                    "SCORING INFO: The FOV score at position '%s' was %s (comment: '%s')" % \
-                        (position['name'], score, log_info.get('comment')))            
+                    "SCORING INFO: The FOV score at position '%s' was %s (comment: '%s')"
+                    % (position['name'], score, log_info.get('comment'))
+                )
 
         # drop positions without a score
         # (this will happen if log_info.get('score') is None or if there was an uncaught error above)
@@ -675,7 +697,9 @@ class PipelinePlateAcquisition(Acquisition):
         positions_with_score = sorted(positions_with_score, key=lambda p: -p['fov_score'])
 
         # list of acceptable positions
-        acceptable_positions = [p for p in positions_with_score if p['fov_score'] > self.fov_selection_settings.min_score]
+        acceptable_positions = [
+            p for p in positions_with_score if p['fov_score'] > self.fov_selection_settings.min_score
+        ]
         self.event_logger('ACQUISITION INFO: Found %d acceptable FOVs' % len(acceptable_positions))
 
         # crop the list if there are more acceptable positions than needed
@@ -693,18 +717,24 @@ class PipelinePlateAcquisition(Acquisition):
 
             if len(additional_positions):
                 self.event_logger(
-                    'ACQUISITION INFO: Fewer than the minimum of %s acceptable FOVs were found so %s additional scored FOVs will be imaged' % \
-                        (min_num_positions, len(additional_positions)))
+                    'ACQUISITION INFO: Fewer than the minimum of %s acceptable FOVs were found '
+                    'so %s additional scored FOVs will be imaged'
+                    % (min_num_positions, len(additional_positions))
+                )
             else:
                 self.event_logger(
-                    'ACQUISITION INFO: Fewer than the minimum of %s acceptable FOVs were found and there are no additional scored FOVs to image' % \
-                        (min_num_positions,))
+                    'ACQUISITION INFO: Fewer than the minimum of %s acceptable FOVs were found '
+                    'and there are no additional scored FOVs to image'
+                    % (min_num_positions,)
+                )
 
         # if there are still too few FOVs, there's nothing we can do        
         if len(positions_to_image) > 0 and len(positions_to_image) < min_num_positions:
             self.event_logger(
-                'ACQUISITION WARNING: All %s scored FOVs will be imaged but this is fewer than the minimum of %s FOVs' % \
-                    (len(positions_to_image), min_num_positions))
+                'ACQUISITION WARNING: All %s scored FOVs will be imaged '
+                'but this is fewer than the required minimum of %s FOVs'
+                % (len(positions_to_image), min_num_positions)
+            )
 
         return positions_to_image
 
@@ -722,13 +752,16 @@ class PipelinePlateAcquisition(Acquisition):
         if afc_updated_focusdrive_position is not None:
             current_position = self.mm_core.getPosition('FocusDrive')
             self.event_logger(
-                'ACQUISITION INFO: Updating the interpolated FocusDrive position (%s) with the AFC-updated position (%s)' % \
-                    (current_position, afc_updated_focusdrive_position))
+                'ACQUISITION INFO: Updating the interpolated FocusDrive position (%s) '
+                'with the AFC-updated position (%s)'
+                % (current_position, afc_updated_focusdrive_position)
+            )
             self.operations.move_z_stage(
                 self.mm_core, 
                 'FocusDrive', 
                 position=afc_updated_focusdrive_position, 
-                kind='absolute')
+                kind='absolute'
+            )
 
             # delay to help AFC 'adjust' to the new position
             time.sleep(1.0)
@@ -751,8 +784,9 @@ class PipelinePlateAcquisition(Acquisition):
         positions = sorted(positions, key=lambda position: position['site_num'])
 
         self.event_logger(
-            "ACQUISITION INFO: Autoexposing at the first acceptable FOV of well %s (position '%s')" % \
-                (self.current_well_id, positions[0]['name']))
+            "ACQUISITION INFO: Autoexposing at the first acceptable FOV of well %s (position '%s')"
+            % (self.current_well_id, positions[0]['name'])
+        )
     
         # go to the first position, where autoexposure will be run
         position = positions[0]
@@ -760,7 +794,8 @@ class PipelinePlateAcquisition(Acquisition):
 
         # attempt to call AFC
         afc_did_succeed = self.operations.call_afc(
-            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind'])
+            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind']
+        )
 
         # for now, ignore AFC errors
         # TODO: think about how to handle this situation, which is very serious,
@@ -784,23 +819,29 @@ class PipelinePlateAcquisition(Acquisition):
             stack_settings=self.flourescence_stack_settings,
             autoexposure_settings=self.autoexposure_settings,
             channel_settings=self.gfp_channel,
-            event_logger=self.event_logger)
+            event_logger=self.event_logger
+        )
 
         if not autoexposure_did_succeed:
             self.event_logger(
-                "ACQUISITION ERROR: autoexposure failed in well %s but attempting to continue" % self.current_well_id)
+                "ACQUISITION ERROR: autoexposure failed in well %s but attempting to continue" 
+                % self.current_well_id
+            )
 
         # acquire z-stacks at each position
         for ind, position in enumerate(positions):
             self.event_logger(
-                "ACQUISITION INFO: Acquiring stacks at position %d of %d in well %s (position '%s')" % \
-                    (ind + 1, len(positions), position['well_id'], position['name']),
-                    newline=True)
+                "ACQUISITION INFO: Acquiring stacks at position %d of %d in well %s (position '%s')" 
+                % (ind + 1, len(positions), position['well_id'], position['name']),
+                newline=True
+            )
 
             # sanity check 
             if self.current_well_id != position['well_id']:
                 self.event_logger(
-                    'ACQUISITION ERROR: The well_id of the position being acquired does not match self.current_well_id')
+                    'ACQUISITION ERROR: The well_id of the position being acquired '
+                    'does not match self.current_well_id'
+                )
 
             # go to the position
             position_ind = position['ind']
@@ -808,7 +849,8 @@ class PipelinePlateAcquisition(Acquisition):
 
             # attempt to call AFC
             afc_did_succeed = self.operations.call_afc(
-                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind)
+                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
+            )
 
             # for now, ignore AFC errors
             # TODO: consider skipping the position if AFC has failed
@@ -835,7 +877,9 @@ class PipelinePlateAcquisition(Acquisition):
 
             # acquire a z-stack for each channel
             for channel_ind, settings in enumerate(all_settings):
-                self.event_logger("ACQUISITION INFO: Acquiring channel '%s'" % settings['channel'].config_name)
+                self.event_logger(
+                    "ACQUISITION INFO: Acquiring channel '%s'" % settings['channel'].config_name
+                )
 
                 # change the channel
                 self.operations.change_channel(self.mm_core, settings['channel'])
@@ -848,7 +892,8 @@ class PipelinePlateAcquisition(Acquisition):
                     stack_settings=settings['stack'],
                     channel_ind=channel_ind,
                     position_ind=position_ind,
-                    position_name=position['name'])
+                    position_name=position['name']
+                )
 
                 # log the acquisition
                 self.acquisition_logger(
@@ -856,8 +901,7 @@ class PipelinePlateAcquisition(Acquisition):
                     position_ind=position_ind,
                     well_id=position['well_id'],
                     site_num=position['site_num'],
-                    afc_did_succeed=afc_did_succeed)
+                    afc_did_succeed=afc_did_succeed
+                )
         
-        return
-
 

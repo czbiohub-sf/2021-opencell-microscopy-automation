@@ -71,7 +71,9 @@ class Base:
 class Gate:
 
     def __init__(self, test_mode):
-
+        '''
+        test_mode: one of 'random-real', 'logged-real', or 'simulate-exposure'
+        '''
         self.test_mode = test_mode
         self.simulate_under_exposure = True
 
@@ -90,12 +92,11 @@ class Gate:
         def set_exposure_time(exposure_time):
             self.exposure_time = exposure_time
 
-        self.mm_studio = MMStudio(
-            set_position_ind=set_position_ind)
+        self.mm_studio = MMStudio(set_position_ind=set_position_ind)
 
         self.mm_core = MMCore(
-            set_laser_power=set_laser_power,
-            set_exposure_time=set_exposure_time)
+            set_laser_power=set_laser_power, set_exposure_time=set_exposure_time
+        )
 
     def getCMMCore(self):
         return self.mm_core
