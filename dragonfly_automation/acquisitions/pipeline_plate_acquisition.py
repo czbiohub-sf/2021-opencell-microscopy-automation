@@ -20,30 +20,15 @@ from dragonfly_automation.acquisitions import pipeline_plate_settings as setting
 class Acquisition:
     '''
     Base class for acquisition scripts
-
-    Public methods
-    --------------
-    event_logger : 
-
-
-    Public attributes
-    -----------------
-    env : 
-    datastore : 
-    verbose : 
-    operations : 
-    gate, mm_studio, mm_core : the py4j objects exposed by mm2python
-
     '''
 
-    def __init__(self, root_dir, env='dev', verbose=True, test_mode=None):
+    def __init__(self, root_dir, env='dev', test_mode=None, verbose=True):
         '''
-
-        datastore : py4j datastore object
-            passed explicitly here to avoid an unusual py4j error
         root_dir : the imaging experiment directory 
-            (usually ends with a directory of the form 'ML0000_20190823')
+            (usually ends with a directory of the form 'PML0123')
         env : 'prod' or 'dev'
+        test_mode : when env is 'dev', determines how the mocked snaps are generated
+            (see mock_gateway.Gate)
         verbose : whether to print log messages
 
         '''
@@ -308,7 +293,7 @@ class PipelinePlateAcquisition(Acquisition):
     
     def __init__(
         self, 
-        data_dir, 
+        root_dir, 
         fov_scorer, 
         pml_id,
         plate_id,
@@ -316,10 +301,10 @@ class PipelinePlateAcquisition(Acquisition):
         env='dev', 
         verbose=True, 
         test_mode=None, 
-        attempt_count=1,
         acquire_bf_stacks=True, 
         skip_fov_scoring=False
     ):
+        super().__init__(root_dir, env=env, verbose=verbose, test_mode=test_mode)
 
         # create the external metadata
         self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
@@ -332,10 +317,6 @@ class PipelinePlateAcquisition(Acquisition):
             self.external_metadata['imaging_round_id'] = 'R02'
             self.external_metadata['plate_id'] = plate_id
         
-        # construct the root directory for this acquisition
-        root_dir = os.path.join(data_dir, '%s-%s' % (pml_id, attempt_count))
-        super().__init__(root_dir, env=env, verbose=verbose, test_mode=test_mode)
-
         # save the external metadata
         with open(os.path.join(self.root_dir, 'metadata.json'), 'w') as file:
             json.dump(self.external_metadata, file)

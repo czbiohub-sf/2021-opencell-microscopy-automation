@@ -25,8 +25,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--data-dir',
-        dest='data_dir',
+        '--data-dirpath',
+        dest='data_dirpath',
         type=str,
         required=False,
         default=os.path.join('D:', 'PipelineML', 'data')
@@ -70,33 +70,36 @@ def main():
 
     args = parse_args()
 
-    # create a new directory for the acquisition
-    dirpath = None
-    attempt_count = 0
-    while dirpath is None or os.path.isdir(dirpath):
-        attempt_count += 1
-        dirpath = os.path.join(args.data_dir, '%s-%s' % (args.pml_id, attempt_count))
+    pml_id = args.pml_id
+    if args.mode == 'test':
+        pml_id = '%s-test' % pml_id    
+    acquisition_dirpath_base = os.path.join(args.data_dirpath, pml_id)
 
+    # create a new directory for the acquisition
+    acquisition_dirpath = None
+    attempt_count = 0
+    while acquisition_dirpath is None or os.path.isdir(acquisition_dirpath):
+        attempt_count += 1
+        acquisition_dirpath = '%s-%s' % (acquisition_dirpath_base, attempt_count)
+    
     fov_scorer = PipelineFOVScorer(mode='prediction')
     fov_scorer.load(os.path.join(REPO_ROOT, 'models', '2019-10-08'))
     fov_scorer.train()
     fov_scorer.validate()
 
     aq = PipelinePlateAcquisition(
-        args.data_dir, 
-        fov_scorer, 
-        env=args.env,
-        test_mode=args.test_mode,
+        root_dir=acquisition_dirpath, 
+        fov_scorer=fov_scorer,
         pml_id=args.pml_id,
         plate_id=args.plate_id,
         platemap_type=args.platemap_type,
+        env=args.env,
+        test_mode=args.test_mode,
         acquire_bf_stacks=args.acquire_bf_stacks,
         skip_fov_scoring=args.skip_fov_scoring,
-        attempt_count=attempt_count
     )
-
     aq.setup()
-    
+
     if args.delay is not None:
         print('Delaying acquisition by %d minutes' % args.delay)
         time.sleep(args.delay*60)
