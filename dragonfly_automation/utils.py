@@ -295,7 +295,7 @@ def preview_interpolation(
     X, Y = np.meshgrid(x, y)
     Z = interpolate.griddata(positions[:, :2], positions[:, 2], (X, Y), method=method)
 
-    fig = plt.figure()
+    plt.figure()
     ax = plt.axes(projection='3d')
     ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
     ax.scatter3D(positions[:, 0], positions[:, 1], positions[:, 2], color='red')
@@ -307,7 +307,8 @@ def interpolate_focusdrive_positions_from_all(
     top_left_well_id,
     bottom_right_well_id,
     method=None,
-    offset=0):
+    offset=0
+):
     '''
 
     Parameters
@@ -341,7 +342,8 @@ def interpolate_focusdrive_positions_from_all(
             positions[:, :2], 
             positions[:, 2], 
             (x, y), 
-            method=method)
+            method=method
+        )
 
         # add the optional user-defined constant offset
         interpolated_position += offset
@@ -369,17 +371,18 @@ def interpolate_focusdrive_positions_from_all(
 def visualize_interpolation(measured_focusdrive_positions, new_position_list):
 
     def xyz_from_pos(pos):
-        '''
-        '''
         well_id, site_num = parse_hcs_site_label(pos['LABEL'])
-        focusdrive = [d for d in pos['DEVICES'] if d['DEVICE']=='FocusDrive'][0]
+        focusdrive = [d for d in pos['DEVICES'] if d['DEVICE'] == 'FocusDrive'][0]
         x, y = well_id_to_position(well_id)
         z = focusdrive['X']
         return x, y, z
 
-    measured_positions = np.array([
-        (*well_id_to_position(well_id), zpos) 
-            for well_id, zpos in measured_focusdrive_positions.items()])
+    measured_positions = np.array(
+        [
+            (*well_id_to_position(well_id), zpos) 
+            for well_id, zpos in measured_focusdrive_positions.items()
+        ]
+    )
 
     pos = np.array([xyz_from_pos(p) for p in new_position_list['POSITIONS']])
 
@@ -392,4 +395,5 @@ def visualize_interpolation(measured_focusdrive_positions, new_position_list):
         measured_positions[:, 0], 
         measured_positions[:, 1], 
         measured_positions[:, 2], 
-        color='red')
+        color='red'
+    )

@@ -68,7 +68,7 @@ first_half = [
     {'imaging_well_id': 'G7', 'pipeline_well_id': 'F6'},
     {'imaging_well_id': 'G8', 'pipeline_well_id': 'G6'},
     {'imaging_well_id': 'G9', 'pipeline_well_id': 'H6'}
- ]
+]
 
 second_half = [
     {'imaging_well_id': 'B9', 'pipeline_well_id': 'H7'},

@@ -99,7 +99,7 @@ class ChannelSettingsManager:
         self.reset()
 
     def reset(self):
-        self.laser_power = self.default_laser_power # pylint: disable=no-member
-        self.camera_gain = self.default_camera_gain # pylint: disable=no-member
-        self.exposure_time = self.default_exposure_time # pylint: disable=no-member
+        self.laser_power = self.default_laser_power  # pylint: disable=no-member
+        self.camera_gain = self.default_camera_gain  # pylint: disable=no-member
+        self.exposure_time = self.default_exposure_time  # pylint: disable=no-member
 

@@ -535,7 +535,7 @@ class PipelinePlateAcquisition(Acquisition):
 
             self.event_logger(
                 'ACQUISITION INFO: Imaging %d FOVs in well %s (scores: [%s])'
-                 % (len(positions_to_acquire), well_id, ', '.join(scores)),
+                % (len(positions_to_acquire), well_id, ', '.join(scores)),
                 newline=True
             )
 
@@ -654,8 +654,8 @@ class PipelinePlateAcquisition(Acquisition):
                 log_info = self.fov_scorer.score_raw_fov(image, position=position)
             except Exception as error:
                 self.event_logger(
-                    "SCORING ERROR: an uncaught exception occurred during FOV scoring at positions '%s': %s"
-                    % (position['name'], error)
+                    "SCORING ERROR: an uncaught exception occurred during FOV scoring "
+                    "at position '%s': %s" % (position['name'], error)
                 )
 
             # retrieve the score and note it in the event log
@@ -839,11 +839,11 @@ class PipelinePlateAcquisition(Acquisition):
                 pass
             
             # settings for the two fluorescence channels
-            all_settings = [
+            all_channel_settings = [
                 {
                     'channel': self.hoechst_channel,
                     'stack': self.flourescence_stack_settings,
-                },{
+                }, {
                     'channel': self.gfp_channel,
                     'stack': self.flourescence_stack_settings,
                 }
@@ -851,26 +851,27 @@ class PipelinePlateAcquisition(Acquisition):
 
             # settings for the brightfield channel (which has its own z-stack settings)
             if self.acquire_bf_stacks:
-                all_settings.append({
+                all_channel_settings.append({
                     'channel': self.bf_channel,
                     'stack': self.brightfield_stack_settings,
                 })
 
             # acquire a z-stack for each channel
-            for channel_ind, settings in enumerate(all_settings):
+            for channel_ind, channel_settings in enumerate(all_channel_settings):
                 self.event_logger(
-                    "ACQUISITION INFO: Acquiring channel '%s'" % settings['channel'].config_name
+                    "ACQUISITION INFO: Acquiring channel '%s'"
+                    % channel_settings['channel'].config_name
                 )
 
                 # change the channel
-                self.operations.change_channel(self.mm_core, settings['channel'])
+                self.operations.change_channel(self.mm_core, channel_settings['channel'])
 
                 # acquire the stack
                 self.operations.acquire_stack(
                     mm_studio=self.mm_studio,
                     mm_core=self.mm_core, 
                     datastore=self.datastore, 
-                    stack_settings=settings['stack'],
+                    stack_settings=channel_settings['stack'],
                     channel_ind=channel_ind,
                     position_ind=position_ind,
                     position_name=position['name']
@@ -878,7 +879,7 @@ class PipelinePlateAcquisition(Acquisition):
 
                 # log the acquisition
                 self.acquisition_logger(
-                    channel_settings=settings['channel'],
+                    channel_settings=channel_settings['channel'],
                     position_ind=position_ind,
                     well_id=position['well_id'],
                     site_num=position['site_num'],

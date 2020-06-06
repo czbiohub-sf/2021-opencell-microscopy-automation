@@ -350,9 +350,9 @@ class PipelinePlateQC:
 
         # experiments that crashed may lack cleanup timestamps
         if self.exp_metadata.get('cleanup_timestamp'):
-           tf = datetime.datetime.strptime(
-               self.exp_metadata['cleanup_timestamp'], '%Y-%m-%d %H:%M:%S'
-            )    
+            tf = datetime.datetime.strptime(
+                self.exp_metadata['cleanup_timestamp'], '%Y-%m-%d %H:%M:%S'
+            )
         else:
             print(
                 'Warning: there is no cleanup_timestamp in the experiment metadata in %s'
@@ -625,7 +625,7 @@ class PipelinePlateQC:
             imaging_well_id, site_num = self.parse_raw_tiff_filename(src_filename)
             
             # the platemap row corresponding to this imaging well_id
-            row = self.platemap.loc[self.platemap.imaging_well_id==imaging_well_id].iloc[0]
+            row = self.platemap.loc[self.platemap.imaging_well_id == imaging_well_id].iloc[0]
             if not row.shape[0]:
                 dst_filename = None
                 print(

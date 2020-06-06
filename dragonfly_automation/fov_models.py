@@ -289,7 +289,10 @@ class PipelineFOVScorer:
         data = self.training_data.copy()
         mask = data[list(self.feature_order)].isna().sum(axis=1)
         if mask.sum():
-            print('\nWarning: some training data is missing features and will be dropped (see self.dropped_data)')
+            print(
+                '\nWarning: some training data is missing features and will be dropped '
+                '(see self.dropped_data)'
+            )
             self.dropped_data = data.loc[mask > 0]
             data = data.loc[mask == 0]
 
@@ -455,8 +458,10 @@ class PipelineFOVScorer:
         # if there's no log dir, print the error_info (if any) (just for debugging)
         if self.log_dir is None:
             if error_info is not None:
-                print("Error during FOV scoring in method `%s`: '%s'" % \
-                    (error_info.get('method_name'), error_info.get('error_message')))
+                print(
+                    "Error during FOV scoring in method `%s`: '%s'"
+                    % (error_info.get('method_name'), error_info.get('error_message'))
+                )
             return
 
         # if we're still here, we need a position
@@ -468,6 +473,7 @@ class PipelineFOVScorer:
         # directory and filepaths for logged images
         image_dir = os.path.join(self.log_dir, 'fov-images')
         os.makedirs(image_dir, exist_ok=True)
+
         def logged_image_filepath(tag):
             return os.path.join(image_dir, 'FOV_%s_%s.tif' % (position['name'], tag))
         
@@ -611,7 +617,7 @@ class PipelineFOVScorer:
         props = skimage.measure.regionprops(mask_label)
         for prop in props:
             if prop.area < min_region_area:
-                mask[mask_label==prop.label] = False
+                mask[mask_label == prop.label] = False
 
         return mask
 
@@ -716,7 +722,7 @@ class PipelineFOVScorer:
 
         labels = dbscan.labels_
         num_clusters = len(set(labels))
-        num_unclustered = (labels==-1).sum()
+        num_unclustered = (labels == -1).sum()
 
         features.update({
             'num_clusters': num_clusters, 

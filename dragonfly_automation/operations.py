@@ -11,6 +11,7 @@ class Operations:
 
     def __getattr__(self, name):
         operation = globals()[name]
+
         def wrapper(*args, **kwargs):
             self.event_logger('OPERATION INFO: Calling %s' % operation.__name__)
             result = operation(*args, **kwargs)
@@ -258,14 +259,14 @@ def acquire_stack(
         channel0.getMetadata().copy().positionName(""+p).build());
     autosavestore.putImage(channel0);
     ```
-
     '''
-		
+
     # generate a list of the z positions to visit
     z_positions = np.arange(
         stack_settings.relative_bottom, 
         stack_settings.relative_top + stack_settings.step_size, 
-        stack_settings.step_size)
+        stack_settings.step_size
+    )
 
     for z_ind, z_position in enumerate(z_positions):
 
@@ -363,10 +364,10 @@ def move_z_stage(mm_core, stage_label, position=None, kind=None):
         raise TypeError('`position` cannot be nan')
     
     # move the stage
-    if kind=='absolute':
+    if kind == 'absolute':
         mm_core.setPosition(stage_label, position)
 
-    elif kind=='relative':
+    elif kind == 'relative':
         mm_core.setRelativePosition(stage_label, position)
     
     # return the actual position of the stage

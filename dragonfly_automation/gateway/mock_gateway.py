@@ -78,17 +78,18 @@ class Gate:
         self.simulate_under_exposure = True
 
         self.position_ind = None
+        self.laser_power = None
+        self.exposure_time = None
+
         def set_position_ind(position_ind):
             self.position_ind = position_ind
 
             # alternate simulating under- and over-exposure at each new position
             self.simulate_under_exposure = not self.simulate_under_exposure
 
-        self.laser_power = None
         def set_laser_power(laser_power):
             self.laser_power = laser_power
 
-        self.exposure_time = None
         def set_exposure_time(exposure_time):
             self.exposure_time = exposure_time
 
