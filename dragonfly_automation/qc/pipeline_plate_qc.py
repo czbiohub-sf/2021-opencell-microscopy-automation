@@ -518,9 +518,10 @@ class PipelinePlateQC:
 
                     # HACK: manually construct filenames to match the dst_filenames
                     # generated in self.generate_z_projections
+                    filename_root = f'MMStack_{row.position_ind}-{imaging_well_id}-{row.site_num}'
                     filenames = [
-                        f'MMStack_{row.position_ind}-{imaging_well_id}-{row.site_num}_C{channel_ind}-PROJ-Z.tif',
-                        f'MMStack_{row.position_ind}-{imaging_well_id}-{row.site_num}_PROJ-CH{channel_ind}.tif',
+                        f'{filename_root}_C{channel_ind}-PROJ-Z.tif',
+                        f'{filename_root}_PROJ-CH{channel_ind}.tif',
                     ]
                     im = None
                     for filename in filenames:
@@ -559,7 +560,9 @@ class PipelinePlateQC:
                     parenthetical_info = '%sms at %s%%' % (gfp_exposure_time, gfp_laser_power)
 
                 # the pipeline plate_id and well_id
-                plate_id, sample_well_id = self.sample_well_id_from_imaging_well_id(imaging_well_id)
+                plate_id, sample_well_id = self.sample_well_id_from_imaging_well_id(
+                    imaging_well_id
+                )
                 plate_info = 'Not in platemap'
                 if plate_id is not None:
                     plate_info = 'P%d-%s' % (int(plate_id[1:]), sample_well_id)

@@ -34,7 +34,10 @@ HALF_PLATE_WELL_IDS = [
 # for simulating a real experiment
 NUM_SITES_PER_WELL = 36
 WELL_IDS = list(np.array(HALF_PLATE_WELL_IDS).flatten())
-FOV_LOG_DIR = '/Users/keith.cheveralls/image-data/raw-pipeline-microscopy/PML0234/logs/fov-scoring/fov-images/'
+FOV_LOG_DIR = (
+    '/Users/keith.cheveralls/image-data/raw-pipeline-microscopy/'
+    'PML0234/logs/fov-scoring/fov-images/'
+)
 
 # AFC timeout probability (in percent)
 AFC_TIMEOUT_PROB = 20
