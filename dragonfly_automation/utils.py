@@ -186,22 +186,22 @@ def interpolate_focusdrive_positions(
     '''
 
     # create an array of numeric (x,y,z) positions from the well_ids
-    positions = []
+    measured_positions = []
     for well_id, zpos in measured_focusdrive_positions.items():
-        positions.append((*well_id_to_position(well_id), zpos))
-    positions = np.array(positions)
+        measured_positions.append((*well_id_to_position(well_id), zpos))
+    measured_positions = np.array(measured_positions)
 
     with open(position_list_filepath) as file:
         position_list = json.load(file)
 
-    for ind, pos in enumerate(position_list['POSITIONS']):
-        well_id, site_num = parse_hcs_site_label(pos['LABEL'])
+    for ind, position in enumerate(position_list['POSITIONS']):
+        well_id, site_num = parse_hcs_site_label(position['LABEL'])
         x, y = well_id_to_position(well_id)
 
         # the interpolated z-position of the current well
         interpolated_position = interpolate.griddata(
-            positions[:, :2], 
-            positions[:, 2], 
+            measured_positions[:, :2], 
+            measured_positions[:, 2], 
             (x, y), 
             method=method
         )
@@ -217,8 +217,16 @@ def interpolate_focusdrive_positions(
             'AXES': 1,
             'DEVICE': 'FocusDrive',
         }
-        position_list['POSITIONS'][ind]['DEVICES'].append(focusdrive_config)
-    
+
+        # remove existing FocusDrive configuration
+        position['DEVICES'] = [
+            config for config in position['DEVICES'] if config['DEVICE'] != 'FocusDrive'
+        ]
+
+        # append the new FocusDrive config
+        position['DEVICES'].append(focusdrive_config)
+        position_list['POSITIONS'][ind] = position
+        
     # save the new position_list
     ext = position_list_filepath.split('.')[-1]
     new_filepath = re.sub('.%s$' % ext, '_interpolated.%s' % ext, position_list_filepath)
