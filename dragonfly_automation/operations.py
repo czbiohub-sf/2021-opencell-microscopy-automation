@@ -61,8 +61,8 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     afc_error_message = None
     afc_did_succeed = False
     failed_offsets = []
-    
-    focusdrive_offsets = [0, 10, 20, 40, -20]
+
+    focusdrive_offsets = [0, 10, 20, 40, 60, -20]
     for offset in focusdrive_offsets:
         if afc_did_succeed:
             continue
@@ -77,7 +77,8 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
                 mm_core, 
                 'FocusDrive', 
                 position=focusdrive_position,
-                kind='absolute')
+                kind='absolute'
+            )
             # delay to help AFC 'adjust' to the new position (see comments below)
             time.sleep(1.0)
 
