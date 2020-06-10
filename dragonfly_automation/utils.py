@@ -221,7 +221,7 @@ def interpolate_focusdrive_positions(
     
     # save the new position_list
     ext = position_list_filepath.split('.')[-1]
-    new_filepath = re.sub('.%s$' % ext, '_interpolated_from_all.%s' % ext, position_list_filepath)
+    new_filepath = re.sub('.%s$' % ext, '_interpolated.%s' % ext, position_list_filepath)
     with open(new_filepath, 'w') as file:
         json.dump(position_list, file)
     return new_filepath, position_list
