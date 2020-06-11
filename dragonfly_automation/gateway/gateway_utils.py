@@ -55,7 +55,7 @@ class Py4jWrapper:
 
             # make the method call and handle the result
             num_tries = 10
-            wait_time = 60
+            wait_time = 10
             call_succeeded = False
             for _ in range(num_tries):
                 try:
