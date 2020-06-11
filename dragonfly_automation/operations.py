@@ -213,8 +213,8 @@ def _acquire_image(gate, mm_studio, mm_core):
         dtype='uint16',
         mode='r+',
         offset=0,
-        shape=(meta.getxRange(), meta.getyRange()))
-    
+        shape=(meta.getxRange(), meta.getyRange())
+    )
     return data
 
 
@@ -371,10 +371,7 @@ def move_z_stage(mm_core, stage_label, position=None, kind=None):
     elif kind == 'relative':
         mm_core.setRelativePosition(stage_label, position)
     
-    # return the actual position of the stage
     mm_core.waitForDevice(stage_label)
-    actual_position = mm_core.getPosition(stage_label)
-    return actual_position
 
 
 def autoexposure(
@@ -435,7 +432,8 @@ def autoexposure(
             mm_core, 
             stack_settings.stage_label, 
             position=z_position,
-            kind='absolute')
+            kind='absolute'
+        )
 
         # acquire an image and check the exposure
         image = acquire_image(gate, mm_studio, mm_core, event_logger)
@@ -477,7 +475,8 @@ def autoexposure(
                 mm_core.setProperty(
                     channel_settings.laser_line,
                     channel_settings.laser_name,
-                    channel_settings.laser_power)
+                    channel_settings.laser_power
+                )
 
             # update the exposure time
             mm_core.setExposure(float(channel_settings.exposure_time))
