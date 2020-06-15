@@ -502,7 +502,7 @@ class PipelinePlateAcquisition(Acquisition):
                 newline=True
             )
 
-        last_good_focusdrive_position = None
+        last_afc_updated_focusdrive_position = None
         for well_id in unique_well_ids:
             self.current_well_id = well_id
             
@@ -521,8 +521,8 @@ class PipelinePlateAcquisition(Acquisition):
                 self.event_logger(
                     'ACQUISITION INFO: Scoring all FOVs in well %s' % well_id, newline=True
                 )
-                selected_positions, last_good_focusdrive_position = self.select_positions(
-                    all_well_positions, last_good_focusdrive_position
+                selected_positions, last_afc_updated_focusdrive_position = self.select_positions(
+                    all_well_positions, last_afc_updated_focusdrive_position
                 )
 
             if not len(selected_positions):
@@ -562,7 +562,7 @@ class PipelinePlateAcquisition(Acquisition):
         self.cleanup()
     
 
-    def select_positions(self, positions, last_good_focusdrive_position=None):
+    def select_positions(self, positions, last_afc_updated_focusdrive_position=None):
         '''
         Visit and score each of the positions listed in `positions` 
         and select the highest-scoring subset of positions to acquire
@@ -595,21 +595,19 @@ class PipelinePlateAcquisition(Acquisition):
         # the maximum number of positions to image in a well
         max_num_positions = self.fov_selection_settings.max_num_positions
 
-        # the returned list of 'good' positions to be imaged
-        selected_positions = []
-
         # sort positions by site number
         positions = sorted(positions, key=lambda position: position['site_num'])
 
         # go to the first position in the well
         self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
 
-        # if an AFC-updated position was provided
-        if last_good_focusdrive_position is not None:
+        # if we have an AFC-updated FocusDrive position from the last well
+        # TODO: think about whether we should only use this if calling AFC alone first fails
+        if last_afc_updated_focusdrive_position is not None:
             self.operations.move_z_stage(
                 self.mm_core, 
                 'FocusDrive', 
-                position=last_good_focusdrive_position, 
+                position=last_afc_updated_focusdrive_position, 
                 kind='absolute'
             )
 
@@ -626,9 +624,10 @@ class PipelinePlateAcquisition(Acquisition):
                 'SCORING ERROR: AFC failed at the first site in well %s so FOVs cannot be scored'
                 % self.current_well_id
             )
-            return selected_positions, last_good_focusdrive_position
+            selected_positions = []
+            return selected_positions, last_afc_updated_focusdrive_position
         afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
-    
+
         # change to the hoechst channel for FOV scoring
         self.operations.change_channel(self.mm_core, self.hoechst_channel)
 
