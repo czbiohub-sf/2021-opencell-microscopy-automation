@@ -80,7 +80,7 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
                 kind='absolute'
             )
             # delay to help AFC 'adjust' to the new position (see comments below)
-            time.sleep(1.0)
+            time.sleep(0.5)
 
         try:
             af_plugin.fullFocus()
@@ -94,7 +94,7 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
     # add an artificial delay before retrieving the AFC score
     # because, anecdotally, the score requires some time to update 
     # after the FocusDrive is moved
-    time.sleep(0.5)
+    # time.sleep(0.5)
     final_afc_score = af_plugin.getCurrentFocusScore()
     final_focusdrive_position = mm_core.getPosition('FocusDrive')
 

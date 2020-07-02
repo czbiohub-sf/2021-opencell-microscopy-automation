@@ -586,10 +586,10 @@ class PipelinePlateAcquisition(Acquisition):
 
         # to save time, we will call AFC at every nth position
         # (this is possible because the positions within a well are close to one another)
-        num_positions_between_afc_calls = int(np.ceil(len(positions) / 10))
+        num_positions_between_afc_calls = 4 #int(np.ceil(len(positions) / 10))
 
         # never call AFC (except at the first position, before the for loop)
-        never_call_afc = True
+        never_call_afc = False
 
         # the minimum number of positions to image in a well
         min_num_positions = self.fov_selection_settings.min_num_positions
