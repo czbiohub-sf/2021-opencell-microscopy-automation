@@ -585,9 +585,11 @@ class PipelinePlateAcquisition(Acquisition):
         '''
 
         # to save time, we will call AFC at every nth position
-        # (this is possible because the positions are so close to one another
-        # that calling AFC at every position is unnecessary)
+        # (this is possible because the positions within a well are close to one another)
         num_positions_between_afc_calls = int(np.ceil(len(positions) / 10))
+
+        # never call AFC (except at the first position, before the for loop)
+        never_call_afc = True
 
         # the minimum number of positions to image in a well
         min_num_positions = self.fov_selection_settings.min_num_positions
@@ -601,31 +603,47 @@ class PipelinePlateAcquisition(Acquisition):
         # go to the first position in the well
         self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
 
-        # if we have an AFC-updated FocusDrive position from the last well
-        # TODO: think about whether we should only use this if calling AFC alone first fails
-        if last_afc_updated_focusdrive_position is not None:
+        # attempt to call AFC
+        afc_did_succeed = self.operations.call_afc(
+            self.mm_studio, 
+            self.mm_core, 
+            self.event_logger, 
+            self.afc_logger, 
+            positions[0]['ind']
+        )
+
+        # if AFC failed, move the focusdrive to the last AFC-updated position and try AFC again
+        if not afc_did_succeed and last_afc_updated_focusdrive_position is not None:
+            print(
+                'SCORING WARNING: The first attempt to call AFC failed, '
+                'so a second attempt will be made at the last AFC-updated FocusDrive position of %s'
+                % last_afc_updated_focusdrive_position
+            )
             self.operations.move_z_stage(
                 self.mm_core, 
                 'FocusDrive', 
                 position=last_afc_updated_focusdrive_position, 
                 kind='absolute'
             )
+            afc_did_succeed = self.operations.call_afc(
+                self.mm_studio, 
+                self.mm_core, 
+                self.event_logger, 
+                self.afc_logger, 
+                positions[0]['ind']
+            )
 
-        # call AFC at the first position
-        afc_did_succeed = self.operations.call_afc(
-            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, positions[0]['ind']
-        )
-
-        # if AFC failed, we cannot continue
-        # (empirically, if AFC has failed at one position in the well, 
-        # it is unlikely to succeed at any other position in the same well)
+        # if AFC still failed, we cannot continue
+        # (empirically, if AFC has failed at the first position in the well, 
+        # it is unlikely to succeed at other positions in the same well)
         if not afc_did_succeed:
             self.event_logger(
-                'SCORING ERROR: AFC failed at the first site in well %s so FOVs cannot be scored'
-                % self.current_well_id
+                'SCORING ERROR: Both attempts to call AFC at the first site in well %s failed, '
+                'so FOVs cannot be scored' % self.current_well_id
             )
             selected_positions = []
             return selected_positions, last_afc_updated_focusdrive_position
+
         afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
 
         # change to the hoechst channel for FOV scoring
@@ -654,7 +672,7 @@ class PipelinePlateAcquisition(Acquisition):
             )
 
             # call AFC
-            if ind % num_positions_between_afc_calls == 0:
+            if not never_call_afc and ind % num_positions_between_afc_calls == 0:
                 afc_did_succeed = self.operations.call_afc(
                     self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
                 )
@@ -801,8 +819,7 @@ class PipelinePlateAcquisition(Acquisition):
         )
 
         # if AFC fails, autoexposure won't work, so we cannot continue
-        # (because go_to_position uses 'afc_updated_focusdrive_position',
-        # this should be very rare)
+        # (because go_to_position uses the afc_updated_focusdrive_position, this should be very rare)
         if not afc_did_succeed:
             self.event_logger(
                 'ACQUISITION ERROR: AFC failed at the first acceptable FOV of well %s, '
