@@ -82,43 +82,64 @@ def find_nearest_well(mmc, position_list):
 class StageVisitationManager:
 
     def __init__(self, well_ids_to_visit, position_list, mms, mmc):
+        '''
+        '''
         self.well_ids_to_visit = well_ids_to_visit
         self.position_list = position_list
         self.mmc = mmc
         self.mms = mms
 
-        # generate the list of well_ids to visit and consume (via .pop())
-        self.unvisited_well_ids = self.well_ids_to_visit[::-1]
+        # the index of the current well in well_ids_to_visit
+        self.current_ind = -1
 
         # initialize a dict, keyed by well_id, of the measured FocusDrive positions
         self.measured_focusdrive_positions = {}
 
+
     def go_to_next_well(self):
-        '''
-        go to the next well in the well_id list
-        '''
-        self.current_well_id = self.unvisited_well_ids.pop()
-        ind = self.well_id_to_position_ind(self.current_well_id)
+        self.current_ind = min(self.current_ind + 1, len(self.well_ids_to_visit) - 1)
+        self._go_to_position()
+
+
+    def go_to_previous_well(self):
+        self.current_ind = max(0, self.current_ind - 1)
+        self._go_to_position()
+
+
+    def _go_to_position(self):
+        self.current_well_id = self.well_ids_to_visit[self.current_ind]
+
+        position_ind = self._get_current_position_ind()
+        if position_ind is None:
+            print('Error: the next well, %s, is not in the position list' % self.current_well_id)
+            return
+
         print('Going to well %s' % self.current_well_id)
+        if self.current_well_id == self.well_ids_to_visit[-1]:
+            print('Warning: this is the last well in the list of wells to visit')
 
         # this try-except catches timeout errors triggered by large stage movements
         # (these errors are harmless)
         try:
-            operations.go_to_position(self.mms, self.mmc, ind)
+            operations.go_to_position(self.mms, self.mmc, position_ind)
         except py4j.protocol.Py4JJavaError:
-            operations.go_to_position(self.mms, self.mmc, ind)    
+            operations.go_to_position(self.mms, self.mmc, position_ind)    
         print('Arrived at well %s' % self.current_well_id)
 
-    def well_id_to_position_ind(self, well_id):
+
+    def _get_current_position_ind(self):
         '''
-        find the index of the first position in a given well
+        Get the index of the first position in the current well
         '''
+        current_ind = None
         for ind, position in enumerate(self.position_list['POSITIONS']):
             position_well_id, position_site_num = parse_hcs_site_label(position['LABEL'])
-            if position_well_id == well_id:
+            if position_well_id == self.current_well_id:
+                current_ind = ind
                 break
-        return ind
-        
+        return current_ind
+
+
     def call_afc(self):
         '''
         call AFC (if it is in-range) and insert the updated FocusDrive position
