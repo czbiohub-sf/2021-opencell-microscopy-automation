@@ -584,12 +584,11 @@ class PipelinePlateAcquisition(Acquisition):
 
         '''
 
-        # to save time, we will call AFC at every nth position
-        # (this is possible because the positions within a well are close to one another)
-        num_positions_between_afc_calls = 4 #int(np.ceil(len(positions) / 10))
-
-        # never call AFC (except at the first position, before the for loop)
+        # whether to never call AFC (except at the first position, before the for loop)
         never_call_afc = False
+
+        # to save time, we call AFC at every nth position
+        num_positions_between_afc_calls = self.fov_selection_settings.num_positions_between_afc_calls
 
         # the minimum number of positions to image in a well
         min_num_positions = self.fov_selection_settings.min_num_positions
@@ -672,7 +671,7 @@ class PipelinePlateAcquisition(Acquisition):
             )
 
             # call AFC
-            if not never_call_afc and ind % num_positions_between_afc_calls == 0:
+            if not never_call_afc and ind % (num_positions_between_afc_calls + 1) == 0:
                 afc_did_succeed = self.operations.call_afc(
                     self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
                 )
