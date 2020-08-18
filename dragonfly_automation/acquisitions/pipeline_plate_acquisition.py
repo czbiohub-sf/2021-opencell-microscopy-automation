@@ -613,7 +613,7 @@ class PipelinePlateAcquisition(Acquisition):
 
         # if AFC failed, move the focusdrive to the last AFC-updated position and try AFC again
         if not afc_did_succeed and last_afc_updated_focusdrive_position is not None:
-            print(
+            self.event_logger(
                 'SCORING WARNING: The first attempt to call AFC failed, '
                 'so a second attempt will be made at the last AFC-updated FocusDrive position of %s'
                 % last_afc_updated_focusdrive_position

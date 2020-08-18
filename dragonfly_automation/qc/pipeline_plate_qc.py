@@ -415,7 +415,7 @@ class PipelinePlateQC:
             plt.legend()
 
         if save_plot:
-            plt.savefig(os.path.join(self.qc_dir, 'scores-and-counts.pdf'))
+            plt.savefig(os.path.join(self.qc_dir, '%s-scores-and-counts.pdf' % self.root_dirname))
 
 
     def generate_z_projections(self):
