@@ -65,6 +65,7 @@ def main():
         qc.tile_acquired_fovs(channel_ind=1, save_plot=True)
 
     if args.construct_metadata:
+        print('Constructing metadata for %s' % args.root_dir)
         qc.construct_fov_metadata(renamed=False, overwrite=args.overwrite)
 
     if args.run_all:
@@ -78,7 +79,6 @@ def main():
         print('Plotting acquired FOVs')
         qc.tile_acquired_fovs(channel_ind=0, save_plot=True)
         qc.tile_acquired_fovs(channel_ind=1, save_plot=True)
-        qc.construct_fov_metadata(renamed=False, overwrite=False)
 
 
 if __name__ == '__main__':
