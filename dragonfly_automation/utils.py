@@ -6,6 +6,7 @@ import json
 import skimage
 import datetime
 import numpy as np
+import pandas as pd
 
 from scipy import interpolate
 from matplotlib import pyplot as plt
@@ -228,11 +229,14 @@ def interpolate_focusdrive_positions(
         )
 
         # add the optional user-defined constant offset
-        interpolated_position += offset
+        interpolated_position = float(interpolated_position + offset)
+
+        if pd.isna(interpolated_position):
+            raise ValueError('The interpolated position is NaN in well %s' % well_id)
 
         # the config entry for the 'FocusDrive' device (this is the motorized z-stage)
         focusdrive_config = {
-            'X': float(interpolated_position),
+            'X': interpolated_position,
             'Y': 0,
             'Z': 0,
             'AXES': 1,
