@@ -32,3 +32,18 @@ Python packages: py4j, pandas, numpy, scipy, skimage, sklearn
 
 MicroManager: [mm2python plugin](https://github.com/czbiohub/mm2python)
 
+## TODOs
+- set up CI and write tests
+- add an ability to 'interact' with a running script to change some critical settings:
+	- max number of FOVs per well
+	- wells to skip
+	- whether to stop the script safely
+- better autoexposure method (using threshold_multiotsu method?)
+- image fluorescent beads to measure PSF and chromatic aberration
+
+- develop script to acquire short timelapses (instead of z-stacks)
+
+## FOV scoring
+- optimize the dbscan epsilon (the clustering is very sensitive to this)
+- organize/clarify all of the empirical parameters and thresholds in FOVScorer
+- try a CNN on downsampled FOVs (requires augmentation to enforce rotational invariance)
