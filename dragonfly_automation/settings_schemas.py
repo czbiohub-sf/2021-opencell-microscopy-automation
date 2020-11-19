@@ -13,6 +13,10 @@ FOVSelectionSettings = namedtuple('FOVSelectionSettings', [
 
     # the maximum number of positions to image in a well
     'max_num_positions',
+
+    # to save time, we call AFC at every nth position during FOV scoring
+    # (this is usually possible because the positions within a well are close to one another)
+    'num_positions_between_afc_calls',
 ])
 
 

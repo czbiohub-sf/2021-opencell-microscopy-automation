@@ -21,7 +21,13 @@ from dragonfly_automation.settings_schemas import (
 #
 # -----------------------------------------------------------------------------
 fov_selection_settings = FOVSelectionSettings(
-    
+
+    # how often to call AFC during FOV scoring
+    # empirically, calling AFC at every other position is fine,
+    # but calling it at every fourth position yields some out-of-focus snaps,
+    # so we compromise and call it at every third position
+    num_positions_between_afc_calls=2,
+
     # the minimum number of positions at which to acquire z-stacks in each well
     # (ignoring the FOV scores)
     min_num_positions=2,

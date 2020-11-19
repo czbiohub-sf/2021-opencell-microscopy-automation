@@ -502,6 +502,7 @@ class PipelinePlateAcquisition(Acquisition):
                 newline=True
             )
 
+        last_afc_updated_focusdrive_position = None
         for well_id in unique_well_ids:
             self.current_well_id = well_id
             
@@ -515,14 +516,19 @@ class PipelinePlateAcquisition(Acquisition):
                     % well_id, 
                     newline=True
                 )
-                positions_to_acquire = all_well_positions
+                selected_positions = all_well_positions
             else:
                 self.event_logger(
-                    'ACQUISITION INFO: Scoring all FOVs in well %s' % well_id, newline=True)
-                positions_to_acquire = self.select_positions(all_well_positions)
-    
-            if not len(positions_to_acquire):
-                self.event_logger('ACQUISITION WARNING: No FOVs will be imaged in well %s' % well_id)
+                    'ACQUISITION INFO: Scoring all FOVs in well %s' % well_id, newline=True
+                )
+                selected_positions, last_afc_updated_focusdrive_position = self.select_positions(
+                    all_well_positions, last_afc_updated_focusdrive_position
+                )
+
+            if not len(selected_positions):
+                self.event_logger(
+                    'ACQUISITION WARNING: No FOVs will be imaged in well %s' % well_id
+                )
                 continue
 
             # prettify the scores for the event log
@@ -530,12 +536,12 @@ class PipelinePlateAcquisition(Acquisition):
             if not self.skip_fov_scoring:
                 scores = [
                     '%0.2f' % p['fov_score'] if p.get('fov_score') is not None else 'None' 
-                    for p in positions_to_acquire
+                    for p in selected_positions
                 ]
 
             self.event_logger(
                 'ACQUISITION INFO: Imaging %d FOVs in well %s (scores: [%s])'
-                % (len(positions_to_acquire), well_id, ', '.join(scores)),
+                % (len(selected_positions), well_id, ', '.join(scores)),
                 newline=True
             )
 
@@ -546,17 +552,17 @@ class PipelinePlateAcquisition(Acquisition):
                     'will be replaced with one unselected position',
                     newline=True
                 )
-                names = [position['name'] for position in positions_to_acquire]
+                names = [position['name'] for position in selected_positions]
                 for position in all_well_positions:
                     if position['name'] not in names:
-                        positions_to_acquire = [position]
+                        selected_positions = [position]
                         break
             
-            self.acquire_positions(positions_to_acquire)
+            self.acquire_positions(selected_positions)
         self.cleanup()
     
 
-    def select_positions(self, positions):
+    def select_positions(self, positions, last_afc_updated_focusdrive_position=None):
         '''
         Visit and score each of the positions listed in `positions` 
         and select the highest-scoring subset of positions to acquire
@@ -578,37 +584,72 @@ class PipelinePlateAcquisition(Acquisition):
 
         '''
 
+        # whether to never call AFC (except at the first position, before the for loop)
+        never_call_afc = False
+
+        # to save time, we call AFC at every nth position
+        num_positions_between_afc_calls = self.fov_selection_settings.num_positions_between_afc_calls
+
         # the minimum number of positions to image in a well
         min_num_positions = self.fov_selection_settings.min_num_positions
 
         # the maximum number of positions to image in a well
         max_num_positions = self.fov_selection_settings.max_num_positions
 
-        # the returned list of 'good' positions to be imaged
-        positions_to_image = []
-
         # sort positions by site number
         positions = sorted(positions, key=lambda position: position['site_num'])
 
-        # go to the first position
-        position_ind = positions[0]['ind']
-        self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+        # go to the first position in the well
+        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
 
-        # call AFC
+        # attempt to call AFC
         afc_did_succeed = self.operations.call_afc(
-            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
+            self.mm_studio, 
+            self.mm_core, 
+            self.event_logger, 
+            self.afc_logger, 
+            positions[0]['ind']
         )
 
-        # if AFC succeeded, get the AFC-updated FocusDrive position
-        afc_updated_focusdrive_position = None
-        if afc_did_succeed:
-            afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
+        # if AFC failed, move the focusdrive to the last AFC-updated position and try AFC again
+        if not afc_did_succeed and last_afc_updated_focusdrive_position is not None:
+            self.event_logger(
+                'SCORING WARNING: The first attempt to call AFC failed, '
+                'so a second attempt will be made at the last AFC-updated FocusDrive position of %s'
+                % last_afc_updated_focusdrive_position
+            )
+            self.operations.move_z_stage(
+                self.mm_core, 
+                'FocusDrive', 
+                position=last_afc_updated_focusdrive_position, 
+                kind='absolute'
+            )
+            afc_did_succeed = self.operations.call_afc(
+                self.mm_studio, 
+                self.mm_core, 
+                self.event_logger, 
+                self.afc_logger, 
+                positions[0]['ind']
+            )
+
+        # if AFC still failed, we cannot continue
+        # (empirically, if AFC has failed at the first position in the well, 
+        # it is unlikely to succeed at other positions in the same well)
+        if not afc_did_succeed:
+            self.event_logger(
+                'SCORING ERROR: Both attempts to call AFC at the first site in well %s failed, '
+                'so FOVs cannot be scored' % self.current_well_id
+            )
+            selected_positions = []
+            return selected_positions, last_afc_updated_focusdrive_position
+
+        afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
 
         # change to the hoechst channel for FOV scoring
         self.operations.change_channel(self.mm_core, self.hoechst_channel)
 
         # score the FOV at each position
-        for position in positions:
+        for ind, position in enumerate(positions):
             position_ind = position['ind']
 
             # catch timeout errors when the position is too close
@@ -621,25 +662,23 @@ class PipelinePlateAcquisition(Acquisition):
                 )
                 continue
 
-            # update the FocusDrive position (this should help AFC to focus faster)
-            if afc_updated_focusdrive_position is not None:
-                self.operations.move_z_stage(
-                    self.mm_core, 
-                    'FocusDrive', 
-                    position=afc_updated_focusdrive_position, 
-                    kind='absolute'
-                )
-
-            # attempt to call AFC
-            afc_did_succeed = self.operations.call_afc(
-                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
+            # update the FocusDrive position
+            self.operations.move_z_stage(
+                self.mm_core, 
+                'FocusDrive', 
+                position=afc_updated_focusdrive_position, 
+                kind='absolute'
             )
 
-            # update the AFC-updated FocusDrive position and log it for later use
-            # in self.acquire_positions
-            if afc_did_succeed:
-                afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
-                position['afc_updated_focusdrive_position'] = afc_updated_focusdrive_position
+            # call AFC
+            if not never_call_afc and ind % (num_positions_between_afc_calls + 1) == 0:
+                afc_did_succeed = self.operations.call_afc(
+                    self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
+                )
+                if afc_did_succeed:
+                    afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
+
+            position['afc_updated_focusdrive_position'] = afc_updated_focusdrive_position
 
             # acquire an image of the hoechst signal
             image = self.operations.acquire_image(
@@ -684,17 +723,17 @@ class PipelinePlateAcquisition(Acquisition):
         self.event_logger('ACQUISITION INFO: Found %d acceptable FOVs' % len(acceptable_positions))
 
         # crop the list if there are more acceptable positions than needed
-        positions_to_image = acceptable_positions[:max_num_positions]
+        selected_positions = acceptable_positions[:max_num_positions]
 
-        # remove positions from positions_with_score that are now in positions_to_image
-        positions_with_score = positions_with_score[len(positions_to_image):]
+        # remove positions from positions_with_score that are now in selected_positions
+        positions_with_score = positions_with_score[len(selected_positions):]
 
         # if there were too few acceptable positions found, 
         # append the next-highest-scoring positions
-        num_positions_short = min_num_positions - len(positions_to_image)
+        num_positions_short = min_num_positions - len(selected_positions)
         if num_positions_short > 0:
             additional_positions = positions_with_score[:num_positions_short]
-            positions_to_image.extend(additional_positions)
+            selected_positions.extend(additional_positions)
 
             if len(additional_positions):
                 self.event_logger(
@@ -710,14 +749,14 @@ class PipelinePlateAcquisition(Acquisition):
                 )
 
         # if there are still too few FOVs, there's nothing we can do        
-        if len(positions_to_image) > 0 and len(positions_to_image) < min_num_positions:
+        if len(selected_positions) > 0 and len(selected_positions) < min_num_positions:
             self.event_logger(
                 'ACQUISITION WARNING: All %s scored FOVs will be imaged '
                 'but this is fewer than the required minimum of %s FOVs'
-                % (len(positions_to_image), min_num_positions)
+                % (len(selected_positions), min_num_positions)
             )
 
-        return positions_to_image
+        return selected_positions, afc_updated_focusdrive_position
 
 
     def go_to_position(self, position):
@@ -778,12 +817,15 @@ class PipelinePlateAcquisition(Acquisition):
             self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind']
         )
 
-        # for now, ignore AFC errors
-        # TODO: think about how to handle this situation, which is very serious,
-        # since autoexposure won't work if we are out of focus
-        # (perhaps try moving to a different position?)
+        # if AFC fails, autoexposure won't work, so we cannot continue
+        # (because go_to_position uses the afc_updated_focusdrive_position, this should be very rare)
         if not afc_did_succeed:
-            pass
+            self.event_logger(
+                'ACQUISITION ERROR: AFC failed at the first acceptable FOV of well %s, '
+                'so autoexposure cannot be run and stacks cannot be acquired'
+                % self.current_well_id
+            )
+            return
 
         # reset the GFP channel settings
         self.gfp_channel.reset()
@@ -833,12 +875,14 @@ class PipelinePlateAcquisition(Acquisition):
                 self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
             )
 
-            # for now, ignore AFC errors
-            # TODO: consider skipping the position if AFC has failed
+            # if AFC failed, it is pointless to acquire z-stacks
             if not afc_did_succeed:
-                pass
-            
-            # settings for the two fluorescence channels
+                self.event_logger(
+                    'ACQUISITION ERROR: stacks will not be acquired because AFC failed'
+                )
+                continue
+
+            # channel settings for the two fluorescence channels
             all_channel_settings = [
                 {
                     'channel': self.hoechst_channel,
@@ -849,7 +893,7 @@ class PipelinePlateAcquisition(Acquisition):
                 }
             ]
 
-            # settings for the brightfield channel (which has its own z-stack settings)
+            # channel settings for the brightfield channel (which has its own z-stack settings)
             if self.acquire_bf_stacks:
                 all_channel_settings.append({
                     'channel': self.bf_channel,

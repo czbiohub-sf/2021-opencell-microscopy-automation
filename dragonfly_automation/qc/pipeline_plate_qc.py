@@ -131,7 +131,7 @@ class PipelinePlateQC:
         # load the platemap 
         # (note that if platemap_type is 'none', an identity platemap is created
         # that includes all well_ids that appears in self.aq_log.well_id)
-        self.load_platemap()
+        self.platemap = self.load_platemap()
 
         # load the manual flags, if any
         manual_flags_filepath = os.path.join(self.root_dir, 'manual-flags.json')
@@ -280,9 +280,9 @@ class PipelinePlateQC:
         '''
         platemap_filepath = glob.glob(os.path.join(self.root_dir, '*platemap.csv'))
         if not platemap_filepath:
-            raise ValueError('No custom platemap found in %s' % self.root_dirname)
+            raise ValueError('No custom platemap was found in %s' % self.root_dirname)
         if len(platemap_filepath) > 1:
-            print('Warning: more than one custom platemap found in %s' % self.root_dirname)
+            raise ValueError('More than one custom platemap was found in %s' % self.root_dirname)
         platemap = pd.read_csv(platemap_filepath[0])
 
         # check for required and unexpected columns
@@ -310,15 +310,17 @@ class PipelinePlateQC:
         platemap_type = self.external_metadata['platemap_type']
         if platemap_type == 'first-half':
             platemap = pd.DataFrame(data=half_plate_layout.first_half)
+
         elif platemap_type == 'second-half':
             platemap = pd.DataFrame(data=half_plate_layout.second_half)
+
         elif platemap_type == 'custom':
             platemap = self.load_and_validate_custom_platemap()
+
         elif platemap_type == 'none':
-            print('Warning: platemap_type is None')
             print(
-                'An identity platemap will be constructed for all well_ids '
-                'in the acquisition log'
+                "Warning: the platemap_type is 'none' so an identity platemap "
+                "will be constructed for all well_ids that appear in the acquisition log"
             )
             well_ids = self.aq_log.well_id.unique()
             plate_layout = [
@@ -329,6 +331,7 @@ class PipelinePlateQC:
                 for well_id in well_ids
             ]
             platemap = pd.DataFrame(data=plate_layout)
+
         else:
             raise ValueError("Invalid platemap_type '%s'" % platemap_type)
 
@@ -338,7 +341,7 @@ class PipelinePlateQC:
             if key not in platemap.columns:
                 platemap[key] = value
 
-        self.platemap = platemap
+        return platemap
 
 
     def summarize(self):
@@ -415,7 +418,7 @@ class PipelinePlateQC:
             plt.legend()
 
         if save_plot:
-            plt.savefig(os.path.join(self.qc_dir, 'scores-and-counts.pdf'))
+            plt.savefig(os.path.join(self.qc_dir, '%s-scores-and-counts.pdf' % self.root_dirname))
 
 
     def generate_z_projections(self):
@@ -628,15 +631,17 @@ class PipelinePlateQC:
             imaging_well_id, site_num = self.parse_raw_tiff_filename(src_filename)
             
             # the platemap row corresponding to this imaging well_id
-            row = self.platemap.loc[self.platemap.imaging_well_id == imaging_well_id].iloc[0]
+            row = self.platemap.loc[self.platemap.imaging_well_id == imaging_well_id]
             if not row.shape[0]:
                 dst_filename = None
                 print(
-                    'Warning: there is an FOV but no platemap entry for imaging_well_id %s'
+                    'Warning: there is a raw TIFF but no platemap entry for imaging_well_id %s'
                     % imaging_well_id
                 )
+                continue
 
             else:
+                row = row.iloc[0]
                 site_id = 'S%02d' % site_num
                 well_id = self.pad_well_id(row.pipeline_well_id)
 
@@ -654,6 +659,7 @@ class PipelinePlateQC:
                     'src_dirpath': os.path.join(self.root_dirname, 'raw_data'),
                 })
                 fov_metadata.append(fov_metadata_row)
+
         fov_metadata = pd.DataFrame(data=fov_metadata)
 
         # check for imaging_well_ids in the platemap without any FOVs
@@ -663,7 +669,7 @@ class PipelinePlateQC:
             .difference(fov_metadata.imaging_well_id)
         )
         if missing_wells:
-            print('Warning: no FOVs found for imaging wells %s' % (missing_wells,))
+            print('Warning: no FOVs found for imaging wells %s' % (sorted(missing_wells),))
 
         # flag imaging wells that should *not* be inserted into the opencell database
         fov_metadata['manually_flagged'] = False
