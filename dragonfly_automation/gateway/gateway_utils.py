@@ -64,7 +64,9 @@ class Py4jWrapper:
                     break
                 except Exception as error:
                     # HACK: do not intercept AFC errors (these are handled in call_afc)
-                    if name == 'fullFocus':
+                    # or getTaggedImage errors (these are handled in acquire_stack 
+                    # by re-calling both snapImage and getTaggedImage)
+                    if name in ['fullFocus', 'getTaggedImage']:
                         raise
                     self.logger('ERROR: An error occurred calling method `%s`: %s' % (name, str(error)))
                     time.sleep(wait_time)

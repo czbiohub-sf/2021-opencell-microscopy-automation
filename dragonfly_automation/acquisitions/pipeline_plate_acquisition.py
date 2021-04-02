@@ -918,7 +918,8 @@ class PipelinePlateAcquisition(Acquisition):
                     stack_settings=channel_settings['stack'],
                     channel_ind=channel_ind,
                     position_ind=position_ind,
-                    position_name=position['name']
+                    position_name=position['name'],
+                    event_logger=self.event_logger
                 )
 
                 # log the acquisition

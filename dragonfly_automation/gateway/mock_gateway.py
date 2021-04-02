@@ -319,6 +319,10 @@ class MMCore(Base):
         if prop_name.startswith('Laser'):
             self.set_laser_power(prop_value)
 
+    def getTaggedImage(self):
+        if np.random.randint(0, 100) < 10:
+            raise Exception('Mocked getTaggedImage error')
+
 
 
 class DataManager:

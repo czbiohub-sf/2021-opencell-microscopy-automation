@@ -225,7 +225,8 @@ def acquire_stack(
     stack_settings, 
     channel_ind,
     position_ind, 
-    position_name
+    position_name,
+    event_logger
 ):
     '''
     Acquire a z-stack using the given settings and 'put' it in the datastore object
@@ -262,6 +263,20 @@ def acquire_stack(
     ```
     '''
 
+    def snap_and_get_image():
+        '''
+        wrapper to try this block multiple times, in an attempt to catch a camera hardware error
+        '''
+        # acquire an image
+        mm_core.waitForImageSynchro()
+        mm_core.snapImage()
+
+        # convert the image
+        # TODO: understand what's happening here
+        tagged_image = mm_core.getTaggedImage()
+        image = mm_studio.data().convertTaggedImage(tagged_image)
+        return image
+
     # generate a list of the z positions to visit
     z_positions = np.arange(
         stack_settings.relative_bottom, 
@@ -274,14 +289,22 @@ def acquire_stack(
         # move to the new z-position 
         move_z_stage(mm_core, stack_settings.stage_label, position=z_position, kind='absolute')
 
-        # acquire an image
-        mm_core.waitForImageSynchro()
-        mm_core.snapImage()
+        # this is an attempt to recover from the 'camera image buffer read failed' error
+        # that is randomly and rarely thrown by the `getTaggedImage` call
+        image = None
+        num_tries, wait_time = 10, 10
+        for _ in range(num_tries):
+            try:
+                image = snap_and_get_image()
+                break
+            except Exception as error:
+                event_logger('ERROR: An error occurred in snap_and_get_image: %s' % str(error))
+                time.sleep(wait_time)
 
-        # convert the image
-        # TODO: understand what's happening here
-        tagged_image = mm_core.getTaggedImage()
-        image = mm_studio.data().convertTaggedImage(tagged_image)
+        if image is None:
+            message = 'All tries to call snap_and_get_image failed'
+            event_logger('FATAL ERROR: %s' % message)
+            raise Exception(message)
 
         # manually construct image coordinates (position, channel, z)
         # NOTE: a new TIFF stack will be created whenever a new and datastore-unique value
