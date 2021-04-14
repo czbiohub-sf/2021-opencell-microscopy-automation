@@ -263,13 +263,17 @@ def acquire_stack(
     ```
     '''
 
-    def snap_and_get_image():
+    def snap_and_get_image(delay=0):
         '''
         wrapper to try this block multiple times, in an attempt to catch a camera hardware error
         '''
         # acquire an image
         mm_core.waitForImageSynchro()
         mm_core.snapImage()
+
+        # optional wait time between snapImage and getTaggedImage calls
+        if delay > 0:
+            time.sleep(delay)
 
         # convert the image
         # TODO: understand what's happening here
@@ -292,14 +296,20 @@ def acquire_stack(
         # this is an attempt to recover from the 'camera image buffer read failed' error
         # that is randomly and rarely thrown by the `getTaggedImage` call
         image = None
-        num_tries, wait_time = 10, 10
+        num_tries = 10
+        intertry_wait_time = 10
+        intratry_wait_time = 0
         for _ in range(num_tries):
             try:
-                image = snap_and_get_image()
+                image = snap_and_get_image(intratry_wait_time)
                 break
             except Exception as error:
-                event_logger('ERROR: An error occurred in snap_and_get_image: %s' % str(error))
-                time.sleep(wait_time)
+                event_logger(
+                    'ERROR: An error occurred in snap_and_get_image with a delay of %ss: %s'
+                    % (intratry_wait_time, str(error))
+                )
+                time.sleep(intertry_wait_time)
+                intratry_wait_time += 1
 
         if image is None:
             message = 'All tries to call snap_and_get_image failed'
