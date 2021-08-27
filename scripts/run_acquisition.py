@@ -45,6 +45,9 @@ def parse_args():
     # run mode: 'test' or 'prod'
     parser.add_argument('--mode', dest='mode', type=str, default='prod', required=False)
 
+    # optional well to visit when mode is 'test'
+    parser.add_argument('--test-well', dest='test_well', type=str, default=None, required=False)
+
     # time delay, in minutes, to add before starting the acquisition
     parser.add_argument('--delay', dest='delay', type=int, default=None, required=False)
 
@@ -104,7 +107,7 @@ def main():
         print('Delaying acquisition by %d minutes' % args.delay)
         time.sleep(args.delay*60)
 
-    aq.run(mode=args.mode)
+    aq.run(mode=args.mode, test_mode_well_id=args.test_well)
 
 
 if __name__ == '__main__':

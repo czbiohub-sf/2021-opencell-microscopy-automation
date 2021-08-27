@@ -436,7 +436,7 @@ class PipelinePlateAcquisition(Acquisition):
         return well_id, site_num
 
 
-    def run(self, mode='prod'):
+    def run(self, mode='prod', test_mode_well_id=None):
         '''
         The main acquisition workflow
 
@@ -493,17 +493,34 @@ class PipelinePlateAcquisition(Acquisition):
             if well_id != unique_well_ids[-1]:
                 unique_well_ids.append(well_id)
 
-        # only visit the first well in test mode
-        if mode == 'test':
-            unique_well_ids = unique_well_ids[:1]
+        # in test mode, only visit a user-specified test well or else the first well
+        if mode == 'prod':
+            well_ids_to_visit = unique_well_ids
+
+        elif mode == 'test':
             self.event_logger(
-                'ACQUISITION WARNING: Acquisition is running in test mode, '
-                'so only the first well will be visited',
-                newline=True
+                'ACQUISITION WARNING: Acquisition is running in test mode', newline=True
             )
+            if test_mode_well_id is not None:
+                if test_mode_well_id in unique_well_ids:
+                    well_ids_to_visit = [test_mode_well_id]
+                else:
+                    well_ids_to_visit = [unique_well_ids[0]]
+                    self.event_logger(
+                        'ACQUISITION WARNING: '
+                        'The specified test-mode well_id %s is not in the position list, '
+                        'so the first well in the position list will be used for the test'
+                        % test_mode_well_id,
+                    )
+            else:
+                well_ids_to_visit = [unique_well_ids[0]]
+                self.event_logger(
+                    'ACQUISITION WARNING: No test-mode well_id was specified, '
+                    'so the first well in the position list will be used for the test',
+                )
 
         last_afc_updated_focusdrive_position = None
-        for well_id in unique_well_ids:
+        for well_id in well_ids_to_visit:
             self.current_well_id = well_id
             
             # positions in this well
