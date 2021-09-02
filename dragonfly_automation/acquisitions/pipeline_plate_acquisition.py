@@ -7,13 +7,13 @@ import time
 import py4j
 import shutil
 import datetime
+import dataclasses
 import numpy as np
 import pandas as pd
 
 from dragonfly_automation import utils
 from dragonfly_automation import operations
 from dragonfly_automation.gateway import gateway_utils
-from dragonfly_automation.settings_schemas import ChannelSettingsManager
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 
@@ -301,13 +301,15 @@ class PipelinePlateAcquisition(Acquisition):
         env='dev', 
         verbose=True, 
         test_mode=None, 
-        acquire_bf_stacks=True, 
+        acquire_brightfield_stacks=True, 
         skip_fov_scoring=False
     ):
         super().__init__(root_dir, env=env, verbose=verbose, test_mode=test_mode)
 
         # create the external metadata
         self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
+
+        self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
 
         # if the platemap is canonical half-plate imaging, 
         # we hard-code the parental_line, electroporation_id and round_id
@@ -322,45 +324,35 @@ class PipelinePlateAcquisition(Acquisition):
             json.dump(self.external_metadata, file)
 
         # whether to acquire a brightfield stack after the hoechst and GFP stacks
-        self.acquire_bf_stacks = acquire_bf_stacks
+        self.acquire_brightfield_stacks = acquire_brightfield_stacks
+        self.acquisition_metadata_logger(
+            'brightfield_stacks_acquired', self.acquire_brightfield_stacks
+        )
 
         # whether to skip FOV scoring (only for manual redos)
         self.skip_fov_scoring = skip_fov_scoring
-
-        # create the log_dir for the fov_scorer instance
-        self.fov_scorer = fov_scorer
-        self.fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
-
-        # log the directory the fov_scorer was loaded from
-        self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
-
-        # log the name of the acquisition subclass
-        self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
-
-        # log whether BF stacks will be acquired
-        self.acquisition_metadata_logger('brightfield_stacks_acquired', self.acquire_bf_stacks)
         self.acquisition_metadata_logger('fov_scoring_skipped', self.skip_fov_scoring)
 
-        # initialize channel managers
-        self.bf_channel = ChannelSettingsManager(settings.bf_channel_settings)
-        self.gfp_channel = ChannelSettingsManager(settings.gfp_channel_settings)
-        self.hoechst_channel = ChannelSettingsManager(settings.hoechst_channel_settings)
+        # create the log_dir for the fov_scorer instance, 
+        # and log the directory from which the fov_scorer instance was loaded
+        self.fov_scorer = fov_scorer
+        self.fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
+        self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
+
+        self.gfp_channel = settings.gfp_channel_settings
+        self.hoechst_channel = settings.hoechst_channel_settings
+        self.brightfield_channel = settings.brightfield_channel_settings
         
-        # FOV selection settings
         self.fov_selection_settings = settings.fov_selection_settings
-
-        # copy the autoexposure settings
         self.autoexposure_settings = settings.autoexposure_settings
-
-        # brightfield stack settings
-        self.brightfield_stack_settings = settings.bf_stack_settings
+        self.brightfield_stack_settings = settings.brightfield_stack_settings
         
         # fluorescence stack settings for dev and prod
         # ('dev' settings reduce the number of slices acquired in dev mode)
         if self.env == 'prod':
-            self.flourescence_stack_settings = settings.prod_fl_stack_settings
+            self.flourescence_stack_settings = settings.prod_fluorescence_stack_settings
         if self.env == 'dev':
-            self.flourescence_stack_settings = settings.dev_fl_stack_settings
+            self.flourescence_stack_settings = settings.dev_fluorescence_stack_settings
     
         # stage labels for convenience
         self.xystage_label = 'XYStage'
@@ -371,17 +363,14 @@ class PipelinePlateAcquisition(Acquisition):
             'fov_selection_settings', 
             'autoexposure_settings', 
             'flourescence_stack_settings',
-            'brightfield_stack_settings'
+            'brightfield_stack_settings',
+            'hoechst_channel',
+            'gfp_channel',
+            'brightfield_channel',
         ]
         for settings_name in settings_names:
             self.acquisition_metadata_logger(
-                settings_name, dict(getattr(self, settings_name)._asdict())
-            )
-
-        # log the channel settings
-        for channel_name in ['hoechst_channel', 'gfp_channel', 'bf_channel']:
-            self.acquisition_metadata_logger(
-                channel_name, getattr(self, channel_name).__dict__
+                settings_name, dataclasses.asdict(getattr(self, settings_name))
             )
 
 
@@ -707,7 +696,12 @@ class PipelinePlateAcquisition(Acquisition):
             # this try-catch is a last line of defense that should never be needed
             log_info = None
             try:
-                log_info = self.fov_scorer.score_raw_fov(image, position=position)
+                log_info = self.fov_scorer.score_raw_fov(
+                    image, 
+                    min_otsu_thresh=self.fov_selection_settings.absolute_intensity_threshold,
+                    min_num_nuclei=self.fov_selection_settings.min_num_nuclei,
+                    position_props=position, 
+                )
             except Exception as error:
                 self.event_logger(
                     "SCORING ERROR: an uncaught exception occurred during FOV scoring "
@@ -911,9 +905,9 @@ class PipelinePlateAcquisition(Acquisition):
             ]
 
             # channel settings for the brightfield channel (which has its own z-stack settings)
-            if self.acquire_bf_stacks:
+            if self.acquire_brightfield_stacks:
                 all_channel_settings.append({
-                    'channel': self.bf_channel,
+                    'channel': self.brightfield_channel,
                     'stack': self.brightfield_stack_settings,
                 })
 

@@ -4,7 +4,6 @@ Settings for the 'pipeline_plate' program
 
 NOTE: exposure times and camera gain values must be floats
 TODO: should/must laser powers also be floats? (they are ints in Nathan's script)
-
 '''
 
 from dragonfly_automation.settings_schemas import (
@@ -15,11 +14,6 @@ from dragonfly_automation.settings_schemas import (
 )
 
 
-# -----------------------------------------------------------------------------
-#
-# FOV selection settings
-#
-# -----------------------------------------------------------------------------
 fov_selection_settings = FOVSelectionSettings(
 
     # how often to call AFC during FOV scoring
@@ -36,35 +30,38 @@ fov_selection_settings = FOVSelectionSettings(
     max_num_positions=4,
 
     # the minimum score defines 'acceptable' FOVs
-    # the value of -0.5 here is empirical,
-    # and assumes we use a regression model to predict the score
-    min_score=-0.5
+    # note that the value of -0.5 here was empirically determined
+    min_score=-0.5,
+
+    # intensity threshold used to determine whether any nuclei are present in the FOV,
+    # in units of raw fluorescence intensity in a snapshot of the 405 channel
+    # note: a value of 700 is used for standard OpenCell/pipeline imaging, 
+    # based on the observation that the background intensity in raw FOVs is around 500
+    # WARNING: this value depends on the Hoechst staining protocol and the exposure settings!
+    absolute_intensity_threshold=700,
+
+    # the minimum number of nuclei that must be present in an FOV in order for it to be scored
+    min_num_nuclei=10
 )
 
 
-# -----------------------------------------------------------------------------
-#
 # z-stack settings for fluorescence channels
-# (range, relative to the AFC point, and step size)
-#
-# -----------------------------------------------------------------------------
 STAGE_LABEL = 'PiezoZ'
-dev_fl_stack_settings = StackSettings(
+dev_fluorescence_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=16.0,
     relative_bottom=-10.0,
     step_size=7.0
 )
 
-prod_fl_stack_settings = StackSettings(
+prod_fluorescence_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=12.0,
     relative_bottom=-9.0,
     step_size=0.2
 )
 
-# brightfield stack settings (with wider range and coarser step size)
-bf_stack_settings = StackSettings(
+brightfield_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=20.0,
     relative_bottom=-20.0,
@@ -72,11 +69,6 @@ bf_stack_settings = StackSettings(
 )
 
 
-# -----------------------------------------------------------------------------
-#
-# Channel settings for hoechst and GFP
-#
-# -----------------------------------------------------------------------------
 # common names and settings shared between channels
 CONFIG_GROUP = 'Channels-EMCCD'
 LASER_LINE = 'Andor ILE-A'
@@ -105,8 +97,7 @@ gfp_channel_settings = ChannelSettings(
     default_exposure_time=50.0
 )
 
-# brightfield settings
-bf_channel_settings = ChannelSettings(
+brightfield_channel_settings = ChannelSettings(
     config_group=CONFIG_GROUP,
     config_name='EMCCD_BF',
     camera_name=CAMERA_NAME,
@@ -118,11 +109,6 @@ bf_channel_settings = ChannelSettings(
 )
 
 
-# -----------------------------------------------------------------------------
-#
-# Autoexposure settings
-#
-# -----------------------------------------------------------------------------
 autoexposure_settings = AutoexposureSettings(
 
     # min and max intensities that define under- and over-exposure

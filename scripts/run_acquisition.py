@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument('--delay', dest='delay', type=int, default=None, required=False)
 
     # CLI args whose presence in the command sets them to True
-    action_arg_names = ['acquire_bf_stacks', 'skip_fov_scoring']
+    action_arg_names = ['acquire_brightfield_stacks', 'skip_fov_scoring']
 
     for arg_name in action_arg_names:
         parser.add_argument(
@@ -98,7 +98,7 @@ def main():
         platemap_type=args.platemap_type,
         env=args.env,
         test_mode=args.test_mode,
-        acquire_bf_stacks=args.acquire_bf_stacks,
+        acquire_brightfield_stacks=args.acquire_brightfield_stacks,
         skip_fov_scoring=args.skip_fov_scoring,
     )
     aq.setup()
