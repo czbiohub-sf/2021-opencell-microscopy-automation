@@ -45,34 +45,20 @@ class PipelinePlateAcquisition:
         root_dir = re.sub(f'{os.sep}+$', '', root_dir)
         self.root_dir = root_dir
 
-        self.mock_micromanager_api = mock_micromanager_api
-
-        # the name of the experiment is the name of the directory
-        self.experiment_name = os.path.split(self.root_dir)[-1]
-
-        # subdirectory for logfiles
-        self.log_dir = os.path.join(self.root_dir, 'logs')
-
         # subdirectory for raw data (where the datastore will be created)
         self.data_dir = os.path.join(self.root_dir, 'raw_data')
 
-        # check whether data and/or logs already exist for the root_dir
+        # subdirectory for logfiles
+        self.log_dir = os.path.join(self.root_dir, 'logs')
         if os.path.isdir(self.log_dir):
             raise ValueError('The experiment directory %s is not empty' % self.root_dir)
         os.makedirs(self.log_dir, exist_ok=True)
 
-        # event logs (plaintext)
         self.all_events_log_file = os.path.join(self.log_dir, 'all-events.log')
         self.error_events_log_file = os.path.join(self.log_dir, 'error-events.log')
         self.important_events_log_file = os.path.join(self.log_dir, 'important-events.log')
-
-        # acquisition metadata log (JSON)
         self.metadata_log_file = os.path.join(self.log_dir, 'experiment-metadata.json')
-        
-        # acquisition log (CSV)
         self.acquisition_log_file = os.path.join(self.log_dir, 'acquired-images.csv')
-
-        # AFC log (CSV)
         self.afc_log_file = os.path.join(self.log_dir, 'afc-calls.csv')
 
         # log the current commit
@@ -83,9 +69,11 @@ class PipelinePlateAcquisition:
         except Exception:
             print('Warning: no git repo found and git commit hash will not be logged')
 
-        # log the experiment name and root directory
+        # log experiment name, class name, root directory
+        # (the name of the experiment is the name of the directory)
+        self.acquisition_metadata_logger('experiment_name', os.path.split(self.root_dir)[-1])
+        self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
         self.acquisition_metadata_logger('root_directory', self.root_dir)
-        self.acquisition_metadata_logger('experiment_name', self.experiment_name)
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
@@ -97,24 +85,6 @@ class PipelinePlateAcquisition:
 
         # create the operations instance (with logging enabled)
         self.operations = operations.Operations(self.event_logger)
-
-
-        # create the external metadata
-        self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
-
-        self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
-
-        # if the platemap is canonical half-plate imaging, 
-        # we hard-code the parental_line, electroporation_id and round_id
-        # (note that the round_id of 'R02' corresponds to imaging a thawed plate for the first time)
-        if platemap_type != 'custom':
-            self.external_metadata['parental_line'] = 'czML0383'
-            self.external_metadata['imaging_round_id'] = 'R02'
-            self.external_metadata['plate_id'] = plate_id
-        
-        # save the external metadata
-        with open(os.path.join(self.root_dir, 'metadata.json'), 'w') as file:
-            json.dump(self.external_metadata, file)
 
         # whether to acquire a brightfield stack after the hoechst and GFP stacks
         self.acquire_brightfield_stacks = acquire_brightfield_stacks
@@ -136,13 +106,12 @@ class PipelinePlateAcquisition:
         self.gfp_channel = settings.gfp_channel_settings
         self.hoechst_channel = settings.hoechst_channel_settings
         self.brightfield_channel = settings.brightfield_channel_settings
-        
         self.fov_selection_settings = settings.fov_selection_settings
         self.autoexposure_settings = settings.autoexposure_settings
         self.brightfield_stack_settings = settings.brightfield_stack_settings
-        
+
         # use dev stack settings when mocking the API to acquire only a few z-slices
-        if self.mock_micromanager_api:
+        if mock_micromanager_api:
             self.flourescence_stack_settings = settings.dev_fluorescence_stack_settings
         else:
             self.flourescence_stack_settings = settings.prod_fluorescence_stack_settings
@@ -165,6 +134,21 @@ class PipelinePlateAcquisition:
             self.acquisition_metadata_logger(
                 settings_name, dataclasses.asdict(getattr(self, settings_name))
             )
+
+        # create the external metadata
+        external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
+
+        # if the platemap is canonical half-plate imaging, 
+        # we hard-code the parental_line, electroporation_id and round_id
+        # (note that the round_id of 'R02' corresponds to imaging a thawed plate for the first time)
+        if platemap_type != 'custom':
+            external_metadata['parental_line'] = 'czML0383'
+            external_metadata['imaging_round_id'] = 'R02'
+            external_metadata['plate_id'] = plate_id
+        
+        # save the external metadata
+        with open(os.path.join(self.root_dir, 'metadata.json'), 'w') as file:
+            json.dump(external_metadata, file)
 
 
     def event_logger(self, message, newline=False):
@@ -223,15 +207,11 @@ class PipelinePlateAcquisition:
         the git commit hash of the dragonfly-automation repo when the acquisition was run,
         and also all of the acquisition-level settings 
         (autoexposure, stack, and default channel settings)
-
-        TODO: check for key collisions
         '''
-
+        metadata = {}
         if os.path.isfile(self.metadata_log_file):
             with open(self.metadata_log_file, 'r') as file:
                 metadata = json.load(file)
-        else:
-            metadata = {}
         
         metadata[key] = value
         with open(self.metadata_log_file, 'w') as file:
@@ -245,11 +225,7 @@ class PipelinePlateAcquisition:
         This log is intended to record the position of the FocusDrive
         before and after AFC is called, as well as whether any errors occur.
         '''
-        # construct the row
-        row = {'timestamp': utils.timestamp()}
-        row.update(kwargs)
-
-        # append the row to the CSV
+        row = {'timestamp': utils.timestamp(), **kwargs}
         if os.path.isfile(self.afc_log_file):
             d = pd.read_csv(self.afc_log_file)
             d = d.append(row, ignore_index=True)
@@ -271,12 +247,7 @@ class PipelinePlateAcquisition:
 
         Note that this method must be called manually after each call to operations.acquire_stack     
         '''
-        # construct the row
-        row = {'timestamp': utils.timestamp()}
-        row.update(channel_settings.__dict__)
-        row.update(kwargs)
-
-        # append the row to the CSV
+        row = {'timestamp': utils.timestamp(), **channel_settings.__dict__, **kwargs}
         if os.path.isfile(self.acquisition_log_file):
             d = pd.read_csv(self.acquisition_log_file)
             d = d.append(row, ignore_index=True)
