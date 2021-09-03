@@ -12,11 +12,11 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.abspath(os.path.dirname(__file__))
-REPO_ROOT = os.path.join(HERE, os.pardir)
+PROJECT_ROOT = os.path.join(HERE, os.pardir)
 
-sys.path.insert(0, REPO_ROOT)
-from dragonfly_automation.fov_models import PipelineFOVScorer
+sys.path.insert(0, PROJECT_ROOT)
 from dragonfly_automation.acquisitions.pipeline_plate_acquisition import PipelinePlateAcquisition
+from dragonfly_automation.fov_models import PipelineFOVScorer
 
 
 def parse_args():
@@ -82,29 +82,34 @@ def main():
         attempt_count += 1
         acquisition_dirpath = '%s-%s' % (acquisition_dirpath_base, attempt_count)
     
-    fov_scorer = PipelineFOVScorer(mode='prediction')
-    fov_scorer.load(os.path.join(REPO_ROOT, 'models', '2019-10-08'))
+    # load the FOV scoring model
+    fov_scorer = PipelineFOVScorer(
+        save_dir=os.path.join(PROJECT_ROOT, 'models', '2019-10-08'),
+        mode='prediction',
+        model_type='regression'
+    )
+    fov_scorer.load()
     fov_scorer.train()
     fov_scorer.validate()
 
-    aq = PipelinePlateAcquisition(
+    acquisition = PipelinePlateAcquisition(
         root_dir=acquisition_dirpath, 
-        fov_scorer=fov_scorer,
         pml_id=args.pml_id,
         plate_id=args.plate_id,
         platemap_type=args.platemap_type,
         mock_micromanager_api=args.mock_micromanager_api,
         mocked_mode=args.mocked_mode,
+        fov_scorer=fov_scorer,
         skip_fov_scoring=args.skip_fov_scoring,
         acquire_brightfield_stacks=args.acquire_brightfield_stacks,
     )
-    aq.setup()
+    acquisition.setup()
 
     if args.delay is not None:
         print('Delaying acquisition by %d minutes' % args.delay)
         time.sleep(args.delay*60)
 
-    aq.run(mode=args.mode, test_mode_well_id=args.test_well)
+    acquisition.run(mode=args.mode, test_mode_well_id=args.test_well)
 
 
 if __name__ == '__main__':

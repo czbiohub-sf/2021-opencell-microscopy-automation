@@ -53,7 +53,8 @@ def catch_errors(method):
             self.assign_score(
                 score=None, 
                 comment=("Error in <PipelineFOVScorer.%s>" % method_name),
-                error_info=error_info)
+                error_info=error_info
+            )
 
         return result
     return wrapper
@@ -61,14 +62,14 @@ def catch_errors(method):
 
 class PipelineFOVScorer:
 
-    def __init__(self, log_dir=None, mode='prediction', model_type='regression'):
+    def __init__(self, save_dir, mode='prediction', model_type='regression', log_dir=None):
         '''
+        mode : 'training' or 'prediction'
+        model : 'classification' or 'regression'
         log_dir : str, optional
             path to a local directory in which to save log files
-        mode : 'training' or 'prediction'
-
-        model : 'classification' or 'regression'
         '''
+        self.save_dir = save_dir
 
         # whether the methods wrapped by catch_errors
         # can raise errors or not (explicitly set to False in self.score_raw_fov)
@@ -86,9 +87,10 @@ class PipelineFOVScorer:
             os.makedirs(log_dir, exist_ok=True)
         self.log_dir = log_dir
 
+        self.training_data = None
         self.cached_training_metadata = None
         self.current_training_metadata = None
-        
+
         # hard-coded image size
         self.image_size = 1024
 
@@ -107,90 +109,64 @@ class PipelineFOVScorer:
             self.model = sklearn.ensemble.RandomForestClassifier(
                 n_estimators=300,
                 max_features='sqrt',
-                oob_score=True)
+                oob_score=True
+            )
 
         if self.model_type == 'regression':
             self.model = sklearn.ensemble.RandomForestRegressor(
                 n_estimators=300,
                 max_features='auto',
-                oob_score=True)
+                oob_score=True
+            )
 
 
-    def training_data_filepath(self):
-        return os.path.join(self.save_dir, 'training_data.csv')
-
-    def training_metadata_filepath(self):
-        return os.path.join(self.save_dir, 'training_metadata.json')
-
-
-    def load(self, save_dir):
+    def load(self):
         '''
         Load existing training data and metadata
-
-        save_dir : str, required
-            location to which to save the training data, if in training mode, 
-            or from which to load existing training data, if in prediction mode
-        
-        Steps
-        1) load the training dataset and the cached metadata 
-           (including cross-validation results)
-        2) train the model (self.model)
-        3) verify that the cross-validation results are comparable to the cached results
         '''
-
-        self.save_dir = save_dir
-
         # reset the current validation results
         self.current_training_metadata = None
     
         # load the training data        
-        self.training_data = pd.read_csv(self.training_data_filepath())
+        self.training_data = pd.read_csv(os.path.join(self.save_dir, 'training_data.csv'))
 
         # load the cached validation results
-        if os.path.isfile(self.training_metadata_filepath()):
-            with open(self.training_metadata_filepath(), 'r') as file:
+        training_metadata_filepath = os.path.join(self.save_dir, 'training_metadata.json')
+        if os.path.isfile(training_metadata_filepath):
+            with open(training_metadata_filepath, 'r') as file:
                 self.cached_training_metadata = json.load(file)
         else:
             print('Warning: no cached model metadata found')
 
 
-    def save(self, save_dir=None, overwrite=False):
+    def save(self, save_dir, overwrite=False):
         '''
         Save the training data and the metadata
-
-        If save_dir is None, save to the directory specified by self.save_dir
-        (which is set in self.load)
         '''
-
-        if save_dir is None and self.save_dir is None:
-            raise ValueError('A save directory must be specified')
-
-        if save_dir is None:
-            save_dir = self.save_dir
-        else:
-            self.save_dir = save_dir
         os.makedirs(save_dir, exist_ok=True)
 
         if self.mode != 'training':
             raise ValueError("Cannot save training data unless mode = 'training'")
         
         # don't overwrite existing data
-        filepath = self.training_data_filepath()
-        if os.path.isfile(filepath) and not overwrite:
-            raise ValueError('Training data already saved to %s' % self.save_dir)
+        training_data_filepath = os.path.join(save_dir, 'training_data.csv')
+        if os.path.isfile(training_data_filepath) and not overwrite:
+            raise ValueError('Training data already saved to %s' % training_data_filepath)
 
         # save the training data
-        self.training_data.to_csv(filepath, index=False)
-        print('Training data saved to %s' % filepath)
+        self.training_data.to_csv(training_data_filepath, index=False)
+        print('Training data saved to %s' % training_data_filepath)
 
         # save the metadata
+        training_metadata_filepath = os.path.join(save_dir, 'training_metadata.json')
         if self.current_training_metadata is None:
             print('Warning: no metadata found to save')
-        else:
-            self.current_training_metadata['filepath'] = os.path.abspath(filepath)
-            with open(self.training_metadata_filepath(), 'w') as file:
-                json.dump(self.current_training_metadata, file)
-            print('Metadata saved to %s' % self.training_metadata_filepath())
+            return
+
+        self.current_training_metadata['filepath'] = os.path.abspath(training_data_filepath)
+        with open(training_metadata_filepath, 'w') as file:
+            json.dump(self.current_training_metadata, file)
+        print('Metadata saved to %s' % training_metadata_filepath)
 
 
     def process_existing_fov(self, filepath):
@@ -289,10 +265,9 @@ class PipelineFOVScorer:
         mask = data[list(self.feature_order)].isna().sum(axis=1)
         if mask.sum():
             print(
-                '\nWarning: some training data is missing features and will be dropped '
-                '(see self.dropped_data)'
+                'Warning: %d rows of training data have missing features and will be dropped'
+                % mask.sum()
             )
-            self.dropped_data = data.loc[mask > 0]
             data = data.loc[mask == 0]
 
         # mask to identify training data with and without annotations
@@ -319,30 +294,33 @@ class PipelineFOVScorer:
         Intended use is right after loading and training from cached data on the microscope 
 
         Steps:
-
             1) Print the cached and current cross-validation results
                for manual inspection/validation
-            
             2) Check that the number of features returned by self.calculate_features
                matches the number expected by the trained model.
                (note that self.train implicitly validates whether all the features
                listed in self.feature_order appear in the cached training data,
                but there is no guarantee that self.feature_order is consistent
                with the features actually returned by self.calculate_features)
-
         '''
-
         if self.cached_training_metadata is None or self.current_training_metadata is None:
             print('Warning: cannot validate without cached and current metadata to compare')
             return
 
-        print('Cached and current training data shape: (%s, %s)' % (
-            self.cached_training_metadata['training_data_shape'],
-            self.current_training_metadata['training_data_shape']))
-
-        print('Cached and current oob_score: (%s, %s)' % (
-            self.cached_training_metadata['oob_score'],
-            self.current_training_metadata['oob_score']))
+        print(
+            'Cached and current training data shape: (%s, %s)'
+            % (
+                self.cached_training_metadata['training_data_shape'],
+                self.current_training_metadata['training_data_shape']
+            )
+        )
+        print(
+            'Cached and current oob_score: (%s, %s)'
+            % (
+                self.cached_training_metadata['oob_score'],
+                self.current_training_metadata['oob_score']
+            )
+        )
 
         # make sure the number of features is consistent 
         self.allow_errors = True

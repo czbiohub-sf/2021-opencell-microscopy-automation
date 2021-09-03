@@ -40,9 +40,9 @@ python ./scripts/run_acquisition.py \
 
 
 ## Requirements
-Python packages: py4j, pandas, numpy, scipy, skimage, sklearn
+MicroManager (beta) + [mm2python](https://github.com/czbiohub/mm2python)
 
-MicroManager: [mm2python plugin](https://github.com/czbiohub/mm2python)
+Python packages: py4j, pandas, numpy, scipy, skimage, sklearn
 
 ## Near-term TODOs
 - set up CI and formalize tests

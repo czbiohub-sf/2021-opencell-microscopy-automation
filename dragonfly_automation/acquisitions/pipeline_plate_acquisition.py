@@ -5,7 +5,6 @@ import git
 import json
 import time
 import py4j
-import shutil
 import datetime
 import dataclasses
 import numpy as np
@@ -274,10 +273,10 @@ class PipelinePlateAcquisition(Acquisition):
     def __init__(
         self, 
         root_dir, 
-        fov_scorer, 
         pml_id,
         plate_id,
         platemap_type, 
+        fov_scorer=None, 
         mock_micromanager_api=False, 
         mocked_mode=None, 
         acquire_brightfield_stacks=True, 
@@ -318,9 +317,10 @@ class PipelinePlateAcquisition(Acquisition):
 
         # create the log_dir for the fov_scorer instance, 
         # and log the directory from which the fov_scorer instance was loaded
-        self.fov_scorer = fov_scorer
-        self.fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
-        self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
+        if not self.skip_fov_scoring:
+            self.fov_scorer = fov_scorer
+            self.fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
+            self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
 
         self.gfp_channel = settings.gfp_channel_settings
         self.hoechst_channel = settings.hoechst_channel_settings
