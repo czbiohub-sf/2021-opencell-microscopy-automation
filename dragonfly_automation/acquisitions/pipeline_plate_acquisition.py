@@ -22,23 +22,20 @@ class Acquisition:
     Base class for acquisition scripts
     '''
 
-    def __init__(self, root_dir, env='dev', test_mode=None, verbose=True):
+    def __init__(self, root_dir, mock_micromanager_api, mocked_mode):
         '''
         root_dir : the imaging experiment directory 
             (usually ends with a directory of the form 'PML0123')
-        env : 'prod' or 'dev'
-        test_mode : when env is 'dev', determines how the mocked snaps are generated
+        mock_micromanager_api : whether to mock the micromanager API
+        mocked_mode : when mocking the API, determines how the mocked snaps are generated
             (see mock_gateway.Gate)
-        verbose : whether to print log messages
-
         '''
 
         # strip trailing slashes
         root_dir = re.sub(f'{os.sep}+$', '', root_dir)
         self.root_dir = root_dir
 
-        self.env = env
-        self.verbose = verbose
+        self.mock_micromanager_api = mock_micromanager_api
 
         # the name of the experiment is the name of the directory
         self.experiment_name = os.path.split(self.root_dir)[-1]
@@ -51,12 +48,8 @@ class Acquisition:
 
         # check whether data and/or logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
-            if env == 'prod':
-                raise ValueError('The experiment directory %s is not empty' % self.root_dir)
-            if env == 'dev':
-                print('WARNING: Removing existing experiment directory')
-                shutil.rmtree(self.root_dir)
-        
+            raise ValueError('The experiment directory %s is not empty' % self.root_dir)
+
         os.makedirs(self.log_dir, exist_ok=True)
 
         # event logs (plaintext)
@@ -87,10 +80,10 @@ class Acquisition:
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
-            env=self.env, 
+            mock=mock_micromanager_api,
+            mocked_mode=mocked_mode,
             wrap=True, 
-            logger=self.event_logger,
-            test_mode=test_mode
+            event_logger=self.event_logger,
         )
 
         # create the operations instance (with logging enabled)
@@ -108,7 +101,6 @@ class Acquisition:
 
         For now, we rely on the correct manual hard-coding of log messages 
         to identify, in the logfile, which of these contexts this method was called from
-
         '''
 
         log_filepaths = [self.all_events_log_file]
@@ -141,7 +133,7 @@ class Acquisition:
                 file.write('%s\n' % message)
         
         # finally, print the message
-        if self.verbose and message_is_important:
+        if message_is_important:
             print(message)
 
 
@@ -175,9 +167,7 @@ class Acquisition:
         
         This log is intended to record the position of the FocusDrive
         before and after AFC is called, as well as whether any errors occur.
-    
         '''
-
         # construct the row
         row = {'timestamp': utils.timestamp()}
         row.update(kwargs)
@@ -202,13 +192,8 @@ class Acquisition:
         and are intended to be used for position identifiers 
         (e.g., well_id, site_num, position_ind)
 
-        *** 
-        Note that this method must be called _manually_ 
-        after each call to operations.acquire_stack 
-        ***
-    
+        Note that this method must be called manually after each call to operations.acquire_stack     
         '''
-
         # construct the row
         row = {'timestamp': utils.timestamp()}
         row.update(channel_settings.__dict__)
@@ -227,7 +212,6 @@ class Acquisition:
         '''
         Initialize a datastore object
         '''
-
         # the datastore can only be initialized if the data directory does not exist
         if os.path.isdir(self.data_dir):
             raise ValueError('Data directory already exists at %s' % self.data_dir)
@@ -242,7 +226,6 @@ class Acquisition:
             should_generate_separate_metadata, 
             should_split_positions
         )
-
         self.mm_studio.displays().createDisplay(self.datastore)
         
     
@@ -268,9 +251,6 @@ class Acquisition:
         '''
         Commands that should be executed after the acquisition is complete
         (that is, after self.run)
-
-        TODO: are there close/shutdown methods that should be called on the py4j objects?
-
         '''
         # freeze the datastore
         if self.datastore:
@@ -279,7 +259,7 @@ class Acquisition:
         # log the time
         self.acquisition_metadata_logger('cleanup_timestamp', utils.timestamp())
 
-    
+
 class PipelinePlateAcquisition(Acquisition):
     '''
     This is a re-implementation of Nathan's pipeline plate acquisition script
@@ -298,13 +278,16 @@ class PipelinePlateAcquisition(Acquisition):
         pml_id,
         plate_id,
         platemap_type, 
-        env='dev', 
-        verbose=True, 
-        test_mode=None, 
+        mock_micromanager_api=False, 
+        mocked_mode=None, 
         acquire_brightfield_stacks=True, 
         skip_fov_scoring=False
     ):
-        super().__init__(root_dir, env=env, verbose=verbose, test_mode=test_mode)
+        super().__init__(
+            root_dir, 
+            mock_micromanager_api=mock_micromanager_api, 
+            mocked_mode=mocked_mode,
+        )
 
         # create the external metadata
         self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
@@ -347,12 +330,11 @@ class PipelinePlateAcquisition(Acquisition):
         self.autoexposure_settings = settings.autoexposure_settings
         self.brightfield_stack_settings = settings.brightfield_stack_settings
         
-        # fluorescence stack settings for dev and prod
-        # ('dev' settings reduce the number of slices acquired in dev mode)
-        if self.env == 'prod':
-            self.flourescence_stack_settings = settings.prod_fluorescence_stack_settings
-        if self.env == 'dev':
+        # use dev stack settings when mocking the API to acquire only a few z-slices
+        if self.mock_micromanager_api:
             self.flourescence_stack_settings = settings.dev_fluorescence_stack_settings
+        else:
+            self.flourescence_stack_settings = settings.prod_fluorescence_stack_settings
     
         # stage labels for convenience
         self.xystage_label = 'XYStage'
@@ -434,9 +416,10 @@ class PipelinePlateAcquisition(Acquisition):
 
         Parameters
         ----------
-        mode : one of 'test' or 'prod'
-            in test mode, only the first well is visted, and only one z-stack is acquired
+        mode : 'test' or 'prod'
+            in test mode, only the first well is visited, and only one z-stack is acquired
             (at a position that is *not* among those selected by self.select_positions)
+        test_mode_well_id : the well to image in test mode (if None, the first well is used)
 
         Assumptions
         -----------

@@ -73,11 +73,11 @@ class Base:
     
 class Gate:
 
-    def __init__(self, test_mode):
+    def __init__(self, mocked_mode):
         '''
-        test_mode: one of 'random-real', 'logged-real', or 'simulate-exposure'
+        mocked_mode: one of 'random-real', 'logged-real', or 'simulate-exposure'
         '''
-        self.test_mode = test_mode
+        self.mocked_mode = mocked_mode
         self.simulate_under_exposure = True
 
         self.position_ind = None
@@ -127,16 +127,16 @@ class Gate:
         meta = LoggedImageMeta(log_dir=FOV_LOG_DIR, position_ind=self.position_ind)
         '''
 
-        if self.test_mode == 'simulate-exposure':
+        if self.mocked_mode == 'simulate-exposure':
             if self.simulate_under_exposure:
                 meta = UnderexposureMeta(self.laser_power, self.exposure_time)
             else:
                 meta = OverexposureMeta(self.laser_power, self.exposure_time)
         
-        if self.test_mode == 'random-real':
+        if self.mocked_mode == 'random-real':
             meta = RandomTestSnapMeta()
 
-        if self.test_mode == 'logged-real':
+        if self.mocked_mode == 'logged-real':
             meta = LoggedImageMeta(
                 fov_log_dir=FOV_LOG_DIR, 
                 position_ind=self.position_ind)

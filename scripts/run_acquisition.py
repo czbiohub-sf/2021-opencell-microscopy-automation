@@ -36,12 +36,6 @@ def parse_args():
     parser.add_argument('--plate-id', dest='plate_id', type=str, required=True)
     parser.add_argument('--platemap-type', dest='platemap_type', type=str, required=True)
 
-    # environment type - 'dev' or 'prod' - whether to mock the microscope
-    parser.add_argument('--env', dest='env', type=str, default='prod', required=False)
-
-    # test mode when env='dev' (determines how the mocked FOV snaps are generated)
-    parser.add_argument('--test-mode', type=str, default=None, required=False)
-
     # run mode: 'test' or 'prod'
     parser.add_argument('--mode', dest='mode', type=str, default='prod', required=False)
 
@@ -51,8 +45,11 @@ def parse_args():
     # time delay, in minutes, to add before starting the acquisition
     parser.add_argument('--delay', dest='delay', type=int, default=None, required=False)
 
+   # mode for the mocked API (determines how the mocked FOV snaps are generated)
+    parser.add_argument('--mocked-mode', type=str, default=None, required=False)
+
     # CLI args whose presence in the command sets them to True
-    action_arg_names = ['acquire_brightfield_stacks', 'skip_fov_scoring']
+    action_arg_names = ['acquire_brightfield_stacks', 'skip_fov_scoring', 'mock_micromanager_api']
 
     for arg_name in action_arg_names:
         parser.add_argument(
@@ -96,10 +93,10 @@ def main():
         pml_id=args.pml_id,
         plate_id=args.plate_id,
         platemap_type=args.platemap_type,
-        env=args.env,
-        test_mode=args.test_mode,
-        acquire_brightfield_stacks=args.acquire_brightfield_stacks,
+        mock_micromanager_api=args.mock_micromanager_api,
+        mocked_mode=args.mocked_mode,
         skip_fov_scoring=args.skip_fov_scoring,
+        acquire_brightfield_stacks=args.acquire_brightfield_stacks,
     )
     aq.setup()
 
