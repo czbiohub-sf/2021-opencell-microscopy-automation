@@ -16,19 +16,30 @@ from dragonfly_automation.gateway import gateway_utils
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 
-class Acquisition:
+class PipelinePlateAcquisition:
     '''
-    Base class for acquisition scripts
-    '''
+    This is a re-implementation of Nathan's pipeline plate acquisition script
+    It acquires hoechst and GFP z-stacks at some number of positions
+    in some number of wells on a 96-well plate.
 
-    def __init__(self, root_dir, mock_micromanager_api, mocked_mode):
-        '''
-        root_dir : the imaging experiment directory 
-            (usually ends with a directory of the form 'PML0123')
-        mock_micromanager_api : whether to mock the micromanager API
-        mocked_mode : when mocking the API, determines how the mocked snaps are generated
-            (see mock_gateway.Gate)
-        '''
+    root_dir : the imaging experiment directory 
+        (usually ends with a directory of the form 'PML0123')
+    mock_micromanager_api : whether to mock the micromanager API
+    mocked_mode : when mocking the API, determines how the mocked snaps are generated
+        (see mock_gateway.Gate)
+    '''
+    def __init__(
+        self, 
+        root_dir, 
+        pml_id,
+        plate_id,
+        platemap_type, 
+        fov_scorer=None, 
+        mock_micromanager_api=False, 
+        mocked_mode=None, 
+        acquire_brightfield_stacks=True, 
+        skip_fov_scoring=False
+    ):
 
         # strip trailing slashes
         root_dir = re.sub(f'{os.sep}+$', '', root_dir)
@@ -48,14 +59,13 @@ class Acquisition:
         # check whether data and/or logs already exist for the root_dir
         if os.path.isdir(self.log_dir):
             raise ValueError('The experiment directory %s is not empty' % self.root_dir)
-
         os.makedirs(self.log_dir, exist_ok=True)
 
         # event logs (plaintext)
         self.all_events_log_file = os.path.join(self.log_dir, 'all-events.log')
         self.error_events_log_file = os.path.join(self.log_dir, 'error-events.log')
         self.important_events_log_file = os.path.join(self.log_dir, 'important-events.log')
-        
+
         # acquisition metadata log (JSON)
         self.metadata_log_file = os.path.join(self.log_dir, 'experiment-metadata.json')
         
@@ -87,6 +97,74 @@ class Acquisition:
 
         # create the operations instance (with logging enabled)
         self.operations = operations.Operations(self.event_logger)
+
+
+        # create the external metadata
+        self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
+
+        self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
+
+        # if the platemap is canonical half-plate imaging, 
+        # we hard-code the parental_line, electroporation_id and round_id
+        # (note that the round_id of 'R02' corresponds to imaging a thawed plate for the first time)
+        if platemap_type != 'custom':
+            self.external_metadata['parental_line'] = 'czML0383'
+            self.external_metadata['imaging_round_id'] = 'R02'
+            self.external_metadata['plate_id'] = plate_id
+        
+        # save the external metadata
+        with open(os.path.join(self.root_dir, 'metadata.json'), 'w') as file:
+            json.dump(self.external_metadata, file)
+
+        # whether to acquire a brightfield stack after the hoechst and GFP stacks
+        self.acquire_brightfield_stacks = acquire_brightfield_stacks
+        self.acquisition_metadata_logger(
+            'brightfield_stacks_acquired', self.acquire_brightfield_stacks
+        )
+
+        # whether to skip FOV scoring (only for manual redos)
+        self.skip_fov_scoring = skip_fov_scoring
+        self.acquisition_metadata_logger('fov_scoring_skipped', self.skip_fov_scoring)
+
+        # create the log_dir for the fov_scorer instance, 
+        # and log the directory from which the fov_scorer instance was loaded
+        if not self.skip_fov_scoring:
+            self.fov_scorer = fov_scorer
+            self.fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
+            self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
+
+        self.gfp_channel = settings.gfp_channel_settings
+        self.hoechst_channel = settings.hoechst_channel_settings
+        self.brightfield_channel = settings.brightfield_channel_settings
+        
+        self.fov_selection_settings = settings.fov_selection_settings
+        self.autoexposure_settings = settings.autoexposure_settings
+        self.brightfield_stack_settings = settings.brightfield_stack_settings
+        
+        # use dev stack settings when mocking the API to acquire only a few z-slices
+        if self.mock_micromanager_api:
+            self.flourescence_stack_settings = settings.dev_fluorescence_stack_settings
+        else:
+            self.flourescence_stack_settings = settings.prod_fluorescence_stack_settings
+    
+        # stage labels for convenience
+        self.xystage_label = 'XYStage'
+        self.zstage_label = self.flourescence_stack_settings.stage_label
+
+        # log all of the settings
+        settings_names = [
+            'fov_selection_settings', 
+            'autoexposure_settings', 
+            'flourescence_stack_settings',
+            'brightfield_stack_settings',
+            'hoechst_channel',
+            'gfp_channel',
+            'brightfield_channel',
+        ]
+        for settings_name in settings_names:
+            self.acquisition_metadata_logger(
+                settings_name, dataclasses.asdict(getattr(self, settings_name))
+            )
 
 
     def event_logger(self, message, newline=False):
@@ -226,140 +304,18 @@ class Acquisition:
             should_split_positions
         )
         self.mm_studio.displays().createDisplay(self.datastore)
-        
-    
+
+
     def setup(self):
         '''
         Commands to execute before the acquisition begins
         e.g., setting the autofocus mode, camera mode, various synchronization commands
         '''
+        self.event_logger('ACQUISITION INFO: Calling setup method')
         self.acquisition_metadata_logger('setup_timestamp', utils.timestamp())
 
         # create the datastore
         self._initialize_datastore()
-
-
-    def run(self):
-        '''
-        The main acquisition workflow
-        '''
-        raise NotImplementedError
-
-
-    def cleanup(self):
-        '''
-        Commands that should be executed after the acquisition is complete
-        (that is, after self.run)
-        '''
-        # freeze the datastore
-        if self.datastore:
-            self.datastore.freeze()
-
-        # log the time
-        self.acquisition_metadata_logger('cleanup_timestamp', utils.timestamp())
-
-
-class PipelinePlateAcquisition(Acquisition):
-    '''
-    This is a re-implementation of Nathan's pipeline plate acquisition script
-
-    It acquires hoechst and GFP z-stacks at some number of positions
-    in some number of wells on a 96-well plate.
-
-    See the comments in self.run for more details
-
-    '''
-    
-    def __init__(
-        self, 
-        root_dir, 
-        pml_id,
-        plate_id,
-        platemap_type, 
-        fov_scorer=None, 
-        mock_micromanager_api=False, 
-        mocked_mode=None, 
-        acquire_brightfield_stacks=True, 
-        skip_fov_scoring=False
-    ):
-        super().__init__(
-            root_dir, 
-            mock_micromanager_api=mock_micromanager_api, 
-            mocked_mode=mocked_mode,
-        )
-
-        # create the external metadata
-        self.external_metadata = {'pml_id': pml_id, 'platemap_type': platemap_type}
-
-        self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
-
-        # if the platemap is canonical half-plate imaging, 
-        # we hard-code the parental_line, electroporation_id and round_id
-        # (note that the round_id of 'R02' corresponds to imaging a thawed plate for the first time)
-        if platemap_type != 'custom':
-            self.external_metadata['parental_line'] = 'czML0383'
-            self.external_metadata['imaging_round_id'] = 'R02'
-            self.external_metadata['plate_id'] = plate_id
-        
-        # save the external metadata
-        with open(os.path.join(self.root_dir, 'metadata.json'), 'w') as file:
-            json.dump(self.external_metadata, file)
-
-        # whether to acquire a brightfield stack after the hoechst and GFP stacks
-        self.acquire_brightfield_stacks = acquire_brightfield_stacks
-        self.acquisition_metadata_logger(
-            'brightfield_stacks_acquired', self.acquire_brightfield_stacks
-        )
-
-        # whether to skip FOV scoring (only for manual redos)
-        self.skip_fov_scoring = skip_fov_scoring
-        self.acquisition_metadata_logger('fov_scoring_skipped', self.skip_fov_scoring)
-
-        # create the log_dir for the fov_scorer instance, 
-        # and log the directory from which the fov_scorer instance was loaded
-        if not self.skip_fov_scoring:
-            self.fov_scorer = fov_scorer
-            self.fov_scorer.log_dir = os.path.join(self.log_dir, 'fov-scoring')
-            self.acquisition_metadata_logger('fov_scorer_save_dir', self.fov_scorer.save_dir)
-
-        self.gfp_channel = settings.gfp_channel_settings
-        self.hoechst_channel = settings.hoechst_channel_settings
-        self.brightfield_channel = settings.brightfield_channel_settings
-        
-        self.fov_selection_settings = settings.fov_selection_settings
-        self.autoexposure_settings = settings.autoexposure_settings
-        self.brightfield_stack_settings = settings.brightfield_stack_settings
-        
-        # use dev stack settings when mocking the API to acquire only a few z-slices
-        if self.mock_micromanager_api:
-            self.flourescence_stack_settings = settings.dev_fluorescence_stack_settings
-        else:
-            self.flourescence_stack_settings = settings.prod_fluorescence_stack_settings
-    
-        # stage labels for convenience
-        self.xystage_label = 'XYStage'
-        self.zstage_label = self.flourescence_stack_settings.stage_label
-
-        # log all of the settings
-        settings_names = [
-            'fov_selection_settings', 
-            'autoexposure_settings', 
-            'flourescence_stack_settings',
-            'brightfield_stack_settings',
-            'hoechst_channel',
-            'gfp_channel',
-            'brightfield_channel',
-        ]
-        for settings_name in settings_names:
-            self.acquisition_metadata_logger(
-                settings_name, dataclasses.asdict(getattr(self, settings_name))
-            )
-
-
-    def setup(self):
-        self.event_logger('ACQUISITION INFO: Calling setup method')
-
-        super().setup()
 
         # change the autofocus mode to AFC
         af_manager = self.mm_studio.getAutofocusManager()
@@ -383,7 +339,12 @@ class PipelinePlateAcquisition(Acquisition):
         to ensure the microscope is returned to a 'safe' state?
         '''
         self.event_logger('ACQUISITION INFO: Calling cleanup method')
-        super().cleanup()
+        # freeze the datastore
+        if self.datastore:
+            self.datastore.freeze()
+
+        # log the time
+        self.acquisition_metadata_logger('cleanup_timestamp', utils.timestamp())
         self.event_logger('ACQUISITION INFO: Exiting cleanup method')
 
 
