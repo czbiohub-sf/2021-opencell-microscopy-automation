@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 
 from dragonfly_automation import utils
-from dragonfly_automation import operations
-from dragonfly_automation.gateway import gateway_utils
+from dragonfly_automation import microscope_operations
+from dragonfly_automation import gateway_utils
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 
@@ -84,7 +84,7 @@ class PipelinePlateAcquisition:
         )
 
         # create the operations instance (with logging enabled)
-        self.operations = operations.Operations(self.event_logger)
+        self.operations = microscope_operations.MicroscopeOperations(self.event_logger)
 
         # whether to acquire a brightfield stack after the hoechst and GFP stacks
         self.acquire_brightfield_stacks = acquire_brightfield_stacks
@@ -156,7 +156,7 @@ class PipelinePlateAcquisition:
         Append a message to the event log
 
         Note that this method is also passed to, and called from, 
-        - some methods in the operations module
+        - some methods in the microscope_operations module
         - the wrappers around the gate, mm_studio, and mm_core objects
         - the logging method of the FOVScorer instance at self.fov_scorer
 

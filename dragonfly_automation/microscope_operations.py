@@ -4,7 +4,7 @@ import time
 import numpy as np
 
 
-class Operations:
+class MicroscopeOperations:
 
     def __init__(self, event_logger):
         self.event_logger = event_logger

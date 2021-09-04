@@ -1,7 +1,7 @@
 
 import time
 
-from dragonfly_automation.gateway import mock_gateway
+from dragonfly_automation.tests.mocks import mock_gateway
 
 try:
     from py4j.java_gateway import JavaGateway

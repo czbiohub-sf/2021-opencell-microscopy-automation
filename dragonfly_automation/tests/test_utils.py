@@ -7,7 +7,7 @@ import skimage
 import datetime
 import numpy as np
 
-from dragonfly_automation import operations, utils
+from dragonfly_automation import microscope_operations, utils
 
 
 top_left_well_id = 'A1'

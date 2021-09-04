@@ -12,7 +12,7 @@ from scipy import interpolate
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D as ax3
 
-from dragonfly_automation import operations, utils
+from dragonfly_automation import microscope_operations
 
 
 def timestamp():
@@ -122,9 +122,9 @@ class StageVisitationManager:
         # this try-except catches timeout errors triggered by large stage movements
         # (these errors are harmless)
         try:
-            operations.go_to_position(self.mms, self.mmc, position_ind)
+            microscope_operations.go_to_position(self.mms, self.mmc, position_ind)
         except py4j.protocol.Py4JJavaError:
-            operations.go_to_position(self.mms, self.mmc, position_ind)    
+            microscope_operations.go_to_position(self.mms, self.mmc, position_ind)    
         print('Arrived at well %s' % self.current_well_id)
 
 

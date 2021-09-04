@@ -5,6 +5,8 @@ import tifffile
 import tempfile
 import numpy as np
 import py4j.protocol
+import pathlib
+
 
 ALL_WELL_IDS = [
     'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12',
@@ -192,11 +194,11 @@ class RandomTestSnapMeta(Meta):
     def __init__(self):
 
         # hack-ish way to find the directory of test snaps
-        project_root = os.path.join(os.path.dirname(__file__), '..')
-        snap_dir = os.path.join(project_root, 'tests', 'artifacts', 'test-snaps', '*.tif')
+        tests_dir = pathlib.Path(__file__).parent.parent
+        snap_dir = tests_dir / 'artifacts' / 'test-snaps' / '*.tif'
 
         # randomly select a test snap
-        snap_filepaths = glob.glob(snap_dir)
+        snap_filepaths = glob.glob(str(snap_dir))
         ind = np.random.randint(0, len(snap_filepaths), 1)
         im = tifffile.imread(snap_filepaths[int(ind)])
         self._make_memmap(im)
