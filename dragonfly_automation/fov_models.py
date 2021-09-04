@@ -62,7 +62,14 @@ def catch_errors(method):
 
 class PipelineFOVScorer:
 
-    def __init__(self, save_dir, mode='prediction', model_type='regression', log_dir=None):
+    def __init__(
+        self, 
+        save_dir, 
+        mode='prediction', 
+        model_type='regression', 
+        random_state=None, 
+        log_dir=None
+    ):
         '''
         mode : 'training' or 'prediction'
         model : 'classification' or 'regression'
@@ -109,14 +116,16 @@ class PipelineFOVScorer:
             self.model = sklearn.ensemble.RandomForestClassifier(
                 n_estimators=300,
                 max_features='sqrt',
-                oob_score=True
+                oob_score=True,
+                random_state=random_state
             )
 
         if self.model_type == 'regression':
             self.model = sklearn.ensemble.RandomForestRegressor(
                 n_estimators=300,
                 max_features='auto',
-                oob_score=True
+                oob_score=True,
+                random_state=random_state
             )
 
 

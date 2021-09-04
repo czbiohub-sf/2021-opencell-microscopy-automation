@@ -17,10 +17,6 @@ ALL_WELL_IDS = [
     'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'H11', 'H12',
 ]
 
-# for rapid testing
-NUM_SITES_PER_WELL = 3
-WELL_IDS = ['A1', 'B10']
-
 # all well_ids visited in a canonical half-plate acquisition, in snake-like order
 HALF_PLATE_WELL_IDS = [
     ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'][::-1],
@@ -31,16 +27,23 @@ HALF_PLATE_WELL_IDS = [
     ['G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9']
 ]
 
+# local directory of real FOV snaps
+# TODO: this is broken
+FOV_LOG_DIR = (
+    '/Users/keith.cheveralls/image-data/raw-pipeline-microscopy/PML0234/logs/fov-scoring/fov-images/'
+)
+
+# probability of various unpleasant scenarios
+AFC_TIMEOUT_PROB = 20
+GET_TAGGED_IMAGE_ERROR_PROB = 0
+
 # for simulating a real experiment
 NUM_SITES_PER_WELL = 36
 WELL_IDS = list(np.array(HALF_PLATE_WELL_IDS).flatten())
-FOV_LOG_DIR = (
-    '/Users/keith.cheveralls/image-data/raw-pipeline-microscopy/'
-    'PML0234/logs/fov-scoring/fov-images/'
-)
 
-# AFC timeout probability (in percent)
-AFC_TIMEOUT_PROB = 20
+# for rapid testing
+NUM_SITES_PER_WELL = 3
+WELL_IDS = ['A1', 'B10']
 
 
 class MockJavaException:
@@ -189,9 +192,8 @@ class RandomTestSnapMeta(Meta):
     def __init__(self):
 
         # hack-ish way to find the directory of test snaps
-        this_dir = os.path.dirname(__file__)
-        package_dir = os.sep.join(this_dir.split(os.sep)[:-2])
-        snap_dir = os.path.join(package_dir, 'tests', 'test-snaps', '*.tif')
+        project_root = os.path.join(os.path.dirname(__file__), '..')
+        snap_dir = os.path.join(project_root, 'tests', 'artifacts', 'test-snaps', '*.tif')
 
         # randomly select a test snap
         snap_filepaths = glob.glob(snap_dir)
@@ -320,7 +322,7 @@ class MMCore(Base):
             self.set_laser_power(prop_value)
 
     def getTaggedImage(self):
-        if np.random.randint(0, 100) < 10:
+        if np.random.randint(0, 100) < GET_TAGGED_IMAGE_ERROR_PROB:
             raise Exception('Mocked getTaggedImage error')
 
 

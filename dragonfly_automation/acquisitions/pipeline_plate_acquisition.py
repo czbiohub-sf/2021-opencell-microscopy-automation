@@ -79,7 +79,7 @@ class PipelinePlateAcquisition:
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
             mock=mock_micromanager_api,
             mocked_mode=mocked_mode,
-            wrap=True, 
+            wrap=True,
             event_logger=self.event_logger,
         )
 

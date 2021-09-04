@@ -61,14 +61,14 @@ measured_focusdrive_positions = {
     'H12': 6302.704735
 }
 
-position_list_filepath = '../tests/data/20200609_raw_positions_interpolated.pos'
-with open(position_list_filepath, 'r') as file:
-    position_list = json.load(file)
+# position_list_filepath = '../tests/data/20200609_raw_positions_interpolated.pos'
+# with open(position_list_filepath, 'r') as file:
+#     position_list = json.load(file)
 
-new_position_list_filepath, new_position_list = utils.interpolate_focusdrive_positions(
-    position_list_filepath,
-    measured_focusdrive_positions,
-    top_left_well_id,
-    bottom_right_well_id,
-    method='cubic'
-)
+# new_position_list_filepath, new_position_list = utils.interpolate_focusdrive_positions(
+#     position_list_filepath,
+#     measured_focusdrive_positions,
+#     top_left_well_id,
+#     bottom_right_well_id,
+#     method='cubic'
+# )

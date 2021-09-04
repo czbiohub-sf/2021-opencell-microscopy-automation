@@ -1,0 +1,12 @@
+numpy
+pandas
+seaborn
+imageio
+tifffile
+scikit-image
+scikit-learn
+requests
+dask
+dask[delayed]
+py4j
+GitPythonp
