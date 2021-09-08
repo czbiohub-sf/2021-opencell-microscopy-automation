@@ -37,7 +37,7 @@ NUM_SITES_PER_WELL = 36
 WELL_IDS = list(np.array(HALF_PLATE_WELL_IDS).flatten())
 
 # for rapid testing
-NUM_SITES_PER_WELL = 3
+NUM_SITES_PER_WELL = 9
 WELL_IDS = ['A1', 'B10']
 
 
@@ -167,7 +167,7 @@ class RandomTestSnapMeta(BaseMockedMeta):
 
         # hack-ish way to find the directory of test snaps
         tests_dir = pathlib.Path(__file__).parent.parent
-        snap_dir = tests_dir / 'artifacts' / 'test-snaps' / '*.tif'
+        snap_dir = tests_dir / 'artifacts' / 'snaps' / '*.tif'
 
         # randomly select a test snap
         snap_filepaths = glob.glob(str(snap_dir))

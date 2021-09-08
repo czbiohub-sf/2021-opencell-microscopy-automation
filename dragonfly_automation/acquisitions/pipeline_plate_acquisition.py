@@ -600,9 +600,9 @@ class PipelinePlateAcquisition:
             # score the FOV
             # note that, given all of the error handling in PipelineFOVScorer, 
             # this try-catch is a last line of defense that should never be needed
-            log_info = None
+            raw_fov_props = None
             try:
-                log_info = self.fov_scorer.score_raw_fov(
+                raw_fov_props = self.fov_scorer.score_raw_fov(
                     image, 
                     min_otsu_thresh=self.fov_selection_settings.absolute_intensity_threshold,
                     min_num_nuclei=self.fov_selection_settings.min_num_nuclei,
@@ -615,19 +615,19 @@ class PipelinePlateAcquisition:
                 )
 
             # retrieve the score and note it in the event log
-            if log_info is not None:
-                score = log_info.get('score')
+            if raw_fov_props is not None:
+                score = raw_fov_props.get('score')
                 position['fov_score'] = score
 
                 # prettify the score for the event log
                 score = '%0.2f' % score if score is not None else score
                 self.event_logger(
                     "SCORING INFO: The FOV score at position '%s' was %s (comment: '%s')"
-                    % (position['name'], score, log_info.get('comment'))
+                    % (position['name'], score, raw_fov_props.get('comment'))
                 )
 
         # drop positions without a score
-        # (this happens if log_info.get('score') is None or if there was an uncaught error above)
+        # (this happens if raw_fov_props.get('score') is None or if there was an uncaught error above)
         positions_with_score = [p for p in positions if p.get('fov_score') is not None]
 
         # sort positions in descending order by score (from good to bad)

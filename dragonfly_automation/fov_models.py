@@ -41,19 +41,14 @@ def catch_errors(method):
         if self.score_has_been_assigned:
             return result
 
-        # attempt the method call
         try:
             result = method(self, *args, **kwargs)
         except Exception as error:
-            error_info = dict(method_name=method_name, error_message=str(error))
-            
             # if an error has occured, we set the score to None
             # note that self.assign_score sets the score_has_been_assigned flag to True,
             # which will prevent the execution of all subsequent catch_errors-wrapped methods
             self.assign_score(
-                score=None, 
-                comment=("Error in <PipelineFOVScorer.%s>" % method_name),
-                error_info=error_info
+                score=None, comment=('Error in %s: %s' % (method_name, str(error)))
             )
 
         return result
@@ -77,6 +72,7 @@ class PipelineFOVScorer:
             path to a local directory in which to save log files
         '''
         self.save_dir = save_dir
+        self.log_dir = log_dir
 
         # whether the methods wrapped by catch_errors
         # can raise errors or not (explicitly set to False in self.score_raw_fov)
@@ -89,10 +85,6 @@ class PipelineFOVScorer:
         if model_type not in ['classification', 'regression']:
             raise ValueError("`model` must be either 'classification' or 'regression'")
         self.model_type = model_type
-
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-        self.log_dir = log_dir
 
         self.training_data = None
         self.cached_training_metadata = None
@@ -374,115 +366,90 @@ class PipelineFOVScorer:
         # reset the 'state' of the score-assignment logic
         self.score_has_been_assigned = False
 
-        # reset the log info
-        # note that this dict is modified in this method *and* in self.assign_score
-        self.log_info = {'position': position_props}
+        # raw FOV properties (modified in this method and in self.assign_score)
+        self.raw_fov_props = {
+            'raw_image': None,
+            'score': None,
+            'comment': None,
+            'features': {},
+        }
 
         # validate the image: check that it's a 2D uint16 ndarray
         # note that, because validate_raw_fov is wrapped by the catch_errors method,
         # we must check that the validation_result is not None before accessing the 'flag' key.
-        # also note that we only include the image in self.log_info if it passes validation
-        # (otherwise, errors may result when the image itself is logged in self.save_log_info)
-        validation_result = self.validate_raw_fov(image)
-        if validation_result is not None:
-            if validation_result.get('flag'):
-                self.log_info['raw_image'] = image
-            else:
-                self.assign_score(score=None, comment=validation_result.get('message'))
+        # also note that we only include the image in self.raw_fov_props if it passes validation
+        # (otherwise, errors may result when the image itself is logged in self.log_raw_fov_props)
+        is_valid_fov, comment = self.validate_raw_fov(image)
+        if is_valid_fov:
+            self.raw_fov_props['raw_image'] = image
+        else:
+            self.assign_score(score=None, comment=comment)
     
         # check whether there are any nuclei in the FOV
         nuclei_in_fov = self.are_nuclei_in_fov(image, min_otsu_thresh)
         if not nuclei_in_fov:
             self.assign_score(score=None, comment='No nuclei in the FOV')
 
-        # calculate the background mask and nucleus positions
+        # determine if the are too few nuclei in the mask to proceed
         mask = self.generate_background_mask(image)
         positions = self.find_nucleus_positions(mask)
-        self.log_info['nucleus_positions'] = positions
-
-        # determine if the are too few nuclei in the mask to proceed
         enough_nuclei_in_fov = self.are_enough_nuclei_in_fov(positions, min_num_nuclei)
         if not enough_nuclei_in_fov:
             self.assign_score(score=None, comment='Too few nuclei in the FOV')
 
         # calculate features from the positions
         features = self.calculate_features(positions)
-        self.log_info['features'] = features
+        self.raw_fov_props['features'] = features
 
         # finally, use the trained model to generate a prediction
         score = self.predict_score(features)
-        self.log_info['score'] = score
+        self.raw_fov_props['score'] = score
         if score is not None:
             self.assign_score(score, comment='Model prediction')
     
-        # log everything we've accumulated in self.log_info
-        self.save_log_info()
-        return self.log_info
+        if self.log_dir is not None and position_props is not None:
+            self.log_raw_fov_props(position_props)
+        return self.raw_fov_props
 
 
-    def assign_score(self, score, comment, error_info=None):
+    def assign_score(self, score, comment):
         '''
         '''
         # do nothing if a score has already been assigned
-        if self.score_has_been_assigned:
-            return
-        self.score_has_been_assigned = True
-
-        # update the log
-        self.log_info['score'] = score
-        self.log_info['comment'] = comment
-        self.log_info['error_info'] = error_info
+        if not self.score_has_been_assigned:
+            self.score_has_been_assigned = True
+            self.raw_fov_props['score'] = score
+            self.raw_fov_props['comment'] = comment
 
 
-    def save_log_info(self):
+    def log_raw_fov_props(self, position_props):
         '''
         '''
-        
-        log_info = self.log_info
-        score = log_info.get('score')
-        comment = log_info.get('comment')
-        error_info = log_info.get('error_info')
-        
-        # if there's no log dir, print the error_info (if any) (just for debugging)
-        if self.log_dir is None:
-            if error_info is not None:
-                print(
-                    "Error during FOV scoring in method `%s`: '%s'"
-                    % (error_info.get('method_name'), error_info.get('error_message'))
-                )
-            return
+        self.logged_image_dir = os.path.join(self.log_dir, 'fov-images')
+        os.makedirs(self.logged_image_dir, exist_ok=True)
 
-        # if we're still here, we need a position
-        position = log_info.get('position')
-        if position is None:
-            print('Warning: a position dict must be provided to log FOV scoring info')
-            return
+        # log the raw image itself
+        snap_filepath = os.path.join(
+            self.logged_image_dir, 'FOV_%s_RAW.tif' % (position_props['name'],)
+        )
+        raw_image = self.raw_fov_props.get('raw_image')
+        if raw_image is not None:
+            tifffile.imsave(snap_filepath, raw_image)
 
-        # directory and filepaths for logged images
-        image_dir = os.path.join(self.log_dir, 'fov-images')
-        os.makedirs(image_dir, exist_ok=True)
-
-        def logged_image_filepath(tag):
-            return os.path.join(image_dir, 'FOV_%s_%s.tif' % (position['name'], tag))
-        
         # construct the CSV log row
         row = {
-            'score': score,
-            'comment': comment,
+            'score': self.raw_fov_props.get('score'),
+            'comment': self.raw_fov_props.get('comment'),
             'timestamp': utils.timestamp(),
-            'image_filepath': logged_image_filepath('RAW'),
+            'image_filepath': snap_filepath,
         }
 
-        # insert the position attributes (ind, label, name, well_id, site_num)
-        for key, val in position.items():
+        # the position attributes (ind, label, name, well_id, site_num)
+        for key, val in position_props.items():
             row['position_%s' % key] = val
 
-        # dict of {method_name, error_message}
-        if error_info is not None:
-            row.update(error_info)
-
-        # dict of {num_nuclei, com_offset, etc}
-        features = log_info.get('features')
+        # the FOV features
+        features = self.raw_fov_props.get('features')
         if features is not None:
             row.update(features)
 
@@ -495,61 +462,23 @@ class PipelineFOVScorer:
             log = pd.DataFrame([row])
         log.to_csv(log_filepath, index=False, float_format='%0.2f')
 
-        # log the raw image itself
-        raw_image = log_info.get('raw_image')
-        if raw_image is not None:
-            tifffile.imsave(logged_image_filepath('RAW'), raw_image)
-
-        # log an annotated version of the raw image
-        log_annotated_image = False
-        if log_annotated_image:
-
-            # create a uint8 version 
-            # (uint16 images can't be opened in Windows image preview)
-            scaled_image = utils.to_uint8(raw_image, percentile=1)
-            tifffile.imsave(logged_image_filepath('UINT8'), scaled_image)
-
-            # create and save the annotated image
-            # (in which nucleus positions are marked with white squares)
-            positions = log_info.get('nucleus_positions')
-            if positions is not None:
-                
-                # spot width and whitepoint intensity
-                width = 3
-                white = 255
-                sz = scaled_image.shape
-
-                # lower the brightness of the autogained image 
-                # so that the squares are easier to see
-                ant_image = (scaled_image/2).astype('uint8')
-
-                # draw a square on the image at each nucleus position
-                for pos in positions:
-                    ant_image[
-                        int(max(0, pos[0] - width)):int(min(sz[0] - 1, pos[0] + width)), 
-                        int(max(0, pos[1] - width)):int(min(sz[1] - 1, pos[1] + width))
-                    ] = white
-
-                tifffile.imsave(logged_image_filepath('ANT'), ant_image)
-
 
     @catch_errors
     def validate_raw_fov(self, image):
         
-        flag = False
-        message = None
+        is_valid_fov = False
+        comment = None
         if not isinstance(image, np.ndarray):
-            message = 'Image is not an np.ndarray'
+            comment = 'Image is not an np.ndarray'
         elif image.dtype != 'uint16':
-            message = 'Image is not uint16'
+            comment = 'Image is not uint16'
         elif image.ndim != 2:
-            message = 'Image is not 2D'
+            comment = 'Image is not 2D'
         elif image.shape[0] != self.image_size or image.shape[1] != self.image_size:
-            message = 'Image shape is not (%s, %s)' % (self.image_size, self.image_size)
+            comment = 'Image shape is not (%s, %s)' % (self.image_size, self.image_size)
         else:
-            flag = True
-        
-        return dict(flag=flag, message=message)
+            is_valid_fov = True
+        return is_valid_fov, comment
 
 
     @catch_errors
@@ -744,7 +673,7 @@ class PipelineFOVScorer:
         if im is not None:
             mask = self.generate_background_mask(im)
             ax.imshow(
-                skimage.color.label2rgb(~mask, image=utils.to_uint8(im), colors=('black', 'yellow'))
+                skimage.color.label2rgb(mask, image=utils.to_uint8(im), colors=('black', 'yellow'))
             )
 
         # plot the positions themselves
