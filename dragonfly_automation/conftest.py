@@ -87,9 +87,9 @@ def datastore(mm_studio):
 def event_logger():
     class EventLogger:
         def __init__(self):
-            self.messages = []
+            self.events = []
 
-        def __call__(self, message):
-            self.messages.append(message)
+        def __call__(self, event):
+            self.events.append(event)
 
     return EventLogger()

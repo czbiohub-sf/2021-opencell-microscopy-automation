@@ -58,15 +58,14 @@ class MockPy4JJavaError(py4j.protocol.Py4JJavaError):
         return 'Mocked Py4JJavaError'
 
 
-class Base:
-
+class BaseMockedPy4jObject:
+    '''
+    Generic mock for arbitrary instance attributes
+    '''
     def __init__(self, name=None):
         self.name = name
 
     def __getattr__(self, name):
-        '''
-        Generic mock for arbitrary instance attributes
-        '''
         def wrapper(*args):
             pass
         return wrapper
@@ -76,7 +75,7 @@ class Gate:
 
     def __init__(self, mocked_mode):
         '''
-        mocked_mode: one of 'random-real', 'logged-real', or 'simulate-exposure'
+        mocked_mode: 'random-real' or 'simulate-exposure'
         '''
         self.mocked_mode = mocked_mode
         self.simulate_under_exposure = True
@@ -136,7 +135,7 @@ class Gate:
         return meta
 
 
-class Meta:
+class BaseMockedMeta:
     '''
     Base class for objects returned by mm_studio.getLastMeta
     '''
@@ -158,7 +157,7 @@ class Meta:
         return self.shape[1]
 
 
-class RandomTestSnapMeta(Meta):
+class RandomTestSnapMeta(BaseMockedMeta):
     '''
     Mock for the Meta object that returns a random test snap
     from the tests/test-snaps/ directory
@@ -177,7 +176,7 @@ class RandomTestSnapMeta(Meta):
         self._make_memmap(im)
 
 
-class UnderexposureMeta(Meta):
+class UnderexposureMeta(BaseMockedMeta):
     '''
     Mock for the Meta object that returns an image consisting of noise
     scaled by laser power and exposure time
@@ -192,7 +191,7 @@ class UnderexposureMeta(Meta):
         self._make_memmap(im)
 
 
-class OverexposureMeta(Meta):
+class OverexposureMeta(BaseMockedMeta):
     '''
     Mock for the Meta object that returns an image consisting of noise
     scaled by laser power and exposure time
@@ -209,22 +208,29 @@ class OverexposureMeta(Meta):
         self._make_memmap(im)
 
 
-class AutofocusManager(Base):
+class AutofocusManager(BaseMockedPy4jObject):
+
+    def __init__(self):
+        self.af_plugin = AutofocusPlugin()
 
     def getAutofocusMethod(self):
-        af_plugin = AutofocusPlugin()
-        return af_plugin
+        return self.af_plugin
 
 
-class AutofocusPlugin(Base):
+class AutofocusPlugin(BaseMockedPy4jObject):
+
+    def __init__(self):
+        self._num_full_focus_calls = 0
+        self._afc_failure_rate = 0.0
+        self._afc_fails_on_first_n_calls = 0
 
     def fullFocus(self):
-        # TODO: programmatically specify this flag
-        mock_afc_timeout = np.random.randint(0, 100) < AFC_TIMEOUT_PROB
-        if mock_afc_timeout:
+        if self._afc_failure_rate > 0 and np.random.rand() < self._afc_failure_rate:
             raise MockPy4JJavaError()
-        else:
-            return
+
+        elif self._num_full_focus_calls < self._afc_fails_on_first_n_calls:
+            self._num_full_focus_calls += 1
+            raise MockPy4JJavaError()
 
     def getPropertyNames(self):
         return 'Offset', 'LockThreshold'
@@ -233,7 +239,7 @@ class AutofocusPlugin(Base):
         return 0
     
 
-class MMStudio(Base):
+class MMStudio(BaseMockedPy4jObject):
     '''
     Mock for MMStudio
     See https://valelab4.ucsf.edu/~MM/doc-2.0.0-beta/mmstudio/org/micromanager/Studio.html
@@ -241,24 +247,30 @@ class MMStudio(Base):
 
     def __init__(self, set_position_ind):
         self.set_position_ind = set_position_ind
+        self.af_manager = AutofocusManager()
+
+    def _set_afc_failure_modes(self, failure_rate, fail_on_first_n_calls):
+        self.af_manager.af_plugin._num_full_focus_calls = 0
+        self.af_manager.af_plugin._afc_failure_rate = failure_rate
+        self.af_manager.af_plugin._afc_fails_on_first_n_calls = fail_on_first_n_calls
 
     def getAutofocusManager(self):
-        return AutofocusManager()
+        return self.af_manager
 
     def getPositionList(self):
         return PositionList(self.set_position_ind)
     
     def live(self):
-        return Base(name='SnapLiveManager')
+        return BaseMockedPy4jObject(name='SnapLiveManager')
 
     def data(self):
         return DataManager()
     
     def displays(self):
-        return Base(name='DisplayManager')
+        return BaseMockedPy4jObject(name='DisplayManager')
 
 
-class MMCore(Base):
+class MMCore(BaseMockedPy4jObject):
     '''
     Mock for MMCore
     See https://valelab4.ucsf.edu/~MM/doc-2.0.0-beta/mmcorej/mmcorej/CMMCore.html
@@ -298,7 +310,7 @@ class MMCore(Base):
         if self._throw_get_tagged_image_error:
             self._throw_get_tagged_image_error = False
             raise Exception('Mocked getTaggedImage error')
-        elif np.random.randint(0, 100) < (100*self._get_tagged_image_error_rate):
+        elif np.random.rand() < self._get_tagged_image_error_rate:
             raise Exception('Mocked getTaggedImage error')
 
 
@@ -314,7 +326,7 @@ class DataManager:
         return Image()        
 
 
-class MultipageTIFFDatastore(Base):
+class MultipageTIFFDatastore(BaseMockedPy4jObject):
 
     def __init__(self):
         super().__init__(name='Datastore')

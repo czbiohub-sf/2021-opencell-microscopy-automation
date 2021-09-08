@@ -5,8 +5,52 @@ from dragonfly_automation import microscope_operations
 from dragonfly_automation.settings_schemas import StackSettings
 
 
-def test_call_afc():
-    pass
+def test_call_afc(mm_studio, mm_core, event_logger):
+    '''
+    Test that AFC works in the best case, without any AFC timeouts
+    '''
+    mm_studio._set_afc_failure_modes(failure_rate=0, fail_on_first_n_calls=0)
+
+    afc_did_succeed = microscope_operations.call_afc(mm_studio, mm_core, event_logger)
+    assert afc_did_succeed
+
+
+def test_call_afc_with_timeouts(mm_studio, mm_core, event_logger):
+    '''
+    Test that AFC recovers from AFC timeout errors at the first three offsets
+    '''
+    mm_studio._set_afc_failure_modes(failure_rate=0, fail_on_first_n_calls=3)
+    afc_did_succeed = microscope_operations.call_afc(mm_studio, mm_core, event_logger)
+    assert afc_did_succeed
+
+    # four events - one for each timeout, plus one for the final successful AFC call
+    assert len(event_logger.events) == 4
+
+    # this line is dependent on the hard-coded list of offsets in call_afc
+    assert 'AFC was called successfully at an offset of 40um' in event_logger.events[-1]
+
+    # the final FocusDrive position should be the fourth AFC offset, at +40um
+    assert mm_core._current_z_position == 40
+
+
+def test_call_afc_with_too_many_timeouts(mm_studio, mm_core, event_logger):
+    '''
+    Test that call_afc exits gracefully when AFC always times out
+    '''
+
+    initial_focusdrive_position = 1234
+    mm_core._current_z_position = initial_focusdrive_position
+    mm_studio._set_afc_failure_modes(failure_rate=1, fail_on_first_n_calls=0)
+    afc_did_succeed = microscope_operations.call_afc(mm_studio, mm_core, event_logger)
+    assert not afc_did_succeed
+
+    # seven events - one for each of the six offsets and a final error event
+    assert len(event_logger.events) == 7
+
+    assert 'AFC timed out at all offsets' in event_logger.events[-1]
+
+    # important: when call_afc fails, it should reset the FocusDrive to its initial position
+    assert mm_core._current_z_position == initial_focusdrive_position
 
 
 def test_acquire_image():
@@ -33,7 +77,7 @@ def test_acquire_z_stack(mm_studio, mm_core, datastore, event_logger):
         event_logger=event_logger
     )
 
-    assert len(event_logger.messages) == 0
+    assert len(event_logger.events) == 0
     assert len(datastore._images) == 4
 
     for image in datastore._images:
@@ -69,8 +113,8 @@ def test_acquire_z_stack_camera_error(mm_studio, mm_core, datastore, event_logge
     )
 
     # there should be one error message
-    assert len(event_logger.messages) == 1
-    assert 'Mocked getTaggedImage error' in event_logger.messages[0]
+    assert len(event_logger.events) == 1
+    assert 'Mocked getTaggedImage error' in event_logger.events[0]
 
     # all z-slices should have been acquired
     assert len(datastore._images) == 4
