@@ -53,10 +53,6 @@ def test_call_afc_with_too_many_timeouts(mm_studio, mm_core, event_logger):
     assert mm_core._current_z_position == initial_focusdrive_position
 
 
-def test_acquire_image():
-    pass
-
-
 def test_acquire_z_stack(mm_studio, mm_core, datastore, event_logger):
     
     # a z-stack with four z-slices
@@ -137,3 +133,6 @@ def test_move_z_stage(mm_core):
 def test_autoexposure():
     pass
 
+
+def test_acquire_image():
+    pass

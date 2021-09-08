@@ -18,9 +18,9 @@ from dragonfly_automation.acquisitions import pipeline_plate_settings as setting
 
 class PipelinePlateAcquisition:
     '''
-    This is a re-implementation of Nathan's pipeline plate acquisition script
-    It acquires hoechst and GFP z-stacks at some number of positions
-    in some number of wells on a 96-well plate.
+    This script is the canonical OpenCell microscopy acquisition script
+    It dynamically identifies, and acquires z-stacks at,
+    a user-specified number of 'good' FOVs in each well of a 96-well plate
 
     root_dir : the imaging experiment directory 
         (usually ends with a directory of the form 'PML0123')
@@ -508,15 +508,6 @@ class PipelinePlateAcquisition:
         # whether to never call AFC (except at the first position, before the for loop)
         never_call_afc = False
 
-        # to save time, we call AFC at every nth position
-        num_positions_between_afc_calls = self.fov_selection_settings.num_positions_between_afc_calls
-
-        # the minimum number of positions to image in a well
-        min_num_positions = self.fov_selection_settings.min_num_positions
-
-        # the maximum number of positions to image in a well
-        max_num_positions = self.fov_selection_settings.max_num_positions
-
         # sort positions by site number
         positions = sorted(positions, key=lambda position: position['site_num'])
 
@@ -571,12 +562,11 @@ class PipelinePlateAcquisition:
 
         # score the FOV at each position
         for ind, position in enumerate(positions):
-            position_ind = position['ind']
 
-            # catch timeout errors when the position is too close
-            # to the lower bound of the stage range
+            # catch xy-stage timeout errors 
+            # (happens when the position is too close to the edge of the stage range)
             try:
-                self.operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+                self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
             except py4j.protocol.Py4JJavaError:
                 self.event_logger(
                     'SCORING ERROR: The XYStage timed out at position %s' % position['name']
@@ -591,10 +581,11 @@ class PipelinePlateAcquisition:
                 kind='absolute'
             )
 
-            # call AFC
-            if not never_call_afc and ind % (num_positions_between_afc_calls + 1) == 0:
+            # call AFC (to save time, we call AFC at every nth position)
+            call_afc_every_nth = self.fov_selection_settings.num_positions_between_afc_calls + 1
+            if not never_call_afc and ind % call_afc_every_nth == 0:
                 afc_did_succeed = self.operations.call_afc(
-                    self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
+                    self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind']
                 )
                 if afc_did_succeed:
                     afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
@@ -636,7 +627,7 @@ class PipelinePlateAcquisition:
                 )
 
         # drop positions without a score
-        # (this will happen if log_info.get('score') is None or if there was an uncaught error above)
+        # (this happens if log_info.get('score') is None or if there was an uncaught error above)
         positions_with_score = [p for p in positions if p.get('fov_score') is not None]
 
         # sort positions in descending order by score (from good to bad)
@@ -644,9 +635,16 @@ class PipelinePlateAcquisition:
 
         # list of acceptable positions
         acceptable_positions = [
-            p for p in positions_with_score if p['fov_score'] > self.fov_selection_settings.min_score
+            p for p in positions_with_score 
+            if p['fov_score'] > self.fov_selection_settings.min_score
         ]
         self.event_logger('ACQUISITION INFO: Found %d acceptable FOVs' % len(acceptable_positions))
+
+        # the minimum number of positions to image in a well
+        min_num_positions = self.fov_selection_settings.min_num_positions
+
+        # the maximum number of positions to image in a well
+        max_num_positions = self.fov_selection_settings.max_num_positions
 
         # crop the list if there are more acceptable positions than needed
         selected_positions = acceptable_positions[:max_num_positions]
@@ -793,12 +791,11 @@ class PipelinePlateAcquisition:
                 )
 
             # go to the position
-            position_ind = position['ind']
             self.go_to_position(position)
 
             # attempt to call AFC
             afc_did_succeed = self.operations.call_afc(
-                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position_ind
+                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind']
             )
 
             # if AFC failed, it is pointless to acquire z-stacks
@@ -843,7 +840,7 @@ class PipelinePlateAcquisition:
                     datastore=self.datastore, 
                     stack_settings=channel_settings['stack'],
                     channel_ind=channel_ind,
-                    position_ind=position_ind,
+                    position_ind=position['ind'],
                     position_name=position['name'],
                     event_logger=self.event_logger
                 )
@@ -851,7 +848,7 @@ class PipelinePlateAcquisition:
                 # log the acquisition
                 self.acquisition_logger(
                     channel_settings=channel_settings['channel'],
-                    position_ind=position_ind,
+                    position_ind=position['ind'],
                     well_id=position['well_id'],
                     site_num=position['site_num'],
                     afc_did_succeed=afc_did_succeed

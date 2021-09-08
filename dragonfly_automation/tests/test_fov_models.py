@@ -3,6 +3,7 @@ import numpy as np
 
 KWARGS = dict(min_otsu_thresh=700, min_num_nuclei=10)
 
+
 def test_prediction_high_score(trained_fov_scorer, fov_snaps_high_score):
     for snap in fov_snaps_high_score:
         result = trained_fov_scorer.score_raw_fov(snap, **KWARGS)
