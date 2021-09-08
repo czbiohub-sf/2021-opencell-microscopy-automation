@@ -279,7 +279,7 @@ def acquire_stack(
         # TODO: understand what's happening here
         tagged_image = mm_core.getTaggedImage()
         image = mm_studio.data().convertTaggedImage(tagged_image)
-        return image
+        return image    
 
     # generate a list of the z positions to visit
     z_positions = np.arange(
@@ -297,7 +297,7 @@ def acquire_stack(
         # that is randomly and rarely thrown by the `getTaggedImage` call
         image = None
         num_tries = 10
-        intertry_wait_time = 10
+        intertry_wait_time = 3
         intratry_wait_time = 0
         for _ in range(num_tries):
             try:
@@ -368,39 +368,30 @@ def change_channel(mm_core, channel_settings):
 
     # camera gain
     property_name = 'Gain'
-    mm_core.setProperty(
-        channel_settings.camera_name, 
-        property_name, 
-        channel_settings.camera_gain
-    )
+    mm_core.setProperty(channel_settings.camera_name, property_name, channel_settings.camera_gain)
 
 
 def move_z_stage(mm_core, stage_label, position=None, kind=None):
     '''
     Convenience method to move a z-stage
-    (adapted from Nathan's script)
-
     TODO: basic sanity checks on the value of `position`
     (e.g., if kind=='relative', `position` shouldn't be a 'big' number)
     '''
 
-    # validate `kind`
     if kind not in ['relative', 'absolute']:
         raise ValueError("`kind` must be either 'relative' or 'absolute'")
-    
-    # validate `position`
+
     try:
         position = float(position)
     except ValueError:
         raise TypeError('`position` cannot be coerced to float')
     
-    if np.isnan(position):
+    if not np.isfinite(position):
         raise TypeError('`position` cannot be nan')
     
     # move the stage
     if kind == 'absolute':
         mm_core.setPosition(stage_label, position)
-
     elif kind == 'relative':
         mm_core.setRelativePosition(stage_label, position)
     

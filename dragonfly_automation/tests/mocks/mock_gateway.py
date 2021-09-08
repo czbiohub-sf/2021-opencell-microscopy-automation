@@ -29,15 +29,8 @@ HALF_PLATE_WELL_IDS = [
     ['G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9']
 ]
 
-# local directory of real FOV snaps
-# TODO: this is broken
-FOV_LOG_DIR = (
-    '/Users/keith.cheveralls/image-data/raw-pipeline-microscopy/PML0234/logs/fov-scoring/fov-images/'
-)
-
 # probability of various unpleasant scenarios
 AFC_TIMEOUT_PROB = 20
-GET_TAGGED_IMAGE_ERROR_PROB = 0
 
 # for simulating a real experiment
 NUM_SITES_PER_WELL = 36
@@ -71,11 +64,14 @@ class Base:
         self.name = name
 
     def __getattr__(self, name):
+        '''
+        Generic mock for arbitrary instance attributes
+        '''
         def wrapper(*args):
             pass
         return wrapper
 
-    
+
 class Gate:
 
     def __init__(self, mocked_mode):
@@ -126,10 +122,6 @@ class Gate:
 
         For a 'real' image from the tests/test-snaps/ directory, use
         meta = RandomTestSnapMeta()
-
-        For the real logged image corresponding to self.position_ind
-        from a real experiment, use
-        meta = LoggedImageMeta(log_dir=FOV_LOG_DIR, position_ind=self.position_ind)
         '''
 
         if self.mocked_mode == 'simulate-exposure':
@@ -141,19 +133,13 @@ class Gate:
         if self.mocked_mode == 'random-real':
             meta = RandomTestSnapMeta()
 
-        if self.mocked_mode == 'logged-real':
-            meta = LoggedImageMeta(
-                fov_log_dir=FOV_LOG_DIR, 
-                position_ind=self.position_ind)
-
         return meta
 
 
 class Meta:
     '''
-    Base class for Meta mocks
+    Base class for objects returned by mm_studio.getLastMeta
     '''
-
     def _make_memmap(self, im):
         self.shape = im.shape
         self.filepath = os.path.join(tempfile.mkdtemp(), 'mock_snap.dat')
@@ -172,25 +158,12 @@ class Meta:
         return self.shape[1]
 
 
-class LoggedImageMeta(Meta):
-
-    def __init__(self, fov_log_dir, position_ind):
-        
-        # filename = 'confluency_snap_pos%05d_RAW.tif' % position_ind
-        filepath = glob.glob(os.path.join(fov_log_dir, 'FOV_%s-*_RAW.tif' % position_ind))[0]
-        print(filepath.split(os.sep)[-1])
-        im = tifffile.imread(filepath)
-        self._make_memmap(im)
-
-
 class RandomTestSnapMeta(Meta):
     '''
     Mock for the Meta object that returns a random test snap
     from the tests/test-snaps/ directory
     (for testing confluency assessment)
-
     '''
-
     def __init__(self):
 
         # hack-ish way to find the directory of test snaps
@@ -212,14 +185,10 @@ class UnderexposureMeta(Meta):
     '''
     def __init__(self, laser_power, exposure_time):
 
-        shape = (1024, 1024)
-
         # rel_max = 1 at default laser power and exposure time
         rel_max = (laser_power * exposure_time)/500
-
-        minn = 0
         maxx = int(min(65535, 5000 * rel_max))
-        im = np.random.randint(minn, maxx, shape, dtype='uint16')
+        im = np.random.randint(0, maxx, size=(1024, 1024), dtype='uint16')
         self._make_memmap(im)
 
 
@@ -231,27 +200,24 @@ class OverexposureMeta(Meta):
     '''
     def __init__(self, laser_power, exposure_time):
 
-        shape = (1024, 1024)
-
         # rel_max = 2 at default laser power and exposure time
         rel_max = (laser_power * exposure_time)/250
 
         minn = int(min(65535 - 1, 40000 * rel_max))
         maxx = int(min(65535, 65535 * rel_max))
-        im = np.random.randint(minn, maxx, shape, dtype='uint16')
+        im = np.random.randint(minn, maxx, size=(1024, 1024), dtype='uint16')
         self._make_memmap(im)
 
 
 class AutofocusManager(Base):
+
     def getAutofocusMethod(self):
-        # this is the af_plugin object
-        return AutofocusMethod()
+        af_plugin = AutofocusPlugin()
+        return af_plugin
 
 
-class AutofocusMethod(Base):
-    '''
-    Mock for the af_plugin object
-    '''
+class AutofocusPlugin(Base):
+
     def fullFocus(self):
         # TODO: programmatically specify this flag
         mock_afc_timeout = np.random.randint(0, 100) < AFC_TIMEOUT_PROB
@@ -299,9 +265,14 @@ class MMCore(Base):
     '''
 
     def __init__(self, set_laser_power, set_exposure_time):
-        self._current_z_position = 0
+        # callbacks to set the laser power and exposure time
+        # (needed so that Meta objects can access the laser power and exposure time)
         self.set_laser_power = set_laser_power
         self.set_exposure_time = set_exposure_time
+
+        self._current_z_position = 0
+        self._get_tagged_image_error_rate = 0.0
+        self._throw_get_tagged_image_error = False
 
     def getPosition(self, *args):
         return self._current_z_position
@@ -324,7 +295,10 @@ class MMCore(Base):
             self.set_laser_power(prop_value)
 
     def getTaggedImage(self):
-        if np.random.randint(0, 100) < GET_TAGGED_IMAGE_ERROR_PROB:
+        if self._throw_get_tagged_image_error:
+            self._throw_get_tagged_image_error = False
+            raise Exception('Mocked getTaggedImage error')
+        elif np.random.randint(0, 100) < (100*self._get_tagged_image_error_rate):
             raise Exception('Mocked getTaggedImage error')
 
 
@@ -334,10 +308,20 @@ class DataManager:
     This object is returned by MMStudio.data()
     '''
     def createMultipageTIFFDatastore(self, *args):
-        return Base(name='Datastore')
+        return MultipageTIFFDatastore()
 
     def convertTaggedImage(self, *args):
         return Image()        
+
+
+class MultipageTIFFDatastore(Base):
+
+    def __init__(self):
+        super().__init__(name='Datastore')
+        self._images = []
+
+    def putImage(self, image):
+        self._images.append(image)
 
 
 class PositionList:
@@ -399,8 +383,10 @@ class ImageCoords:
         self.channel_ind, self.z_ind, self.stage_position = None, None, None
     
     def __repr__(self):
-        return 'ImageCoords(channel_ind=%s, z_ind=%s, stage_position=%s)' % \
-            (self.channel_ind, self.z_ind, self.stage_position)
+        return (
+            'ImageCoords(channel_ind=%s, z_ind=%s, stage_position=%s)'
+            % (self.channel_ind, self.z_ind, self.stage_position)
+        )
 
     def build(self):
         return self

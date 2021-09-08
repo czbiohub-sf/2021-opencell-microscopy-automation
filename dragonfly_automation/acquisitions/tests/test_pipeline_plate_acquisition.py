@@ -7,7 +7,8 @@ import pandas as pd
 from dragonfly_automation.acquisitions.pipeline_plate_acquisition import PipelinePlateAcquisition
 from dragonfly_automation.acquisitions.pipeline_plate_settings import fov_selection_settings
 
-def test_acquisition_test_mode(tmpdir, trained_fov_scorer):
+
+def test_acquisition_in_test_mode(tmpdir, trained_fov_scorer):
 
     pml_id = 'PML0123'
     plate_id = 'P0001'

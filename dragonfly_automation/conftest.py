@@ -1,3 +1,4 @@
+from dragonfly_automation.tests.mocks import mock_gateway
 import os
 import pytest
 import imageio
@@ -60,3 +61,35 @@ def trained_fov_scorer(project_dir):
     fov_scorer.train()
     fov_scorer.validate()
     return fov_scorer
+
+
+@pytest.fixture(scope='session')
+def gate():
+    return mock_gateway.Gate('random-real')
+
+
+@pytest.fixture(scope='session')
+def mm_studio(gate):
+    return gate.getStudio()
+
+
+@pytest.fixture(scope='session')
+def mm_core(gate):
+    return gate.getCMMCore()
+
+
+@pytest.fixture(scope='function')
+def datastore(mm_studio):
+    return mm_studio.data().createMultipageTIFFDatastore()
+
+
+@pytest.fixture(scope='function')
+def event_logger():
+    class EventLogger:
+        def __init__(self):
+            self.messages = []
+
+        def __call__(self, message):
+            self.messages.append(message)
+
+    return EventLogger()
