@@ -553,90 +553,59 @@ class PipelineFOVScorer:
     @catch_errors
     def calculate_features(self, positions):
         '''
+        Calculate a variety of features from the list of nucleus positions
+        These fall into three categories:
+        1) basic summary statistics: number of nuclei, their relative center of mass, 
+            and orientation (from the eigenvalues of the covariance matrix)
+        2) total nucleus area and max distance from a nucleus, from a simulated nucleus mask
+            obtained by thresholding the distance transform of the nucleus positions.
+            (Note that it is necessary to simulate a nucleus mask because the mask
+            returned by generate_background_mask depends on the focal plane)
+        3) results from using DBSCAN to cluster the nucleus positions
         '''
-
-        features = {}
-
-        # -------------------------------------------------------------------------
-        #
-        # Simple aggregate features of the nucleus positions
-        # (center of mass and asymmetry) 
-        #
-        # -------------------------------------------------------------------------
-
         # the number of nuclei
         num_nuclei = positions.shape[0]
-        
+
         # the distance of the center of mass from the center of the image
         com_offset = ((positions.mean(axis=0) - (self.image_size/2))**2).sum()**.5
         rel_com_offset = com_offset / self.image_size
 
-        # eigenvalues of the covariance matrix
+        # the ratio of eigenvalues (a crude measure of asymmetry)
         evals, evecs = np.linalg.eig(np.cov(positions.transpose()))
-
-        # the ratio of eigenvalues is a measure of asymmetry 
         eval_ratio = (max(evals) - min(evals))/min(evals)
 
-        features.update({
-            'num_nuclei': num_nuclei, 
-            'com_offset': rel_com_offset, 
-            'eval_ratio': eval_ratio,
-        })
-
-        # -------------------------------------------------------------------------
-        #
-        # Features derived from a simulated nucleus mask
-        # (obtained by thresholding the distance transform of the nucleus positions)
-        #
-        # Note that it is necessary to simulate a nucleus mask,
-        # rather than use the mask returned by _generate_background_mask, 
-        # because the area of the foreground regions in the generated mask
-        # depends on the focal plane.
-        #
-        # -------------------------------------------------------------------------
-
-        # the nucleus radius here was selected empirically
+        # calculate total area and max distance from a nucleus using a simulated nucleus mask
+        # (the nucleus radius here was selected empirically)
         nucleus_radius = 50
-
         position_mask = np.zeros((self.image_size, self.image_size))
         for position in positions:
             position_mask[position[0], position[1]] = 1
 
-        dt = ndimage.distance_transform_edt(~position_mask.astype(bool))
-        total_area = (dt < nucleus_radius).sum() / (self.image_size*self.image_size)
-        max_distance = dt.max()
+        dist = ndimage.distance_transform_edt(~position_mask.astype(bool))
+        total_area = (dist < nucleus_radius).sum() / (self.image_size*self.image_size)
+        max_distance = dist.max()
 
-        features.update({
-            'total_area': total_area, 
-            'max_distance': max_distance
-        })
-
-        # -------------------------------------------------------------------------
-        #
-        # Cluster positions using DBSCAN 
-        # and calculate various measures of cluster homogeneity
-        #
-        # -------------------------------------------------------------------------
-        
-        # empirically-selected neighborhood size in pixels
-        # (the clustering is *very* sensitive to changes in this parameter)
+        # cluster positions using DBSCAN
+        # eps is an empirically-selected neighborhood size in pixels,
+        # and min_samples = 3 is the minimum required for non-trivial clustering
+        # (nb the clustering is very sensitive to `eps`)
         eps = 100
-
-        # min_samples = 3 is the minimum required for non-trivial clustering
         min_samples = 3
-
         dbscan = sklearn.cluster.DBSCAN(eps=eps, min_samples=min_samples, metric='euclidean')
         dbscan.fit(positions)
-
         labels = dbscan.labels_
         num_clusters = len(set(labels))
         num_unclustered = (labels == -1).sum()
 
-        features.update({
-            'num_clusters': num_clusters, 
-            'num_unclustered': num_unclustered, 
-        })
-
+        features = dict(
+            num_nuclei=num_nuclei, 
+            com_offset=rel_com_offset, 
+            eval_ratio=eval_ratio, 
+            total_area=total_area,
+            max_distance=max_distance, 
+            num_clusters=num_clusters, 
+            num_unclustered=num_unclustered
+        )
         return features
 
 
@@ -645,7 +614,6 @@ class PipelineFOVScorer:
         '''
         Use the pre-trained model to predict a score
         '''
-
         # construct the feature array of shape (1, num_features)
         X = np.array([features.get(name) for name in self.feature_order])[None, :]
 
@@ -664,7 +632,6 @@ class PipelineFOVScorer:
         Convenience method to visualize the nucleus positions, 
         optionally overlaid on the image itself and the background mask
         '''
-    
         if ax is None:
             plt.figure(figsize=(10, 10))
             ax = plt.gca()
@@ -681,4 +648,3 @@ class PipelineFOVScorer:
         ax.set_xlim([0, 1024])
         ax.set_ylim([0, 1024])
         ax.set_aspect('equal')
-
