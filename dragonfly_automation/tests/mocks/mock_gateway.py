@@ -7,6 +7,7 @@ import numpy as np
 import py4j.protocol
 import pathlib
 
+from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 ALL_WELL_IDS = [
     'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12',
@@ -80,9 +81,12 @@ class Gate:
         self._mocked_mode = mocked_mode
         self._simulate_under_exposure = True
 
+        self._props = {}
         self._position_ind = None
-        self.laser_power = None
-        self.exposure_time = None
+        self._exposure_time = None
+
+        # the name of the channel config
+        self._config_name = None
 
         # filepaths to the test FOV snaps
         test_snap_filenames = [
@@ -102,16 +106,23 @@ class Gate:
             # alternate simulating under- and over-exposure at each new position
             self._simulate_under_exposure = not self._simulate_under_exposure
 
-        def set_laser_power(laser_power):
-            self.laser_power = laser_power
+        def set_config_name(name):
+            self._config_name = name
+
+        def set_property(label, prop_name, prop_value):
+            if self._props.get(label) is None:
+                self._props[label] = {}
+            self._props[label][prop_name] = prop_value
 
         def set_exposure_time(exposure_time):
-            self.exposure_time = exposure_time
+            self._exposure_time = exposure_time
 
         self.mm_studio = MMStudio(set_position_ind=set_position_ind)
 
         self.mm_core = MMCore(
-            set_laser_power=set_laser_power, set_exposure_time=set_exposure_time
+            set_property=set_property, 
+            set_config_name=set_config_name,
+            set_exposure_time=set_exposure_time
         )
 
     def getCMMCore(self):
@@ -127,30 +138,56 @@ class Gate:
         '''
         Returns a Meta object that provides access to the last image (or 'snap')
         taken by MicroManager (usually via live.snap()) as an numpy memmap
-
-        For an image of noise scaled by laser power and exposure time, use
-        meta = OverexposureMeta(self.laser_power, self.exposure_time)
         '''
-        if self._mocked_mode == 'simulate-exposure':
-            if self._simulate_under_exposure:
-                meta = UnderexposureMeta(self.laser_power, self.exposure_time)
-            else:
-                meta = OverexposureMeta(self.laser_power, self.exposure_time)
+        meta = MockedMeta()
 
-        if self._mocked_mode == 'random-real':
-            im = tifffile.imread(
-                self._snap_filepaths[self._position_ind % len(self._snap_filepaths)]
+        im = tifffile.imread(
+            self._snap_filepaths[self._position_ind % len(self._snap_filepaths)]
+        )
+
+        if self._config_name == settings.hoechst_channel_settings.config_name:
+            channel = settings.hoechst_channel_settings
+        elif self._config_name == settings.gfp_channel_settings.config_name:
+            channel = settings.gfp_channel_settings
+
+        # get the laser power of the current channel
+        laser_power = self._props[channel.laser_line][channel.laser_name]
+
+        # scale the intensities if the channel is 488 to simulate under- or over-exposure
+        if '488' in channel.laser_name:
+            relative_exposure = (
+                (laser_power * self._exposure_time) / 
+                (channel.default_laser_power * channel.default_exposure_time)
             )
-            meta = BaseMockedMeta()
-            meta._make_memmap(im)
+            # empirically determined factor yield an image that is underexposed
+            # but can be properly exposed by increasing exposure time
+            # (without this, the image is underexposed even with the max exposure time)
+            if self._mocked_mode == 'underexposure':
+                relative_exposure *= 10
 
+            # emprically determined factor to yield an overexposed image
+            if self._mocked_mode == 'overexposure':
+                relative_exposure *= 100
+
+            im = meta._multiply_and_clip(im, relative_exposure)
+
+        meta._make_memmap(im)
         return meta
 
 
-class BaseMockedMeta:
+class MockedMeta:
     '''
-    Base class for objects returned by mm_studio.getLastMeta
+    Mock for the objects returned by mm_studio.getLastMeta
     '''
+    @staticmethod
+    def _multiply_and_clip(im, scale):
+        dtype = 'uint16'
+        max_value = 65535
+        im_dst = im.copy().astype(float)
+        im_dst *= scale
+        im_dst[im_dst > max_value] = max_value
+        return im_dst.astype(dtype)
+        
     def _make_memmap(self, im):
         self.shape = im.shape
         self.filepath = os.path.join(tempfile.mkdtemp(), 'mock_snap.dat')
@@ -167,38 +204,6 @@ class BaseMockedMeta:
 
     def getyRange(self):
         return self.shape[1]
-
-
-class UnderexposureMeta(BaseMockedMeta):
-    '''
-    Mock for the Meta object that returns an image consisting of noise
-    scaled by laser power and exposure time
-    (for testing autoexposure algorithms)
-    '''
-    def __init__(self, laser_power, exposure_time):
-
-        # rel_max = 1 at default laser power and exposure time
-        rel_max = (laser_power * exposure_time)/500
-        maxx = int(min(65535, 5000 * rel_max))
-        im = np.random.randint(0, maxx, size=(1024, 1024), dtype='uint16')
-        self._make_memmap(im)
-
-
-class OverexposureMeta(BaseMockedMeta):
-    '''
-    Mock for the Meta object that returns an image consisting of noise
-    scaled by laser power and exposure time
-    (for testing autoexposure algorithms)
-    '''
-    def __init__(self, laser_power, exposure_time):
-
-        # rel_max = 2 at default laser power and exposure time
-        rel_max = (laser_power * exposure_time)/250
-
-        minn = int(min(65535 - 1, 40000 * rel_max))
-        maxx = int(min(65535, 65535 * rel_max))
-        im = np.random.randint(minn, maxx, size=(1024, 1024), dtype='uint16')
-        self._make_memmap(im)
 
 
 class AutofocusManager(BaseMockedPy4jObject):
@@ -269,11 +274,12 @@ class MMCore(BaseMockedPy4jObject):
     See https://valelab4.ucsf.edu/~MM/doc-2.0.0-beta/mmcorej/mmcorej/CMMCore.html
     '''
 
-    def __init__(self, set_laser_power, set_exposure_time):
-        # callbacks to set the laser power and exposure time
+    def __init__(self, set_config_name, set_property, set_exposure_time):
+        # callbacks to set a device property and the exposure time
         # (needed so that Meta objects can access the laser power and exposure time)
-        self.set_laser_power = set_laser_power
-        self.set_exposure_time = set_exposure_time
+        self._set_property = set_property
+        self._set_config_name = set_config_name
+        self._set_exposure_time = set_exposure_time
 
         self._current_z_position = 0
         self._get_tagged_image_error_rate = 0.0
@@ -288,16 +294,14 @@ class MMCore(BaseMockedPy4jObject):
     def setRelativePosition(self, zdevice, offset):
         self._current_z_position += offset
 
+    def setConfig(self, group, name):
+        self._set_config_name(name)
+
     def setExposure(self, exposure_time):
-        self.set_exposure_time(exposure_time)
+        self._set_exposure_time(exposure_time)
     
     def setProperty(self, label, prop_name, prop_value):
-        '''
-        Explicitly mock setProperty in order to intercept laser power
-        '''
-        # hack-ish way to determine whether we're setting the laser power
-        if prop_name.startswith('Laser'):
-            self.set_laser_power(prop_value)
+        self._set_property(label, prop_name, prop_value)
 
     def getTaggedImage(self):
         if self._throw_get_tagged_image_error:

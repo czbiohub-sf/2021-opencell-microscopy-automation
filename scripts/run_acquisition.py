@@ -45,7 +45,7 @@ def parse_args():
     # time delay, in minutes, to add before starting the acquisition
     parser.add_argument('--delay', dest='delay', type=int, default=None, required=False)
 
-   # mode for the mocked API (determines how the mocked FOV snaps are generated)
+   # mode for the mocked API ('overexposure' or 'underexposre')
     parser.add_argument('--mocked-mode', type=str, default=None, required=False)
 
     # CLI args whose presence in the command sets them to True
