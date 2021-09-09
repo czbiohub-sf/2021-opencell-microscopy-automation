@@ -4,6 +4,12 @@ import numpy as np
 KWARGS = dict(min_otsu_thresh=700, min_num_nuclei=10)
 
 
+def test_prediction_score(trained_fov_scorer, fov_snap_and_score):
+    snap, expected_score = fov_snap_and_score
+    result = trained_fov_scorer.score_raw_fov(snap, **KWARGS)
+    assert np.round(result.get('score'), 2) == expected_score
+    
+
 def test_prediction_high_score(trained_fov_scorer, fov_snaps_high_score):
     for snap in fov_snaps_high_score:
         result = trained_fov_scorer.score_raw_fov(snap, **KWARGS)
@@ -41,4 +47,3 @@ def test_prediction_invalid_input(trained_fov_scorer):
     for invalid_input in invalid_inputs:
         result = trained_fov_scorer.score_raw_fov(invalid_input, **KWARGS)
         assert result.get('score') is None
-        assert result.get('comment') != 'Model prediction'

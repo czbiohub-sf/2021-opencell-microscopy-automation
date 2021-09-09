@@ -18,6 +18,13 @@ def snaps_dir(project_dir):
 
 
 @pytest.fixture(scope='session')
+def fov_snap_and_score(snaps_dir):
+    snap = imageio.imread(snaps_dir / 'good-1.tif')
+    expected_score = 0.85
+    return snap, expected_score
+
+
+@pytest.fixture(scope='session')
 def fov_snaps_high_score(snaps_dir):
     return [
         imageio.imread(snaps_dir / 'good-1.tif'),
