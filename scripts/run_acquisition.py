@@ -86,7 +86,8 @@ def main():
     fov_scorer = PipelineFOVScorer(
         save_dir=os.path.join(PROJECT_ROOT, 'models', '2019-10-08'),
         mode='prediction',
-        model_type='regression'
+        model_type='regression',
+        random_state=(42 if args.mock_micromanager_api else None)
     )
     fov_scorer.load()
     fov_scorer.train()

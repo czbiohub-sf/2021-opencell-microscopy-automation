@@ -37,7 +37,7 @@ NUM_SITES_PER_WELL = 36
 WELL_IDS = list(np.array(HALF_PLATE_WELL_IDS).flatten())
 
 # for rapid testing
-NUM_SITES_PER_WELL = 9
+NUM_SITES_PER_WELL = 6
 WELL_IDS = ['A1', 'B10']
 
 
@@ -77,18 +77,30 @@ class Gate:
         '''
         mocked_mode: 'random-real' or 'simulate-exposure'
         '''
-        self.mocked_mode = mocked_mode
-        self.simulate_under_exposure = True
+        self._mocked_mode = mocked_mode
+        self._simulate_under_exposure = True
 
-        self.position_ind = None
+        self._position_ind = None
         self.laser_power = None
         self.exposure_time = None
 
+        # filepaths to the test FOV snaps
+        test_snap_filenames = [
+            'no-nuclei-1.tif', 
+            'too-few-1.tif',
+            'sparse-1.tif', 
+            'clumpy-1.tif', 
+            'overconfluent-1.tif', 
+            'good-1.tif', 
+        ]
+        snap_dir = pathlib.Path(__file__).parent.parent / 'artifacts' / 'snaps'
+        self._snap_filepaths = [snap_dir / filepath for filepath in test_snap_filenames]
+
         def set_position_ind(position_ind):
-            self.position_ind = position_ind
+            self._position_ind = position_ind
 
             # alternate simulating under- and over-exposure at each new position
-            self.simulate_under_exposure = not self.simulate_under_exposure
+            self._simulate_under_exposure = not self._simulate_under_exposure
 
         def set_laser_power(laser_power):
             self.laser_power = laser_power
@@ -118,19 +130,19 @@ class Gate:
 
         For an image of noise scaled by laser power and exposure time, use
         meta = OverexposureMeta(self.laser_power, self.exposure_time)
-
-        For a 'real' image from the tests/test-snaps/ directory, use
-        meta = RandomTestSnapMeta()
         '''
-
-        if self.mocked_mode == 'simulate-exposure':
-            if self.simulate_under_exposure:
+        if self._mocked_mode == 'simulate-exposure':
+            if self._simulate_under_exposure:
                 meta = UnderexposureMeta(self.laser_power, self.exposure_time)
             else:
                 meta = OverexposureMeta(self.laser_power, self.exposure_time)
-        
-        if self.mocked_mode == 'random-real':
-            meta = RandomTestSnapMeta()
+
+        if self._mocked_mode == 'random-real':
+            im = tifffile.imread(
+                self._snap_filepaths[self._position_ind % len(self._snap_filepaths)]
+            )
+            meta = BaseMockedMeta()
+            meta._make_memmap(im)
 
         return meta
 
@@ -155,25 +167,6 @@ class BaseMockedMeta:
 
     def getyRange(self):
         return self.shape[1]
-
-
-class RandomTestSnapMeta(BaseMockedMeta):
-    '''
-    Mock for the Meta object that returns a random test snap
-    from the tests/test-snaps/ directory
-    (for testing confluency assessment)
-    '''
-    def __init__(self):
-
-        # hack-ish way to find the directory of test snaps
-        tests_dir = pathlib.Path(__file__).parent.parent
-        snap_dir = tests_dir / 'artifacts' / 'snaps' / '*.tif'
-
-        # randomly select a test snap
-        snap_filepaths = glob.glob(str(snap_dir))
-        ind = np.random.randint(0, len(snap_filepaths), 1)
-        im = tifffile.imread(snap_filepaths[int(ind)])
-        self._make_memmap(im)
 
 
 class UnderexposureMeta(BaseMockedMeta):
@@ -352,6 +345,8 @@ class PositionList:
         return len(self._position_list)
 
     def getPosition(self, ind):
+        # set_position_ind is called here, instead of in Position.goToPosition,
+        # because calls to position.goToPosition are always preceeded by a call to getPosition
         self.set_position_ind(ind)
         return Position(self._position_list[ind])
     
