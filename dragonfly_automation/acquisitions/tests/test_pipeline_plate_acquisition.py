@@ -20,7 +20,6 @@ def test_acquisition_in_test_mode(tmpdir, trained_fov_scorer):
         plate_id=plate_id,
         platemap_type=platemap_type,
         mock_micromanager_api=True,
-        mocked_mode='random-real',
         fov_scorer=trained_fov_scorer,
         skip_fov_scoring=False,
         acquire_brightfield_stacks=False,

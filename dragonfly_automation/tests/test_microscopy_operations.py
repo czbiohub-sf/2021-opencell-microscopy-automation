@@ -3,23 +3,23 @@ import numpy as np
 
 from dragonfly_automation import microscope_operations
 from dragonfly_automation.settings_schemas import StackSettings
+from dragonfly_automation.tests.mocks import mm2python_mocks
 
 
-def test_call_afc(mm_studio, mm_core, event_logger):
+def test_call_afc(event_logger):
     '''
     Test that AFC works in the best case, without any AFC timeouts
     '''
-    mm_studio._set_afc_failure_modes(failure_rate=0, fail_on_first_n_calls=0)
-
+    gate, mm_studio, mm_core = mm2python_mocks.get_mocked_interface()
     afc_did_succeed = microscope_operations.call_afc(mm_studio, mm_core, event_logger)
     assert afc_did_succeed
 
 
-def test_call_afc_with_timeouts(mm_studio, mm_core, event_logger):
+def test_call_afc_with_timeouts(event_logger):
     '''
     Test that AFC recovers from AFC timeout errors at the first three offsets
     '''
-    mm_studio._set_afc_failure_modes(failure_rate=0, fail_on_first_n_calls=3)
+    gate, mm_studio, mm_core = mm2python_mocks.get_mocked_interface(afc_fail_on_first_n_calls=3)
     afc_did_succeed = microscope_operations.call_afc(mm_studio, mm_core, event_logger)
     assert afc_did_succeed
 
@@ -33,14 +33,14 @@ def test_call_afc_with_timeouts(mm_studio, mm_core, event_logger):
     assert mm_core._current_z_position == 40
 
 
-def test_call_afc_with_too_many_timeouts(mm_studio, mm_core, event_logger):
+def test_call_afc_with_too_many_timeouts(event_logger):
     '''
     Test that call_afc exits gracefully when AFC always times out
     '''
+    gate, mm_studio, mm_core = mm2python_mocks.get_mocked_interface(afc_failure_rate=1)
 
     initial_focusdrive_position = 1234
     mm_core._current_z_position = initial_focusdrive_position
-    mm_studio._set_afc_failure_modes(failure_rate=1, fail_on_first_n_calls=0)
     afc_did_succeed = microscope_operations.call_afc(mm_studio, mm_core, event_logger)
     assert not afc_did_succeed
 
@@ -53,12 +53,15 @@ def test_call_afc_with_too_many_timeouts(mm_studio, mm_core, event_logger):
     assert mm_core._current_z_position == initial_focusdrive_position
 
 
-def test_acquire_z_stack(mm_studio, mm_core, datastore, event_logger):
+def test_acquire_z_stack(event_logger):
     
     # a z-stack with four z-slices
     stack_settings = StackSettings(
         stage_label='label', relative_bottom=0, relative_top=3, step_size=1
     )
+
+    gate, mm_studio, mm_core = mm2python_mocks.get_mocked_interface()
+    datastore = mm_studio.data().createMultipageTIFFDatastore()
 
     channel_ind = 0
     position_ind = 123
@@ -82,7 +85,7 @@ def test_acquire_z_stack(mm_studio, mm_core, datastore, event_logger):
         assert image_coords.stage_position == position_ind
 
 
-def test_acquire_z_stack_camera_error(mm_studio, mm_core, datastore, event_logger):
+def test_acquire_z_stack_camera_error(event_logger):
     '''
     Test that the acquire_stack method recovers from intermittent hardware errors
     thrown by the getTaggedImage method
@@ -93,7 +96,10 @@ def test_acquire_z_stack_camera_error(mm_studio, mm_core, datastore, event_logge
     )
 
     # throw an error on the first call to getTaggedImage
-    mm_core._throw_get_tagged_image_error = True
+    gate, mm_studio, mm_core = mm2python_mocks.get_mocked_interface(
+        raise_get_tagged_image_error_once=True
+    )
+    datastore = mm_studio.data().createMultipageTIFFDatastore()
 
     channel_ind = 0
     position_ind = 123

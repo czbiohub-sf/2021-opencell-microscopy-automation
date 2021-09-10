@@ -99,7 +99,6 @@ def main():
         plate_id=args.plate_id,
         platemap_type=args.platemap_type,
         mock_micromanager_api=args.mock_micromanager_api,
-        mocked_mode=args.mocked_mode,
         fov_scorer=fov_scorer,
         skip_fov_scoring=args.skip_fov_scoring,
         acquire_brightfield_stacks=args.acquire_brightfield_stacks,

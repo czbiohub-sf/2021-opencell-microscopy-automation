@@ -36,7 +36,6 @@ class PipelinePlateAcquisition:
         platemap_type, 
         fov_scorer=None, 
         mock_micromanager_api=False, 
-        mocked_mode=None, 
         acquire_brightfield_stacks=True, 
         skip_fov_scoring=False
     ):
@@ -77,10 +76,7 @@ class PipelinePlateAcquisition:
 
         # create the wrapped py4j objects (with logging enabled)
         self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
-            mock=mock_micromanager_api,
-            mocked_mode=mocked_mode,
-            wrap=True,
-            event_logger=self.event_logger,
+            mock=mock_micromanager_api, wrap=True, event_logger=self.event_logger
         )
 
         # create the operations instance (with logging enabled)

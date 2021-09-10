@@ -90,16 +90,19 @@ class Py4jWrapper:
         return wrapper 
 
 
-def get_gate(mock=True, mocked_mode=None, wrap=False, event_logger=None):
+def get_gate(mock=True, wrap=False, event_logger=None):
 
     if mock:
-        gate = mm2python_mocks.Gate(mocked_mode)
+        gate, mm_studio, mm_core = mm2python_mocks.get_mocked_interface(
+            num_sites_per_well=6,
+            mock_overexposure=True,
+            afc_failure_rate=0.2,
+        )
     else:
         gateway = JavaGateway()
         gate = gateway.entry_point
-
-    mm_core = gate.getCMMCore()
-    mm_studio = gate.getStudio()
+        mm_core = gate.getCMMCore()
+        mm_studio = gate.getStudio()
     
     if wrap:
         if not event_logger:

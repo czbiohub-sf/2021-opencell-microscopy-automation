@@ -20,23 +20,34 @@ ALL_WELL_IDS = [
     'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'H11', 'H12',
 ]
 
-# all well_ids visited in a canonical half-plate acquisition, in snake-like order
-HALF_PLATE_WELL_IDS = [
-    ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'][::-1],
-    ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'], 
-    ['D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'][::-1],
-    ['E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9'],
-    ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9'][::-1],
-    ['G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9']
-]
 
-# for simulating a real experiment
-NUM_SITES_PER_WELL = 36
-WELL_IDS = list(np.array(HALF_PLATE_WELL_IDS).flatten())
+def get_mocked_interface(
+    num_wells=2,
+    num_sites_per_well=6,
+    mock_overexposure=True,
+    afc_failure_rate=0,
+    afc_fail_on_first_n_calls=0,
+    raise_go_to_position_error_once=False,
+    raise_get_tagged_image_error_once=False,
+    get_tagged_image_error_rate=0,
+):
 
-# for rapid testing
-NUM_SITES_PER_WELL = 6
-WELL_IDS = ['A1', 'B10']
+    gate = Gate()
+    mm_studio = gate.getStudio()
+    mm_core = gate.getCMMCore()
+
+    mm_studio.position_list._construct_position_list(ALL_WELL_IDS[:num_wells], num_sites_per_well)
+
+    gate._mock_overexposure = mock_overexposure
+    mm_core._get_tagged_image_error_rate = get_tagged_image_error_rate
+    mm_core._raise_get_tagged_image_error_once = raise_get_tagged_image_error_once
+    mm_core._raise_go_to_position_error_once = raise_go_to_position_error_once
+
+    mm_studio.af_manager.af_plugin._num_full_focus_calls = 0
+    mm_studio.af_manager.af_plugin._afc_failure_rate = afc_failure_rate
+    mm_studio.af_manager.af_plugin._afc_fails_on_first_n_calls = afc_fail_on_first_n_calls
+
+    return gate, mm_studio, mm_core
 
 
 class MockJavaException:
@@ -71,12 +82,7 @@ class BaseMockedPy4jObject:
 
 class Gate:
 
-    def __init__(self, mocked_mode):
-        '''
-        mocked_mode: 'random-real' or 'simulate-exposure'
-        '''
-        self._mocked_mode = mocked_mode
-        self._simulate_under_exposure = True
+    def __init__(self):
 
         self._props = {}
         self._position_ind = None
@@ -84,6 +90,9 @@ class Gate:
 
         # the name of the channel config
         self._config_name = None
+
+        # whether to mock overexposure (instead of underexposure)
+        self._mock_overexposure = False
 
         # filepaths to the test FOV snaps
         test_snap_filenames = [
@@ -99,9 +108,6 @@ class Gate:
 
         def set_position_ind(position_ind):
             self._position_ind = position_ind
-
-            # alternate simulating under- and over-exposure at each new position
-            self._simulate_under_exposure = not self._simulate_under_exposure
 
         def set_config_name(name):
             self._config_name = name
@@ -156,15 +162,16 @@ class Gate:
                 (laser_power * self._exposure_time) / 
                 (channel.default_laser_power * channel.default_exposure_time)
             )
+
+            # emprically determined factor to yield an overexposed image
+            if self._mock_overexposure:
+                relative_exposure *= 100
+
             # empirically determined factor yield an image that is underexposed
             # but can be properly exposed by increasing exposure time
             # (without this, the image is underexposed even with the max exposure time)
-            if self._mocked_mode == 'underexposure':
+            else:
                 relative_exposure *= 10
-
-            # emprically determined factor to yield an overexposed image
-            if self._mocked_mode == 'overexposure':
-                relative_exposure *= 100
 
             im = meta._multiply_and_clip(im, relative_exposure)
 
@@ -243,18 +250,14 @@ class MMStudio(BaseMockedPy4jObject):
     def __init__(self, set_position_ind):
         self.set_position_ind = set_position_ind
         self.af_manager = AutofocusManager()
-
-    def _set_afc_failure_modes(self, failure_rate, fail_on_first_n_calls):
-        self.af_manager.af_plugin._num_full_focus_calls = 0
-        self.af_manager.af_plugin._afc_failure_rate = failure_rate
-        self.af_manager.af_plugin._afc_fails_on_first_n_calls = fail_on_first_n_calls
+        self.position_list = PositionList(self.set_position_ind)
 
     def getAutofocusManager(self):
         return self.af_manager
 
     def getPositionList(self):
-        return PositionList(self.set_position_ind)
-    
+        return self.position_list
+
     def live(self):
         return BaseMockedPy4jObject(name='SnapLiveManager')
 
@@ -280,7 +283,8 @@ class MMCore(BaseMockedPy4jObject):
 
         self._current_z_position = 0
         self._get_tagged_image_error_rate = 0.0
-        self._throw_get_tagged_image_error = False
+        self._raise_get_tagged_image_error_once = False
+        self._raise_go_to_position_error_once = False
 
     def getPosition(self, *args):
         return self._current_z_position
@@ -301,8 +305,8 @@ class MMCore(BaseMockedPy4jObject):
         self._set_property(label, prop_name, prop_value)
 
     def getTaggedImage(self):
-        if self._throw_get_tagged_image_error:
-            self._throw_get_tagged_image_error = False
+        if self._raise_get_tagged_image_error_once:
+            self._raise_get_tagged_image_error_once = False
             raise Exception('Mocked getTaggedImage error')
         elif np.random.rand() < self._get_tagged_image_error_rate:
             raise Exception('Mocked getTaggedImage error')
@@ -332,14 +336,16 @@ class MultipageTIFFDatastore(BaseMockedPy4jObject):
 class PositionList:
 
     def __init__(self, set_position_ind):
-
         self.set_position_ind = set_position_ind
 
-        # construct the HCS-like list of position labels
-        sites = ['Site_%d' % n for n in range(NUM_SITES_PER_WELL)]
+    def _construct_position_list(self, well_ids, num_sites_per_well):
+        '''
+        construct the HCS-like list of position labels
+        '''
+        sites = ['Site_%d' % n for n in range(num_sites_per_well)]
         self._position_list = []
-        for well_id in WELL_IDS:
-            self._position_list += ['%s-%s' % (well_id, site) for site in sites]
+        for well_id in well_ids:
+            self._position_list.extend(['%s-%s' % (well_id, site) for site in sites])
 
     def getNumberOfPositions(self):
         return len(self._position_list)
@@ -349,7 +355,7 @@ class PositionList:
         # because calls to position.goToPosition are always preceeded by a call to getPosition
         self.set_position_ind(ind)
         return Position(self._position_list[ind])
-    
+
 
 class Position:
 
@@ -363,9 +369,9 @@ class Position:
         return self.label
 
     def goToPosition(self, position, mm_core):
-        # print("Position.goToPosition(label='%s')" % position.label)
-        # raise MockPy4JJavaError()
-        pass
+        if mm_core._raise_go_to_position_error_once:
+            mm_core._raise_go_to_position_error_once = False
+            raise MockPy4JJavaError()
 
 
 class Image:

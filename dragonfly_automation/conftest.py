@@ -70,26 +70,6 @@ def trained_fov_scorer(project_dir):
     return fov_scorer
 
 
-@pytest.fixture(scope='session')
-def gate():
-    return mm2python_mocks.Gate('random-real')
-
-
-@pytest.fixture(scope='session')
-def mm_studio(gate):
-    return gate.getStudio()
-
-
-@pytest.fixture(scope='session')
-def mm_core(gate):
-    return gate.getCMMCore()
-
-
-@pytest.fixture(scope='function')
-def datastore(mm_studio):
-    return mm_studio.data().createMultipageTIFFDatastore()
-
-
 @pytest.fixture(scope='function')
 def event_logger():
     class EventLogger:
