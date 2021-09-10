@@ -122,7 +122,8 @@ def test_acquire_z_stack_camera_error(event_logger):
     assert len(datastore._images) == 4
 
 
-def test_move_z_stage(mm_core):
+def test_move_z_stage():
+    gate, mm_studio, mm_core = mm2python_mocks.get_mocked_interface()
 
     for valid_position in [0, -10, 10, '-10', '1.5']:
         microscope_operations.move_z_stage(

@@ -7,6 +7,7 @@ import numpy as np
 import py4j.protocol
 import pathlib
 
+from dragonfly_automation import utils
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 ALL_WELL_IDS = [
@@ -173,7 +174,7 @@ class Gate:
             else:
                 relative_exposure *= 10
 
-            im = meta._multiply_and_clip(im, relative_exposure)
+            im = utils.multiply_and_clip_to_uint16(im, relative_exposure)
 
         meta._make_memmap(im)
         return meta
@@ -183,15 +184,6 @@ class MockedMeta:
     '''
     Mock for the objects returned by mm_studio.getLastMeta
     '''
-    @staticmethod
-    def _multiply_and_clip(im, scale):
-        dtype = 'uint16'
-        max_value = 65535
-        im_dst = im.copy().astype(float)
-        im_dst *= scale
-        im_dst[im_dst > max_value] = max_value
-        return im_dst.astype(dtype)
-        
     def _make_memmap(self, im):
         self.shape = im.shape
         self.filepath = os.path.join(tempfile.mkdtemp(), 'mock_snap.dat')
