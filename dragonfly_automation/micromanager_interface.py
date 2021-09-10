@@ -1,12 +1,58 @@
 
+import os
 import time
-
-from dragonfly_automation.tests.mocks import mm2python_mocks
 
 try:
     from py4j.java_gateway import JavaGateway
 except ImportError:
     print("Warning: py4j is not installed - 'prod' mode will not work")
+
+
+class MicromanagerInterface:
+
+    def __init__(self, gate, mm_studio, mm_core):
+        self.gate = gate
+        self.mm_studio = mm_studio
+        self.mm_core = mm_core
+        self.has_open_datastore = False
+
+
+    @classmethod    
+    def from_java_gateway(cls):
+        gateway = JavaGateway()
+        gate = gateway.entry_point
+        mm_core = gate.getCMMCore()
+        mm_studio = gate.getStudio()
+        return cls(gate, mm_studio, mm_core)
+
+
+    def wrap(self, event_logger):
+        self.gate = Py4jWrapper(self.gate, event_logger)
+        self.mm_core = Py4jWrapper(self.mm_core, event_logger)
+        self.mm_studio = Py4jWrapper(self.mm_studio, event_logger)
+
+
+    def create_datastore(self, data_dir):
+        '''
+        '''
+        # the datastore can only be initialized if the data directory does not exist
+        if os.path.isdir(data_dir):
+            raise ValueError('Data directory already exists at %s' % data_dir)
+
+        # these arguments for createMultipageTIFFDatastore are copied from Nathan's script
+        should_split_positions = True
+        should_generate_separate_metadata = True
+        self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
+            data_dir, should_generate_separate_metadata, should_split_positions
+        )
+        self.mm_studio.displays().createDisplay(self.datastore)
+        self.has_open_datastore = True
+
+
+    def freeze_datastore(self):
+        if self.has_open_datastore:
+            self.datastore.freeze()
+        self.has_open_datastore = False
 
 
 class Py4jWrapper:
@@ -88,28 +134,3 @@ class Py4jWrapper:
                 return result
 
         return wrapper 
-
-
-def get_gate(mock=True, wrap=False, event_logger=None):
-
-    if mock:
-        gate, mm_studio, mm_core = mm2python_mocks.get_mocked_interface(
-            num_sites_per_well=6,
-            mock_overexposure=True,
-            afc_failure_rate=0.2,
-        )
-    else:
-        gateway = JavaGateway()
-        gate = gateway.entry_point
-        mm_core = gate.getCMMCore()
-        mm_studio = gate.getStudio()
-    
-    if wrap:
-        if not event_logger:
-            raise ValueError('An event_logger method is required when wrap=True')
-
-        gate = Py4jWrapper(gate, event_logger)
-        mm_core = Py4jWrapper(mm_core, event_logger)
-        mm_studio = Py4jWrapper(mm_studio, event_logger)
-
-    return gate, mm_studio, mm_core

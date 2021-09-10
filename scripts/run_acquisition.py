@@ -1,27 +1,19 @@
 import os
-import re
 import sys
-import glob
-import json
 import time
-import shutil
-import datetime
-import tifffile
 import argparse
-import numpy as np
-import pandas as pd
 
 HERE = os.path.abspath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.join(HERE, os.pardir)
 
 sys.path.insert(0, PROJECT_ROOT)
-from dragonfly_automation.acquisitions.pipeline_plate_acquisition import PipelinePlateAcquisition
+from dragonfly_automation.tests.mocks import mm2python_mocks
 from dragonfly_automation.fov_models import PipelineFOVScorer
+from dragonfly_automation.micromanager_interface import MicromanagerInterface
+from dragonfly_automation.acquisitions.pipeline_plate_acquisition import PipelinePlateAcquisition
 
 
 def parse_args():
-    '''
-    '''
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -93,11 +85,19 @@ def main():
     fov_scorer.train()
     fov_scorer.validate()
 
+    if args.mock_micromanager_api:
+        micromanager_interface = mm2python_mocks.get_mocked_interface(
+            mock_overexposure=True, afc_failure_rate=0.2
+        )
+    else:
+        micromanager_interface = MicromanagerInterface.from_java_gateway()
+
     acquisition = PipelinePlateAcquisition(
         root_dir=acquisition_dirpath, 
         pml_id=args.pml_id,
         plate_id=args.plate_id,
         platemap_type=args.platemap_type,
+        micromanager_interface=micromanager_interface,
         mock_micromanager_api=args.mock_micromanager_api,
         fov_scorer=fov_scorer,
         skip_fov_scoring=args.skip_fov_scoring,

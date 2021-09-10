@@ -34,13 +34,12 @@ def find_nearest_well(mm_core, position_list):
 
 class StageVisitationManager:
 
-    def __init__(self, well_ids_to_visit, position_list, mm_studio, mm_core):
+    def __init__(self, micromanager_interface, well_ids_to_visit, position_list):
         '''
         '''
         self.well_ids_to_visit = well_ids_to_visit
         self.position_list = position_list
-        self.mm_core = mm_core
-        self.mm_studio = mm_studio
+        self.micromanager_interface = micromanager_interface
 
         # the index of the current well in well_ids_to_visit
         self.current_ind = -1
@@ -74,9 +73,9 @@ class StageVisitationManager:
         # this try-except catches timeout errors triggered by large stage movements
         # (these errors are harmless)
         try:
-            microscope_operations.go_to_position(self.mm_studio, self.mm_core, position_ind)
+            microscope_operations.go_to_position(self.micromanager_interface, position_ind)
         except py4j.protocol.Py4JJavaError:
-            microscope_operations.go_to_position(self.mm_studio, self.mm_core, position_ind)    
+            microscope_operations.go_to_position(self.micromanager_interface, position_ind)    
         print('Arrived at well %s' % self.current_well_id)
 
 
@@ -100,9 +99,9 @@ class StageVisitationManager:
         '''
         print('Attempting to call AFC at well %s' % self.current_well_id)
 
-        pos_before = self.mm_core.getPosition('FocusDrive')
-        self.mm_core.fullFocus()
-        pos_after = self.mm_core.getPosition('FocusDrive')
+        pos_before = self.micromanager_interface.mm_core.getPosition('FocusDrive')
+        self.micromanager_interface.mm_core.fullFocus()
+        pos_after = self.micromanager_interface.mm_core.getPosition('FocusDrive')
 
         self.measured_focusdrive_positions[self.current_well_id] = pos_after
         print('FocusDrive position before AFC: %s' % pos_before)

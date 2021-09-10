@@ -10,9 +10,7 @@ import dataclasses
 import numpy as np
 import pandas as pd
 
-from dragonfly_automation import utils
-from dragonfly_automation import microscope_operations
-from dragonfly_automation import gateway_utils
+from dragonfly_automation import utils, microscope_operations
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 
@@ -25,8 +23,6 @@ class PipelinePlateAcquisition:
     root_dir : the imaging experiment directory 
         (usually ends with a directory of the form 'PML0123')
     mock_micromanager_api : whether to mock the micromanager API
-    mocked_mode : when mocking the API, determines how the mocked snaps are generated
-        (see mm2python_mocks.Gate)
     '''
     def __init__(
         self, 
@@ -34,10 +30,11 @@ class PipelinePlateAcquisition:
         pml_id,
         plate_id,
         platemap_type, 
-        fov_scorer=None, 
+        micromanager_interface,
         mock_micromanager_api=False, 
         acquire_brightfield_stacks=True, 
-        skip_fov_scoring=False
+        skip_fov_scoring=False,
+        fov_scorer=None, 
     ):
 
         # strip trailing slashes
@@ -74,10 +71,9 @@ class PipelinePlateAcquisition:
         self.acquisition_metadata_logger('acquisition_name', self.__class__.__name__)
         self.acquisition_metadata_logger('root_directory', self.root_dir)
 
-        # create the wrapped py4j objects (with logging enabled)
-        self.gate, self.mm_studio, self.mm_core = gateway_utils.get_gate(
-            mock=mock_micromanager_api, wrap=True, event_logger=self.event_logger
-        )
+        # wrap the micromanager interface objects
+        self.micromanager_interface = micromanager_interface
+        self.micromanager_interface.wrap(self.event_logger)
 
         # create the operations instance (with logging enabled)
         self.operations = microscope_operations.MicroscopeOperations(self.event_logger)
@@ -252,63 +248,47 @@ class PipelinePlateAcquisition:
         d.to_csv(self.acquisition_log_file, index=False)
 
 
-    def _initialize_datastore(self):
-        '''
-        Initialize a datastore object
-        '''
-        # the datastore can only be initialized if the data directory does not exist
-        if os.path.isdir(self.data_dir):
-            raise ValueError('Data directory already exists at %s' % self.data_dir)
-
-        # these arguments for createMultipageTIFFDatastore are copied from Nathan's script
-        should_split_positions = True
-        should_generate_separate_metadata = True
-
-        self.event_logger('ACQUISITION INFO: Creating datastore at %s' % self.data_dir)
-        self.datastore = self.mm_studio.data().createMultipageTIFFDatastore(
-            self.data_dir,
-            should_generate_separate_metadata, 
-            should_split_positions
-        )
-        self.mm_studio.displays().createDisplay(self.datastore)
-
-
     def setup(self):
         '''
         Commands to execute before the acquisition begins
-        e.g., setting the autofocus mode, camera mode, various synchronization commands
+        setting the autofocus mode, camera mode, various synchronization commands
         '''
         self.event_logger('ACQUISITION INFO: Calling setup method')
         self.acquisition_metadata_logger('setup_timestamp', utils.timestamp())
 
         # create the datastore
-        self._initialize_datastore()
+        self.event_logger('ACQUISITION INFO: Creating datastore at %s' % self.data_dir)
+        self.micromanager_interface.create_datastore(self.data_dir)
 
         # change the autofocus mode to AFC
-        af_manager = self.mm_studio.getAutofocusManager()
+        af_manager = self.micromanager_interface.mm_studio.getAutofocusManager()
         af_manager.setAutofocusMethodByName("Adaptive Focus Control")
 
         # these `assignImageSynchro` calls are copied directly from Nathan's script
-        self.mm_core.assignImageSynchro(self.zstage_label)
-        self.mm_core.assignImageSynchro(self.xystage_label)
-        self.mm_core.assignImageSynchro(self.mm_core.getShutterDevice())
-        self.mm_core.assignImageSynchro(self.mm_core.getCameraDevice())
+        self.micromanager_interface.mm_core.assignImageSynchro(self.zstage_label)
+        self.micromanager_interface.mm_core.assignImageSynchro(self.xystage_label)
+
+        self.micromanager_interface.mm_core.assignImageSynchro(
+            self.micromanager_interface.mm_core.getShutterDevice()
+        )
+        self.micromanager_interface.mm_core.assignImageSynchro(
+            self.micromanager_interface.mm_core.getCameraDevice()
+        )
 
         # turn on auto shutter mode 
         # (this means that the shutter automatically opens and closes when an image is acquired)
-        self.mm_core.setAutoShutter(True)
+        self.micromanager_interface.mm_core.setAutoShutter(True)
         self.event_logger('ACQUISITION INFO: Exiting setup method')
 
 
     def cleanup(self):
         '''
-        TODO: are there commands that should be executed here
-        to ensure the microscope is returned to a 'safe' state?
+        Post-acquisition cleanup - close ('freeze') the datastore
         '''
         self.event_logger('ACQUISITION INFO: Calling cleanup method')
-        # freeze the datastore
-        if self.datastore:
-            self.datastore.freeze()
+
+        # freeze the datastore (this takes 20-30min for a full 96-well plate acquisition)
+        self.micromanager_interface.freeze_datastore()
 
         # log the time
         self.acquisition_metadata_logger('cleanup_timestamp', utils.timestamp())
@@ -321,10 +301,8 @@ class PipelinePlateAcquisition:
         and extract the plate well_id and the site number
 
         These labels are of the form `{well_id}_Site-{site_num}`
-
         Examples: 'A1-Site_0', 'A1-Site_24', 'G10-Site_0'
         '''
-
         pattern = r'^([A-H][0-9]{1,2})-Site_([0-9]+)$'
         result = re.findall(pattern, label)
         if not result:
@@ -338,20 +316,12 @@ class PipelinePlateAcquisition:
     def run(self, mode='prod', test_mode_well_id=None):
         '''
         The main acquisition workflow
-
-        Overview
-        --------
-
-        Parameters
-        ----------
         mode : 'test' or 'prod'
             in test mode, only the first well is visited, and only one z-stack is acquired
             (at a position that is *not* among those selected by self.select_positions)
         test_mode_well_id : the well to image in test mode (if None, the first well is used)
 
-        Assumptions
-        -----------
-        The positions returned by mm_studio.getPositionList() must have been generated
+        Note that the positions returned by mm_studio.getPositionList() must have been generated
         by the HCS Site Generator plugin. 
 
         In particular, they must have labels of the form `{well_id}-Site_{site_num}`.
@@ -359,14 +329,12 @@ class PipelinePlateAcquisition:
 
         Here, the well_id identifies the well on the *imaging* plate, 
         and the site number is a per-well count, starting from zero, of positions in each well.
-
         '''
-
         # construct properties for each position
         # NOTE that the order of the positions is determined by the HCS Site Generator
         # and must be preserved to prevent dangerously long x-y stage movements
         all_plate_positions = []
-        mm_position_list = self.mm_studio.getPositionList()
+        mm_position_list = self.micromanager_interface.mm_studio.getPositionList()
         for position_ind in range(mm_position_list.getNumberOfPositions()):
             
             mm_position = mm_position_list.getPosition(position_ind)
@@ -508,12 +476,11 @@ class PipelinePlateAcquisition:
         positions = sorted(positions, key=lambda position: position['site_num'])
 
         # go to the first position in the well
-        self.operations.go_to_position(self.mm_studio, self.mm_core, positions[0]['ind'])
+        self.operations.go_to_position(self.micromanager_interface, positions[0]['ind'])
 
         # attempt to call AFC
         afc_did_succeed = self.operations.call_afc(
-            self.mm_studio, 
-            self.mm_core, 
+            self.micromanager_interface, 
             self.event_logger, 
             self.afc_logger, 
             positions[0]['ind']
@@ -527,14 +494,13 @@ class PipelinePlateAcquisition:
                 % last_afc_updated_focusdrive_position
             )
             self.operations.move_z_stage(
-                self.mm_core, 
-                'FocusDrive', 
+                self.micromanager_interface, 
+                stage_label='FocusDrive', 
                 position=last_afc_updated_focusdrive_position, 
                 kind='absolute'
             )
             afc_did_succeed = self.operations.call_afc(
-                self.mm_studio, 
-                self.mm_core, 
+                self.micromanager_interface, 
                 self.event_logger, 
                 self.afc_logger, 
                 positions[0]['ind']
@@ -551,10 +517,12 @@ class PipelinePlateAcquisition:
             selected_positions = []
             return selected_positions, last_afc_updated_focusdrive_position
 
-        afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
-
+        # if AFC succeeded, update the last good focusdrive position
+        afc_updated_focusdrive_position = (
+            self.micromanager_interface.mm_core.getPosition('FocusDrive')
+        )
         # change to the hoechst channel for FOV scoring
-        self.operations.change_channel(self.mm_core, self.hoechst_channel)
+        self.operations.change_channel(self.micromanager_interface, self.hoechst_channel)
 
         # score the FOV at each position
         for ind, position in enumerate(positions):
@@ -562,7 +530,7 @@ class PipelinePlateAcquisition:
             # catch xy-stage timeout errors 
             # (happens when the position is too close to the edge of the stage range)
             try:
-                self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
+                self.operations.go_to_position(self.micromanager_interface, position['ind'])
             except py4j.protocol.Py4JJavaError:
                 self.event_logger(
                     'SCORING ERROR: The XYStage timed out at position %s' % position['name']
@@ -571,8 +539,8 @@ class PipelinePlateAcquisition:
 
             # update the FocusDrive position
             self.operations.move_z_stage(
-                self.mm_core, 
-                'FocusDrive', 
+                self.micromanager_interface, 
+                stage_label='FocusDrive', 
                 position=afc_updated_focusdrive_position, 
                 kind='absolute'
             )
@@ -581,17 +549,17 @@ class PipelinePlateAcquisition:
             call_afc_every_nth = self.fov_selection_settings.num_positions_between_afc_calls + 1
             if not never_call_afc and ind % call_afc_every_nth == 0:
                 afc_did_succeed = self.operations.call_afc(
-                    self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind']
+                    self.micromanager_interface, self.event_logger, self.afc_logger, position['ind']
                 )
                 if afc_did_succeed:
-                    afc_updated_focusdrive_position = self.mm_core.getPosition('FocusDrive')
+                    afc_updated_focusdrive_position = (
+                        self.micromanager_interface.mm_core.getPosition('FocusDrive')
+                    )
 
             position['afc_updated_focusdrive_position'] = afc_updated_focusdrive_position
 
             # acquire an image of the hoechst signal
-            image = self.operations.acquire_image(
-                self.gate, self.mm_studio, self.mm_core, self.event_logger
-            )
+            image = self.operations.acquire_image(self.micromanager_interface, self.event_logger)
 
             # score the FOV
             # note that, given all of the error handling in PipelineFOVScorer, 
@@ -684,21 +652,21 @@ class PipelinePlateAcquisition:
         Convenience method used in `acquire_positions`
         to move to a new position and update the FocusDrive position
         '''
-        self.operations.go_to_position(self.mm_studio, self.mm_core, position['ind'])
+        self.operations.go_to_position(self.micromanager_interface, position['ind'])
 
         # update the FocusDrive if there is an AFC-updated FocusDrive position 
         # associated with this position (these are created in `select_positions`)
         afc_updated_focusdrive_position = position.get('afc_updated_focusdrive_position')
         if afc_updated_focusdrive_position is not None:
-            current_position = self.mm_core.getPosition('FocusDrive')
+            current_position = self.micromanager_interface.mm_core.getPosition('FocusDrive')
             self.event_logger(
                 'ACQUISITION INFO: Updating the interpolated FocusDrive position (%s) '
                 'with the AFC-updated position (%s)'
                 % (current_position, afc_updated_focusdrive_position)
             )
             self.operations.move_z_stage(
-                self.mm_core, 
-                'FocusDrive', 
+                self.micromanager_interface, 
+                stage_label='FocusDrive', 
                 position=afc_updated_focusdrive_position, 
                 kind='absolute'
             )
@@ -734,7 +702,7 @@ class PipelinePlateAcquisition:
 
         # attempt to call AFC
         afc_did_succeed = self.operations.call_afc(
-            self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind']
+            self.micromanager_interface, self.event_logger, self.afc_logger, position['ind']
         )
 
         # if AFC fails, autoexposure won't work, so we cannot continue
@@ -751,14 +719,12 @@ class PipelinePlateAcquisition:
         self.gfp_channel.reset()
 
         # change the channel to GFP
-        self.operations.change_channel(self.mm_core, self.gfp_channel)
+        self.operations.change_channel(self.micromanager_interface, self.gfp_channel)
 
         # run the autoexposure algorithm at the first position 
         # (note that laser power and exposure time are modified in-place)
         autoexposure_did_succeed = self.operations.autoexposure(
-            gate=self.gate,
-            mm_studio=self.mm_studio,
-            mm_core=self.mm_core,
+            self.micromanager_interface,
             stack_settings=self.flourescence_stack_settings,
             autoexposure_settings=self.autoexposure_settings,
             channel_settings=self.gfp_channel,
@@ -791,7 +757,7 @@ class PipelinePlateAcquisition:
 
             # attempt to call AFC
             afc_did_succeed = self.operations.call_afc(
-                self.mm_studio, self.mm_core, self.event_logger, self.afc_logger, position['ind']
+                self.micromanager_interface, self.event_logger, self.afc_logger, position['ind']
             )
 
             # if AFC failed, it is pointless to acquire z-stacks
@@ -827,13 +793,13 @@ class PipelinePlateAcquisition:
                 )
 
                 # change the channel
-                self.operations.change_channel(self.mm_core, channel_settings['channel'])
+                self.operations.change_channel(
+                    self.micromanager_interface, channel_settings['channel']
+                )
 
                 # acquire the stack
                 self.operations.acquire_stack(
-                    mm_studio=self.mm_studio,
-                    mm_core=self.mm_core, 
-                    datastore=self.datastore, 
+                    self.micromanager_interface,
                     stack_settings=channel_settings['stack'],
                     channel_ind=channel_ind,
                     position_ind=position['ind'],

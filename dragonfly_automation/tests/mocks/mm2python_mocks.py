@@ -9,6 +9,8 @@ import pathlib
 
 from dragonfly_automation import utils
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
+from dragonfly_automation.micromanager_interface import MicromanagerInterface
+
 
 ALL_WELL_IDS = [
     'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12',
@@ -48,7 +50,7 @@ def get_mocked_interface(
     mm_studio.af_manager.af_plugin._afc_failure_rate = afc_failure_rate
     mm_studio.af_manager.af_plugin._afc_fails_on_first_n_calls = afc_fail_on_first_n_calls
 
-    return gate, mm_studio, mm_core
+    return MicromanagerInterface(gate, mm_studio, mm_core)
 
 
 class MockJavaException:

@@ -80,3 +80,11 @@ def event_logger():
             self.events.append(event)
 
     return EventLogger()
+
+
+@pytest.fixture(scope='session')
+def get_mocked_interface():
+    '''
+    A factory fixture to make it easy to switch between using mm2python and pycromanager mocks
+    '''
+    return mm2python_mocks.get_mocked_interface

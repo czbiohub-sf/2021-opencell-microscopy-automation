@@ -8,17 +8,20 @@ from dragonfly_automation.acquisitions.pipeline_plate_acquisition import Pipelin
 from dragonfly_automation.acquisitions.pipeline_plate_settings import fov_selection_settings
 
 
-def test_acquisition_in_test_mode(tmpdir, trained_fov_scorer):
+def test_acquisition_in_test_mode(tmpdir, get_mocked_interface, trained_fov_scorer):
 
     pml_id = 'PML0123'
     plate_id = 'P0001'
     platemap_type = 'none'
+
+    micromanager_interface = get_mocked_interface()
 
     acquisition = PipelinePlateAcquisition(
         root_dir=str(tmpdir), 
         pml_id=pml_id,
         plate_id=plate_id,
         platemap_type=platemap_type,
+        micromanager_interface=micromanager_interface,
         mock_micromanager_api=True,
         fov_scorer=trained_fov_scorer,
         skip_fov_scoring=False,
