@@ -47,14 +47,7 @@ fov_selection_settings = FOVSelectionSettings(
 
 # z-stack settings for fluorescence channels
 STAGE_LABEL = 'PiezoZ'
-dev_fluorescence_stack_settings = StackSettings(
-    stage_label=STAGE_LABEL,
-    relative_top=16.0,
-    relative_bottom=-10.0,
-    step_size=7.0
-)
-
-prod_fluorescence_stack_settings = StackSettings(
+fluorescence_stack_settings = StackSettings(
     stage_label=STAGE_LABEL,
     relative_top=12.0,
     relative_bottom=-9.0,

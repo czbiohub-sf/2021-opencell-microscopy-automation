@@ -22,7 +22,6 @@ class PipelinePlateAcquisition:
 
     root_dir : the imaging experiment directory 
         (usually ends with a directory of the form 'PML0123')
-    mock_micromanager_api : whether to mock the micromanager API
     '''
     def __init__(
         self, 
@@ -31,7 +30,6 @@ class PipelinePlateAcquisition:
         plate_id,
         platemap_type, 
         micromanager_interface,
-        mock_micromanager_api=False, 
         acquire_brightfield_stacks=True, 
         skip_fov_scoring=False,
         fov_scorer=None, 
@@ -101,12 +99,7 @@ class PipelinePlateAcquisition:
         self.fov_selection_settings = settings.fov_selection_settings
         self.autoexposure_settings = settings.autoexposure_settings
         self.brightfield_stack_settings = settings.brightfield_stack_settings
-
-        # use dev stack settings when mocking the API to acquire only a few z-slices
-        if mock_micromanager_api:
-            self.flourescence_stack_settings = settings.dev_fluorescence_stack_settings
-        else:
-            self.flourescence_stack_settings = settings.prod_fluorescence_stack_settings
+        self.flourescence_stack_settings = settings.fluorescence_stack_settings
     
         # stage labels for convenience
         self.xystage_label = 'XYStage'
