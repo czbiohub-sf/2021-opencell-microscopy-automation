@@ -3,6 +3,7 @@ import numpy as np
 
 from dragonfly_automation import microscope_operations
 from dragonfly_automation.settings_schemas import StackSettings
+from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 
 def test_call_afc(get_mocked_interface, event_logger):
@@ -93,9 +94,7 @@ def test_acquire_z_stack_camera_error(tmpdir, get_mocked_interface, event_logger
     )
 
     # throw an error on the first call to getTaggedImage
-    interface = get_mocked_interface(
-        raise_get_tagged_image_error_once=True
-    )
+    interface = get_mocked_interface(raise_get_tagged_image_error_once=True)
     interface.create_datastore(tmpdir / 'raw-data')
 
     channel_ind = 0
@@ -133,9 +132,56 @@ def test_move_z_stage(get_mocked_interface):
             )
 
 
-def test_autoexposure():
-    pass
+def test_autoexposure_underexposed_fov(get_mocked_interface, event_logger):
+    
+    interface = get_mocked_interface(channel='488', exposure_problem='under')
+    initial_exposure_time = settings.gfp_channel_settings.exposure_time
+
+    autoexposure_did_succeed = microscope_operations.autoexposure(
+        interface,
+        settings.fluorescence_stack_settings,
+        settings.autoexposure_settings,
+        settings.gfp_channel_settings,
+        event_logger
+    )
+    assert autoexposure_did_succeed
+
+    # check that the exposure time has been increased
+    assert settings.gfp_channel_settings.exposure_time > initial_exposure_time
 
 
-def test_acquire_image():
-    pass
+def test_autoexposure_overexposed_fov(get_mocked_interface, event_logger):
+
+    interface = get_mocked_interface(channel='488', exposure_problem='over')
+    initial_laser_power = settings.gfp_channel_settings.laser_power
+
+    autoexposure_did_succeed = microscope_operations.autoexposure(
+        interface,
+        settings.fluorescence_stack_settings,
+        settings.autoexposure_settings,
+        settings.gfp_channel_settings,
+        event_logger
+    )
+    assert autoexposure_did_succeed
+
+    # check that the exposure time has been increased
+    assert settings.gfp_channel_settings.laser_power < initial_laser_power
+
+
+def test_autoexposure_hopelessly_overexposed_fov(get_mocked_interface, event_logger):
+
+    interface = get_mocked_interface(channel='488', exposure_problem='way-over')
+    initial_laser_power = settings.gfp_channel_settings.laser_power
+
+    autoexposure_did_succeed = microscope_operations.autoexposure(
+        interface,
+        settings.fluorescence_stack_settings,
+        settings.autoexposure_settings,
+        settings.gfp_channel_settings,
+        event_logger
+    )
+    assert not autoexposure_did_succeed
+
+    # check that the exposure time has been increased
+    assert settings.gfp_channel_settings.laser_power < initial_laser_power
+

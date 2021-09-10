@@ -7,7 +7,7 @@ import numpy as np
 import py4j.protocol
 import pathlib
 
-from dragonfly_automation import utils
+from dragonfly_automation import microscope_operations, utils
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 from dragonfly_automation.micromanager_interface import MicromanagerInterface
 
@@ -27,7 +27,8 @@ ALL_WELL_IDS = [
 def get_mocked_interface(
     num_wells=2,
     num_sites_per_well=6,
-    mock_overexposure=True,
+    channel='405',
+    exposure_problem='over',
     afc_failure_rate=0,
     afc_fail_on_first_n_calls=0,
     raise_go_to_position_error_once=False,
@@ -39,9 +40,12 @@ def get_mocked_interface(
     mm_studio = gate.getStudio()
     mm_core = gate.getCMMCore()
 
+    gate._position_ind = 0
     mm_studio.position_list._construct_position_list(ALL_WELL_IDS[:num_wells], num_sites_per_well)
 
-    gate._mock_overexposure = mock_overexposure
+    # exposure_problem is 'under', 'over', or 'way-over'
+    gate._exposure_problem = exposure_problem
+
     mm_core._get_tagged_image_error_rate = get_tagged_image_error_rate
     mm_core._raise_get_tagged_image_error_once = raise_get_tagged_image_error_once
     mm_core._raise_go_to_position_error_once = raise_go_to_position_error_once
@@ -50,7 +54,16 @@ def get_mocked_interface(
     mm_studio.af_manager.af_plugin._afc_failure_rate = afc_failure_rate
     mm_studio.af_manager.af_plugin._afc_fails_on_first_n_calls = afc_fail_on_first_n_calls
 
-    return MicromanagerInterface(gate, mm_studio, mm_core)
+    micromanager_interface = MicromanagerInterface(gate, mm_studio, mm_core)
+
+    # set the initial channel (required for mocked snaps in getLastMeta)
+    if channel == '405':
+        channel_settings = settings.hoechst_channel_settings
+    if channel == '488':
+        channel_settings = settings.gfp_channel_settings
+    microscope_operations.change_channel(micromanager_interface, channel_settings)
+
+    return micromanager_interface
 
 
 class MockJavaException:
@@ -94,8 +107,8 @@ class Gate:
         # the name of the channel config
         self._config_name = None
 
-        # whether to mock overexposure (instead of underexposure)
-        self._mock_overexposure = False
+        # the kind of exposure problem to mock (under- or over-exposure)
+        self._exposure_problem = None
 
         # filepaths to the test FOV snaps
         test_snap_filenames = [
@@ -167,13 +180,17 @@ class Gate:
             )
 
             # emprically determined factor to yield an overexposed image
-            if self._mock_overexposure:
+            if self._exposure_problem == 'over':
                 relative_exposure *= 100
+
+            # over-exposed so much that FOV is overexposed even at the lowest laser power
+            elif self._exposure_problem == 'way-over':
+                relative_exposure *= 100000
 
             # empirically determined factor yield an image that is underexposed
             # but can be properly exposed by increasing exposure time
             # (without this, the image is underexposed even with the max exposure time)
-            else:
+            elif self._exposure_problem == 'under':
                 relative_exposure *= 10
 
             im = utils.multiply_and_clip_to_uint16(im, relative_exposure)

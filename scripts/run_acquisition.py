@@ -87,7 +87,7 @@ def main():
 
     if args.mock_micromanager_api:
         micromanager_interface = mm2python_mocks.get_mocked_interface(
-            mock_overexposure=True, afc_failure_rate=0.2
+            exposure_problem='over', afc_failure_rate=0.2
         )
     else:
         micromanager_interface = MicromanagerInterface.from_java_gateway()
