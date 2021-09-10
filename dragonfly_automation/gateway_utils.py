@@ -1,7 +1,7 @@
 
 import time
 
-from dragonfly_automation.tests.mocks import mock_gateway
+from dragonfly_automation.tests.mocks import mm2python_mocks
 
 try:
     from py4j.java_gateway import JavaGateway
@@ -93,7 +93,7 @@ class Py4jWrapper:
 def get_gate(mock=True, mocked_mode=None, wrap=False, event_logger=None):
 
     if mock:
-        gate = mock_gateway.Gate(mocked_mode)
+        gate = mm2python_mocks.Gate(mocked_mode)
     else:
         gateway = JavaGateway()
         gate = gateway.entry_point

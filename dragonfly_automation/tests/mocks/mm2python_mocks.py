@@ -30,9 +30,6 @@ HALF_PLATE_WELL_IDS = [
     ['G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9']
 ]
 
-# probability of various unpleasant scenarios
-AFC_TIMEOUT_PROB = 20
-
 # for simulating a real experiment
 NUM_SITES_PER_WELL = 36
 WELL_IDS = list(np.array(HALF_PLATE_WELL_IDS).flatten())
@@ -309,7 +306,6 @@ class MMCore(BaseMockedPy4jObject):
             raise Exception('Mocked getTaggedImage error')
         elif np.random.rand() < self._get_tagged_image_error_rate:
             raise Exception('Mocked getTaggedImage error')
-
 
 
 class DataManager:

@@ -34,7 +34,15 @@ def test_prediction_too_few_nuclei(trained_fov_scorer, fov_snaps_too_few):
 
 
 def test_prediction_no_nuclei(trained_fov_scorer, fov_snap_no_nuclei):
+
+    # a real snap of an FOV without any nuclei (i.e., with realistic background intensities)
     result = trained_fov_scorer.score_raw_fov(fov_snap_no_nuclei, **KWARGS)
+    assert result.get('score') is None
+    assert result.get('comment') == 'No nuclei in the FOV'
+
+    # a snap consisting of all zeros should be handled correctly too
+    blank_snap = np.zeros((1024, 1024), dtype='uint16')
+    result = trained_fov_scorer.score_raw_fov(blank_snap, **KWARGS)
     assert result.get('score') is None
     assert result.get('comment') == 'No nuclei in the FOV'
 

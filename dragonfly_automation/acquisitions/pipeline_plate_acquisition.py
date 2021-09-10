@@ -26,7 +26,7 @@ class PipelinePlateAcquisition:
         (usually ends with a directory of the form 'PML0123')
     mock_micromanager_api : whether to mock the micromanager API
     mocked_mode : when mocking the API, determines how the mocked snaps are generated
-        (see mock_gateway.Gate)
+        (see mm2python_mocks.Gate)
     '''
     def __init__(
         self, 

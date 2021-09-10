@@ -1,4 +1,4 @@
-from dragonfly_automation.tests.mocks import mock_gateway
+from dragonfly_automation.tests.mocks import mm2python_mocks
 import os
 import pytest
 import imageio
@@ -72,7 +72,7 @@ def trained_fov_scorer(project_dir):
 
 @pytest.fixture(scope='session')
 def gate():
-    return mock_gateway.Gate('random-real')
+    return mm2python_mocks.Gate('random-real')
 
 
 @pytest.fixture(scope='session')
