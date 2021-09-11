@@ -35,16 +35,13 @@ def go_to_position(micromanager_interface, position_ind):
 
 
 def call_afc(micromanager_interface, event_logger, afc_logger=None, position_ind=None):
-
     '''
-    Minimal wrapper around the `fullFocus` method of the active autofocus plugin,
-    ** which is assumed to be AFC **
+    Attempt to call AFC and recover from timeout errors 
+    by incrementally adjusting the FocusDrive stage up and down
 
     TODO: consider switching to mm_core API, 
     which has its own fullFocus method - might be faster
-
     '''
-
     # get the active AutofocusPlugin (assumed to be AFC)
     af_manager = micromanager_interface.mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()

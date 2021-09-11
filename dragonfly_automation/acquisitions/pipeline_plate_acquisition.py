@@ -448,18 +448,17 @@ class PipelinePlateAcquisition:
         The positions should correspond to all positions in one well,
         but we do not explicitly assume that that is the case here. 
 
-        *** Note about AFC ***
-        Because AFC can take some time to run, we use a little trick/hack here to speed it up.
+        Note: this method uses a somewhat subtle trick to both speed up the (many) calls to AFC
+        and guard against AFC timeout errors:
 
         First, before the loop over positions, we call AFC at the first position
         (in site-number order) and record the FocusDrive position (which is what AFC updates).
         Then, in the position loop, we move the FocusDrive to this AFC-adjusted position,
         right after moving to the new position and right *before* calling AFC.
 
-        The logic of this little trick is that, because the positions we visit are all in one well, 
+        The logic of this is that, because the positions we visit are all in one well, 
         the AFC-adjusted FocusDrive positions are likely to be very similiar to one another 
         (because the plate should not be tilted on the length scale of a single well).
-
         '''
 
         # whether to never call AFC (except at the first position, before the for loop)
@@ -584,7 +583,8 @@ class PipelinePlateAcquisition:
                 )
 
         # drop positions without a score
-        # (this happens if raw_fov_props.get('score') is None or if there was an uncaught error above)
+        # (this happens if raw_fov_props.get('score') is None,
+        #  or if there was an uncaught error above)
         positions_with_score = [p for p in positions if p.get('fov_score') is not None]
 
         # sort positions in descending order by score (from good to bad)
@@ -671,11 +671,8 @@ class PipelinePlateAcquisition:
     def acquire_positions(self, positions):
         '''
         Acquire z-stacks at the positions listed in positions
-
-        ** We assume that all of these positions correspond to one well **
-
+        WARNING: assumes that all of the positions are in one well
         '''
-
         # this should never happen
         if not len(positions):
             print('Warning: acquire_positions received an empty list of positions')
@@ -699,7 +696,7 @@ class PipelinePlateAcquisition:
         )
 
         # if AFC fails, autoexposure won't work, so we cannot continue
-        # (because go_to_position uses the afc_updated_focusdrive_position, this should be very rare)
+        # (because go_to_position uses afc_updated_focusdrive_position, this should be very rare)
         if not afc_did_succeed:
             self.event_logger(
                 'ACQUISITION ERROR: AFC failed at the first acceptable FOV of well %s, '

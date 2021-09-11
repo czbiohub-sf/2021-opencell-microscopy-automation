@@ -318,9 +318,9 @@ class MMCore(BaseMockedPy4jObject):
     def getTaggedImage(self):
         if self._raise_get_tagged_image_error_once:
             self._raise_get_tagged_image_error_once = False
-            raise Exception('Mocked getTaggedImage error')
+            raise MockPy4JJavaError()
         elif np.random.rand() < self._get_tagged_image_error_rate:
-            raise Exception('Mocked getTaggedImage error')
+            raise MockPy4JJavaError()
 
 
 class DataManager:

@@ -28,7 +28,10 @@ def find_nearest_well(mm_core, position_list):
         
     ind = np.argmin(dists)
     well_id, site_num = utils.parse_hcs_site_label(position_list['POSITIONS'][ind]['LABEL'])
-    print('Nearest position is in well %s (ind = %d and distance = %d)' % (well_id, ind, min(dists)))
+    print(
+        'Nearest position is in well %s (ind = %d and distance = %d)'
+        % (well_id, ind, min(dists))
+    )
 
 
 
