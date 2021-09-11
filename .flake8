@@ -29,5 +29,5 @@ exclude =
     tests/data/,
     schema-viz,
     __init__.py
-max-line-length = 105
+max-line-length = 100
 max-complexity = 18
