@@ -134,7 +134,7 @@ def test_move_z_stage(get_mocked_interface):
 
 def test_autoexposure_underexposed_fov(get_mocked_interface, event_logger):
     
-    interface = get_mocked_interface(channel='488', exposure_problem='under')
+    interface = get_mocked_interface(channel='488', exposure_state='under')
     initial_exposure_time = settings.gfp_channel_settings.exposure_time
 
     autoexposure_did_succeed = microscope_operations.autoexposure(
@@ -152,7 +152,7 @@ def test_autoexposure_underexposed_fov(get_mocked_interface, event_logger):
 
 def test_autoexposure_overexposed_fov(get_mocked_interface, event_logger):
 
-    interface = get_mocked_interface(channel='488', exposure_problem='over')
+    interface = get_mocked_interface(channel='488', exposure_state='over')
     initial_laser_power = settings.gfp_channel_settings.laser_power
 
     autoexposure_did_succeed = microscope_operations.autoexposure(
@@ -170,7 +170,7 @@ def test_autoexposure_overexposed_fov(get_mocked_interface, event_logger):
 
 def test_autoexposure_hopelessly_overexposed_fov(get_mocked_interface, event_logger):
 
-    interface = get_mocked_interface(channel='488', exposure_problem='way-over')
+    interface = get_mocked_interface(channel='488', exposure_state='way-over')
     initial_laser_power = settings.gfp_channel_settings.laser_power
 
     autoexposure_did_succeed = microscope_operations.autoexposure(

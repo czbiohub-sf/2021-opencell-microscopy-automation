@@ -73,7 +73,7 @@ def test_acquisition_with_problems(tmpdir, get_mocked_interface, trained_fov_sco
 
     # interface with various mocked problems: AFC timeouts, over-exposure, hardware errors
     micromanager_interface = get_mocked_interface(
-        exposure_problem='over',
+        exposure_state='over',
         afc_failure_rate=0.1,
         raise_go_to_position_error_once=True,
         raise_get_tagged_image_error_once=True,
