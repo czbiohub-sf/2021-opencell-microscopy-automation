@@ -36,6 +36,10 @@ def snaps_dirpath(artifacts_dirpath):
 
 @pytest.fixture(scope='session')
 def fov_snap_and_score(snaps_dirpath):
+    '''
+    An FOV snap and its exact predicted score using the model defined in trained_fov_scorer below
+    (i.e., a model trained on the 2019-10-08 dataset with random_state = 42)
+    '''
     snap = imageio.imread(snaps_dirpath / 'good-1.tif')
     expected_score = 0.85
     return snap, expected_score
