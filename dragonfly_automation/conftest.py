@@ -54,11 +54,13 @@ def fov_snaps_high_score(snaps_dirpath):
 def fov_snaps_low_score(snaps_dirpath):
     snaps = []
     for kind in ['clumpy', 'overconfluent', 'sparse']:
-        snaps.extend([
-            imageio.imread(snaps_dirpath / f'{kind}-1.tif'),
-            imageio.imread(snaps_dirpath / f'{kind}-2.tif'),
-            imageio.imread(snaps_dirpath / f'{kind}-3.tif'),
-        ])
+        snaps.extend(
+            [
+                imageio.imread(snaps_dirpath / f'{kind}-1.tif'),
+                imageio.imread(snaps_dirpath / f'{kind}-2.tif'),
+                imageio.imread(snaps_dirpath / f'{kind}-3.tif'),
+            ]
+        )
     return snaps
 
 

@@ -13,7 +13,6 @@ from dragonfly_automation.acquisitions import pipeline_plate_settings as setting
 from dragonfly_automation.micromanager_interface import MicromanagerInterface
 
 
-
 def get_mocked_interface(
     num_wells=2,
     num_sites_per_well=6,
@@ -58,14 +57,14 @@ def get_mocked_interface(
 
 class MockJavaException:
     '''
-    mock for py4j java_exception object expected by py4j.protocol.Py4JJavaError    
+    mock for py4j java_exception object expected by py4j.protocol.Py4JJavaError
     '''
+
     _target_id = 'target_id'
     _gateway_client = '_gateway_client'
 
 
 class MockPy4JJavaError(py4j.protocol.Py4JJavaError):
-
     def __init__(self):
         super().__init__('Mocked Py4JJavaError', MockJavaException())
 
@@ -77,17 +76,18 @@ class BaseMockedPy4jObject:
     '''
     Generic mock for arbitrary instance attributes
     '''
+
     def __init__(self, name=None):
         self.name = name
 
     def __getattr__(self, name):
         def wrapper(*args):
             pass
+
         return wrapper
 
 
 class Gate:
-
     def __init__(self):
 
         self._props = {}
@@ -102,12 +102,12 @@ class Gate:
 
         # filepaths to the test FOV snaps
         test_snap_filenames = [
-            'good-1.tif', 
-            'clumpy-1.tif', 
-            'overconfluent-1.tif', 
-            'sparse-1.tif', 
+            'good-1.tif',
+            'clumpy-1.tif',
+            'overconfluent-1.tif',
+            'sparse-1.tif',
             'too-few-1.tif',
-            'no-nuclei-1.tif', 
+            'no-nuclei-1.tif',
         ]
         snap_dir = pathlib.Path(__file__).parent.parent / 'artifacts' / 'snaps'
         self._snap_filepaths = [snap_dir / filepath for filepath in test_snap_filenames]
@@ -129,9 +129,9 @@ class Gate:
         self.mm_studio = MMStudio(set_position_ind=set_position_ind)
 
         self.mm_core = MMCore(
-            set_property=set_property, 
+            set_property=set_property,
             set_config_name=set_config_name,
-            set_exposure_time=set_exposure_time
+            set_exposure_time=set_exposure_time,
         )
 
     def getCMMCore(self):
@@ -150,9 +150,7 @@ class Gate:
         '''
         meta = MockedMeta()
 
-        im = tifffile.imread(
-            self._snap_filepaths[self._position_ind % len(self._snap_filepaths)]
-        )
+        im = tifffile.imread(self._snap_filepaths[self._position_ind % len(self._snap_filepaths)])
 
         if self._config_name == settings.hoechst_channel_settings.config_name:
             channel = settings.hoechst_channel_settings
@@ -164,9 +162,8 @@ class Gate:
 
         # scale the intensities if the channel is 488 to simulate under- or over-exposure
         if '488' in channel.laser_name:
-            relative_exposure = (
-                (laser_power * self._exposure_time) / 
-                (channel.default_laser_power * channel.default_exposure_time)
+            relative_exposure = (laser_power * self._exposure_time) / (
+                channel.default_laser_power * channel.default_exposure_time
             )
 
             # emprically determined factor to yield an overexposed image
@@ -193,6 +190,7 @@ class MockedMeta:
     '''
     Mock for the objects returned by mm_studio.getLastMeta
     '''
+
     def _make_memmap(self, im):
         self.shape = im.shape
         self.filepath = os.path.join(tempfile.mkdtemp(), 'mock_snap.dat')
@@ -212,7 +210,6 @@ class MockedMeta:
 
 
 class AutofocusManager(BaseMockedPy4jObject):
-
     def __init__(self):
         self.af_plugin = AutofocusPlugin()
 
@@ -221,7 +218,6 @@ class AutofocusManager(BaseMockedPy4jObject):
 
 
 class AutofocusPlugin(BaseMockedPy4jObject):
-
     def __init__(self):
         self._num_full_focus_calls = 0
         self._afc_failure_rate = 0.0
@@ -240,7 +236,7 @@ class AutofocusPlugin(BaseMockedPy4jObject):
 
     def getPropertyValue(self, name):
         return 0
-    
+
 
 class MMStudio(BaseMockedPy4jObject):
     '''
@@ -264,7 +260,7 @@ class MMStudio(BaseMockedPy4jObject):
 
     def data(self):
         return DataManager()
-    
+
     def displays(self):
         return BaseMockedPy4jObject(name='DisplayManager')
 
@@ -301,7 +297,7 @@ class MMCore(BaseMockedPy4jObject):
 
     def setExposure(self, exposure_time):
         self._set_exposure_time(exposure_time)
-    
+
     def setProperty(self, label, prop_name, prop_value):
         self._set_property(label, prop_name, prop_value)
 
@@ -317,15 +313,15 @@ class DataManager:
     '''
     This object is returned by MMStudio.data()
     '''
+
     def createMultipageTIFFDatastore(self, *args):
         return MultipageTIFFDatastore()
 
     def convertTaggedImage(self, *args):
-        return Image()        
+        return Image()
 
 
 class MultipageTIFFDatastore(BaseMockedPy4jObject):
-
     def __init__(self):
         super().__init__(name='Datastore')
         self._images = []
@@ -335,7 +331,6 @@ class MultipageTIFFDatastore(BaseMockedPy4jObject):
 
 
 class PositionList:
-
     def __init__(self, set_position_ind):
         self.set_position_ind = set_position_ind
 
@@ -363,7 +358,6 @@ class PositionList:
 
 
 class Position:
-
     def __init__(self, label):
         self.label = label
 
@@ -380,7 +374,6 @@ class Position:
 
 
 class Image:
-
     def __init__(self):
         self.coords = ImageCoords()
         self.metadata = ImageMetadata()
@@ -396,14 +389,14 @@ class Image:
 
 
 class ImageCoords:
-
     def __init__(self):
         self.channel_ind, self.z_ind, self.stage_position = None, None, None
-    
+
     def __repr__(self):
-        return (
-            'ImageCoords(channel_ind=%s, z_ind=%s, stage_position=%s)'
-            % (self.channel_ind, self.z_ind, self.stage_position)
+        return 'ImageCoords(channel_ind=%s, z_ind=%s, stage_position=%s)' % (
+            self.channel_ind,
+            self.z_ind,
+            self.stage_position,
         )
 
     def build(self):
@@ -425,9 +418,7 @@ class ImageCoords:
         return self
 
 
-
 class ImageMetadata:
-
     def __repr__(self):
         return 'ImageMetadata(position_name=%s)' % self.position_name
 
@@ -436,7 +427,7 @@ class ImageMetadata:
 
     def copy(self):
         return self
-    
+
     def positionName(self, value):
         self.position_name = value
         return self

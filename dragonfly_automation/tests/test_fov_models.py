@@ -8,7 +8,7 @@ def test_prediction_score(trained_fov_scorer, fov_snap_and_score):
     snap, expected_score = fov_snap_and_score
     result = trained_fov_scorer.score_raw_fov(snap, **KWARGS)
     assert np.round(result.get('score'), 2) == expected_score
-    
+
 
 def test_prediction_high_score(trained_fov_scorer, fov_snaps_high_score):
     for snap in fov_snaps_high_score:

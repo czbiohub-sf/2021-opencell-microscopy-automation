@@ -14,8 +14,7 @@ from dragonfly_automation import microscope_operations, utils
 
 
 def find_nearest_well(mm_core, position_list):
-    '''
-    '''
+    ''' '''
     # current xy stage position
     current_pos = mm_core.getXPosition('XYStage'), mm_core.getYPosition('XYStage')
 
@@ -23,23 +22,21 @@ def find_nearest_well(mm_core, position_list):
     dists = []
     for ind, p in enumerate(position_list['POSITIONS']):
         xystage = [d for d in p['DEVICES'] if d['DEVICE'] == 'XYStage'][0]
-        dist = np.sqrt(((np.array(current_pos) - np.array([xystage['X'], xystage['Y']]))**2).sum())
+        dist = np.sqrt(
+            ((np.array(current_pos) - np.array([xystage['X'], xystage['Y']])) ** 2).sum()
+        )
         dists.append(dist)
-        
+
     ind = np.argmin(dists)
     well_id, site_num = utils.parse_hcs_site_label(position_list['POSITIONS'][ind]['LABEL'])
     print(
-        'Nearest position is in well %s (ind = %d and distance = %d)'
-        % (well_id, ind, min(dists))
+        'Nearest position is in well %s (ind = %d and distance = %d)' % (well_id, ind, min(dists))
     )
 
 
-
 class StageVisitationManager:
-
     def __init__(self, micromanager_interface, well_ids_to_visit, position_list):
-        '''
-        '''
+        ''' '''
         self.well_ids_to_visit = well_ids_to_visit
         self.position_list = position_list
         self.micromanager_interface = micromanager_interface
@@ -50,16 +47,13 @@ class StageVisitationManager:
         # initialize a dict, keyed by well_id, of the measured FocusDrive positions
         self.measured_focusdrive_positions = {}
 
-
     def go_to_next_well(self):
         self.current_ind = min(self.current_ind + 1, len(self.well_ids_to_visit) - 1)
         self._go_to_position()
 
-
     def go_to_previous_well(self):
         self.current_ind = max(0, self.current_ind - 1)
         self._go_to_position()
-
 
     def _go_to_position(self):
         self.current_well_id = self.well_ids_to_visit[self.current_ind]
@@ -78,9 +72,8 @@ class StageVisitationManager:
         try:
             microscope_operations.go_to_position(self.micromanager_interface, position_ind)
         except py4j.protocol.Py4JJavaError:
-            microscope_operations.go_to_position(self.micromanager_interface, position_ind)    
+            microscope_operations.go_to_position(self.micromanager_interface, position_ind)
         print('Arrived at well %s' % self.current_well_id)
-
 
     def _get_current_position_ind(self):
         '''
@@ -93,7 +86,6 @@ class StageVisitationManager:
                 current_ind = ind
                 break
         return current_ind
-
 
     def call_afc(self):
         '''
@@ -112,13 +104,9 @@ class StageVisitationManager:
 
 
 def preview_interpolation(
-    measured_focusdrive_positions, 
-    top_left_well_id, 
-    bottom_right_well_id,
-    method='cubic'
+    measured_focusdrive_positions, top_left_well_id, bottom_right_well_id, method='cubic'
 ):
-    '''
-    '''
+    ''' '''
 
     positions = []
     for well_id, zpos in measured_focusdrive_positions.items():
@@ -140,12 +128,12 @@ def preview_interpolation(
 
 
 def interpolate_focusdrive_positions(
-    position_list_filepath, 
-    measured_focusdrive_positions, 
+    position_list_filepath,
+    measured_focusdrive_positions,
     top_left_well_id,
     bottom_right_well_id,
     method='cubic',
-    offset=0
+    offset=0,
 ):
     '''
 
@@ -176,10 +164,7 @@ def interpolate_focusdrive_positions(
 
         # the interpolated z-position of the current well
         interpolated_position = interpolate.griddata(
-            measured_positions[:, :2], 
-            measured_positions[:, 2], 
-            (x, y), 
-            method=method
+            measured_positions[:, :2], measured_positions[:, 2], (x, y), method=method
         )
 
         # add the optional user-defined constant offset
@@ -205,7 +190,7 @@ def interpolate_focusdrive_positions(
         # append the new FocusDrive config
         position['DEVICES'].append(focusdrive_config)
         position_list['POSITIONS'][ind] = position
-        
+
     # save the new position_list
     ext = position_list_filepath.split('.')[-1]
     new_filepath = re.sub('.%s$' % ext, '_interpolated.%s' % ext, position_list_filepath)
@@ -215,7 +200,6 @@ def interpolate_focusdrive_positions(
 
 
 def visualize_interpolation(measured_focusdrive_positions, new_position_list):
-
     def xyz_from_pos(pos):
         well_id, site_num = utils.parse_hcs_site_label(pos['LABEL'])
         focusdrive = [d for d in pos['DEVICES'] if d['DEVICE'] == 'FocusDrive'][0]
@@ -225,7 +209,7 @@ def visualize_interpolation(measured_focusdrive_positions, new_position_list):
 
     measured_positions = np.array(
         [
-            (*utils.well_id_to_position(well_id), zpos) 
+            (*utils.well_id_to_position(well_id), zpos)
             for well_id, zpos in measured_focusdrive_positions.items()
         ]
     )
@@ -238,10 +222,7 @@ def visualize_interpolation(measured_focusdrive_positions, new_position_list):
     ax.scatter3D(pos[:, 0], pos[:, 1], pos[:, 2], color='gray')
 
     ax.scatter3D(
-        measured_positions[:, 0], 
-        measured_positions[:, 1], 
-        measured_positions[:, 2], 
-        color='red'
+        measured_positions[:, 0], measured_positions[:, 1], measured_positions[:, 2], color='red'
     )
 
 
@@ -253,9 +234,7 @@ def _least_squares_interpolator(positions):
     This is appropriate for small regions for which it is not practical/possible
     to measure the FocusDrive position at internal (non-edge) wells
     '''
-    A = np.vstack(
-        [positions[:, 0], positions[:, 1], np.ones(positions.shape[0])]
-    )
+    A = np.vstack([positions[:, 0], positions[:, 1], np.ones(positions.shape[0])])
 
     # these are the z-positions we want to interpolate
     z = positions[:, 2]
@@ -270,7 +249,7 @@ def _least_squares_interpolator(positions):
         Z = np.zeros((len(y), len(x)))
         for row_ind in range(Z.shape[0]):
             for col_ind in range(Z.shape[1]):
-                Z[row_ind, col_ind] = x[col_ind]*p[0] + y[row_ind]*p[1] + p[2]
+                Z[row_ind, col_ind] = x[col_ind] * p[0] + y[row_ind] * p[1] + p[2]
         if len(x) == 1 and len(y) == 1:
             Z = Z[0]
         elif len(x) == 1:

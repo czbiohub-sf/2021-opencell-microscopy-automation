@@ -21,7 +21,7 @@ def to_uint8(im, percentile=0):
 
     im = im - minn
     im[im < 0] = 0
-    im = im/(maxx - minn)
+    im = im / (maxx - minn)
     im[im > 1] = 1
     im = (im * max_value).astype(dtype)
     return im
@@ -59,4 +59,3 @@ def parse_hcs_site_label(label):
     well_id, site_num = result[0]
     site_num = int(site_num)
     return well_id, site_num
-

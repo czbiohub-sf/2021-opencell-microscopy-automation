@@ -47,23 +47,16 @@ def catch_errors(method):
             # if an error has occured, we set the score to None
             # note that self.assign_score sets the score_has_been_assigned flag to True,
             # which will prevent the execution of all subsequent catch_errors-wrapped methods
-            self.assign_score(
-                score=None, comment=('Error in %s: %s' % (method_name, str(error)))
-            )
+            self.assign_score(score=None, comment=('Error in %s: %s' % (method_name, str(error))))
 
         return result
+
     return wrapper
 
 
 class PipelineFOVScorer:
-
     def __init__(
-        self, 
-        save_dir, 
-        mode='prediction', 
-        model_type='regression', 
-        random_state=None, 
-        log_dir=None
+        self, save_dir, mode='prediction', model_type='regression', random_state=None, log_dir=None
     ):
         '''
         mode : 'training' or 'prediction'
@@ -106,20 +99,13 @@ class PipelineFOVScorer:
 
         if self.model_type == 'classification':
             self.model = sklearn.ensemble.RandomForestClassifier(
-                n_estimators=300,
-                max_features='sqrt',
-                oob_score=True,
-                random_state=random_state
+                n_estimators=300, max_features='sqrt', oob_score=True, random_state=random_state
             )
 
         if self.model_type == 'regression':
             self.model = sklearn.ensemble.RandomForestRegressor(
-                n_estimators=300,
-                max_features='auto',
-                oob_score=True,
-                random_state=random_state
+                n_estimators=300, max_features='auto', oob_score=True, random_state=random_state
             )
-
 
     def load(self):
         '''
@@ -127,8 +113,8 @@ class PipelineFOVScorer:
         '''
         # reset the current validation results
         self.current_training_metadata = None
-    
-        # load the training data        
+
+        # load the training data
         self.training_data = pd.read_csv(os.path.join(self.save_dir, 'training_data.csv'))
 
         # load the cached validation results
@@ -139,7 +125,6 @@ class PipelineFOVScorer:
         else:
             print('Warning: no cached model metadata found')
 
-
     def save(self, save_dir, overwrite=False):
         '''
         Save the training data and the metadata
@@ -148,7 +133,7 @@ class PipelineFOVScorer:
 
         if self.mode != 'training':
             raise ValueError("Cannot save training data unless mode = 'training'")
-        
+
         # don't overwrite existing data
         training_data_filepath = os.path.join(save_dir, 'training_data.csv')
         if os.path.isfile(training_data_filepath) and not overwrite:
@@ -168,7 +153,6 @@ class PipelineFOVScorer:
         with open(training_metadata_filepath, 'w') as file:
             json.dump(self.current_training_metadata, file)
         print('Metadata saved to %s' % training_metadata_filepath)
-
 
     def process_existing_fov(self, filepath):
         '''
@@ -191,7 +175,7 @@ class PipelineFOVScorer:
 
         # hard-coded values for FOV pre-processing thresholds
         # a value of 700 for min_otsu_thresh and 10 for min_num_nuclei were always used,
-        # to both generate training data in Oct 2019, 
+        # to both generate training data in Oct 2019,
         # and for scoring all OpenCell FOVs from 2019-2021
         min_otsu_thresh = 700
         min_num_nuclei = 10
@@ -200,14 +184,14 @@ class PipelineFOVScorer:
             'filename': filepath.split(os.sep)[-1],
             'score': None,
         }
-    
+
         if not os.path.isfile(filepath):
             result['error'] = 'File does not exist'
             return result
 
         try:
             im = tifffile.imread(filepath)
-    
+
             # check whether there are any nuclei in the FOV
             nuclei_in_fov = self.are_nuclei_in_fov(im, min_otsu_thresh)
             if not nuclei_in_fov:
@@ -233,13 +217,12 @@ class PipelineFOVScorer:
 
         except Exception as error:
             result['error'] = str(error)
-    
-        return result
 
+        return result
 
     def train(self):
         '''
-        Train a model to predict the score 
+        Train a model to predict the score
 
         Note that the model can be either a classification or regression model,
         since the score is a categorical variable (e.g., -1, 0, 1 for bad/neutral/good)
@@ -257,7 +240,7 @@ class PipelineFOVScorer:
             'model': {
                 'class': str(self.model.__class__),
                 'params': self.model.get_params(),
-            }
+            },
         }
 
         # drop rows with any missing/nan features
@@ -288,11 +271,10 @@ class PipelineFOVScorer:
 
         self.current_training_metadata = training_metadata
 
-
     def validate(self):
         '''
         Sanity checks when in 'prediction' mode and after calling self.train
-        Intended use is right after loading and training from cached data on the microscope 
+        Intended use is right after loading and training from cached data on the microscope
 
         Steps:
             1) Print the cached and current cross-validation results
@@ -312,24 +294,23 @@ class PipelineFOVScorer:
             'Cached and current training data shape: (%s, %s)'
             % (
                 self.cached_training_metadata['training_data_shape'],
-                self.current_training_metadata['training_data_shape']
+                self.current_training_metadata['training_data_shape'],
             )
         )
         print(
             'Cached and current oob_score: (%s, %s)'
             % (
                 self.cached_training_metadata['oob_score'],
-                self.current_training_metadata['oob_score']
+                self.current_training_metadata['oob_score'],
             )
         )
 
-        # make sure the number of features is consistent 
+        # make sure the number of features is consistent
         self.allow_errors = True
         mock_positions = np.array([[100, 500], [500, 500], [500, 100]])
         features = self.calculate_features(mock_positions)
         score = self.predict_score(features)
         print('Mock predicted score (should be falsy): %s' % score)
-
 
     def score_raw_fov(self, image, min_otsu_thresh, min_num_nuclei, position_props=None):
         '''
@@ -352,11 +333,11 @@ class PipelineFOVScorer:
         image : numpy.ndarray (2D and uint16)
             The raw field of view to score; assumed to be close to in-focus
         min_otsu_thresh : int, intensity threshold used to determine if any nuclei are in the FOV
-        min_num_nuclei : int, threshold number of nuclei used to determine 
+        min_num_nuclei : int, threshold number of nuclei used to determine
             whether there are enough nuclei in the FOV to justify scoring it
         position_props : dict, optional (but required for logging)
             The properties (name, label, ind, etc) of the current position;
-            these are created in PipelinePlateAcquisition.run 
+            these are created in PipelinePlateAcquisition.run
             by parsing the position labels generated by the HCS Site Generator
         '''
 
@@ -384,7 +365,7 @@ class PipelineFOVScorer:
             self.raw_fov_props['raw_image'] = image
         else:
             self.assign_score(score=None, comment=comment)
-    
+
         # check whether there are any nuclei in the FOV
         nuclei_in_fov = self.are_nuclei_in_fov(image, min_otsu_thresh)
         if not nuclei_in_fov:
@@ -406,25 +387,21 @@ class PipelineFOVScorer:
         self.raw_fov_props['score'] = score
         if score is not None:
             self.assign_score(score, comment='Model prediction')
-    
+
         if self.log_dir is not None and position_props is not None:
             self.log_raw_fov_props(position_props)
         return self.raw_fov_props
 
-
     def assign_score(self, score, comment):
-        '''
-        '''
+        ''' '''
         # do nothing if a score has already been assigned
         if not self.score_has_been_assigned:
             self.score_has_been_assigned = True
             self.raw_fov_props['score'] = score
             self.raw_fov_props['comment'] = comment
 
-
     def log_raw_fov_props(self, position_props):
-        '''
-        '''
+        ''' '''
         self.logged_image_dir = os.path.join(self.log_dir, 'fov-images')
         os.makedirs(self.logged_image_dir, exist_ok=True)
 
@@ -462,10 +439,9 @@ class PipelineFOVScorer:
             log = pd.DataFrame([row])
         log.to_csv(log_filepath, index=False, float_format='%0.2f')
 
-
     @catch_errors
     def validate_raw_fov(self, image):
-        
+
         is_valid_fov = False
         comment = None
         if not isinstance(image, np.ndarray):
@@ -480,7 +456,6 @@ class PipelineFOVScorer:
             is_valid_fov = True
         return is_valid_fov, comment
 
-
     @catch_errors
     def are_nuclei_in_fov(self, image, min_otsu_thresh):
         '''
@@ -491,7 +466,6 @@ class PipelineFOVScorer:
         otsu_thresh = skimage.filters.threshold_li(image)
         nuclei_in_fov = otsu_thresh > min_otsu_thresh
         return nuclei_in_fov
-
 
     @catch_errors
     def are_enough_nuclei_in_fov(self, positions, min_num_nuclei):
@@ -507,7 +481,6 @@ class PipelineFOVScorer:
         num_positions = positions.shape[0]
         is_candidate = num_positions > min_num_nuclei
         return is_candidate
-
 
     @catch_errors
     def generate_background_mask(self, image):
@@ -532,11 +505,9 @@ class PipelineFOVScorer:
 
         return mask
 
-
     @catch_errors
     def find_nucleus_positions(self, mask):
-        '''
-        '''
+        ''' '''
         # empirically estimated nucleus radius
         nucleus_radius = 15
 
@@ -547,15 +518,14 @@ class PipelineFOVScorer:
         # the positions of the local maximima in the distance transform
         # correspond roughly to the centers of mass of the individual nuclei
         positions = skimage.feature.peak_local_max(distf, min_distance=nucleus_radius, labels=mask)
-        return positions    
-
+        return positions
 
     @catch_errors
     def calculate_features(self, positions):
         '''
         Calculate a variety of features from the list of nucleus positions
         These fall into three categories:
-        1) basic summary statistics: number of nuclei, their relative center of mass, 
+        1) basic summary statistics: number of nuclei, their relative center of mass,
             and orientation (from the eigenvalues of the covariance matrix)
         2) total nucleus area and max distance from a nucleus, from a simulated nucleus mask
             obtained by thresholding the distance transform of the nucleus positions.
@@ -567,12 +537,12 @@ class PipelineFOVScorer:
         num_nuclei = positions.shape[0]
 
         # the distance of the center of mass from the center of the image
-        com_offset = ((positions.mean(axis=0) - (self.image_size/2))**2).sum()**.5
+        com_offset = ((positions.mean(axis=0) - (self.image_size / 2)) ** 2).sum() ** 0.5
         rel_com_offset = com_offset / self.image_size
 
         # the ratio of eigenvalues (a crude measure of asymmetry)
         evals, evecs = np.linalg.eig(np.cov(positions.transpose()))
-        eval_ratio = (max(evals) - min(evals))/min(evals)
+        eval_ratio = (max(evals) - min(evals)) / min(evals)
 
         # calculate total area and max distance from a nucleus using a simulated nucleus mask
         # (the nucleus radius here was selected empirically)
@@ -582,7 +552,7 @@ class PipelineFOVScorer:
             position_mask[position[0], position[1]] = 1
 
         dist = ndimage.distance_transform_edt(~position_mask.astype(bool))
-        total_area = (dist < nucleus_radius).sum() / (self.image_size*self.image_size)
+        total_area = (dist < nucleus_radius).sum() / (self.image_size * self.image_size)
         max_distance = dist.max()
 
         # cluster positions using DBSCAN
@@ -598,16 +568,15 @@ class PipelineFOVScorer:
         num_unclustered = (labels == -1).sum()
 
         features = dict(
-            num_nuclei=num_nuclei, 
-            com_offset=rel_com_offset, 
-            eval_ratio=eval_ratio, 
+            num_nuclei=num_nuclei,
+            com_offset=rel_com_offset,
+            eval_ratio=eval_ratio,
             total_area=total_area,
-            max_distance=max_distance, 
-            num_clusters=num_clusters, 
-            num_unclustered=num_unclustered
+            max_distance=max_distance,
+            num_clusters=num_clusters,
+            num_unclustered=num_unclustered,
         )
         return features
-
 
     @catch_errors
     def predict_score(self, features):
@@ -626,10 +595,9 @@ class PipelineFOVScorer:
 
         return score
 
-
     def show_nucleus_positions(self, positions, im=None, ax=None):
         '''
-        Convenience method to visualize the nucleus positions, 
+        Convenience method to visualize the nucleus positions,
         optionally overlaid on the image itself and the background mask
         '''
         if ax is None:

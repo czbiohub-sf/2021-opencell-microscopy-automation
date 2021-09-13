@@ -7,7 +7,7 @@ def test_visitation_manager(raw_hcs_position_list, get_mocked_interface):
     # (to match the positions in raw_hcs_position_list)
     micromanager_interface = get_mocked_interface(num_wells=96, num_sites_per_well=36)
 
-    well_ids_to_visit = ['A1', 'A6', 'A12', 'B12', 'B6', 'B1']    
+    well_ids_to_visit = ['A1', 'A6', 'A12', 'B12', 'B6', 'B1']
     visitation_manager = stage_interpolation.StageVisitationManager(
         micromanager_interface, well_ids_to_visit, raw_hcs_position_list
     )

@@ -1,4 +1,3 @@
-
 import os
 import json
 import pathlib
@@ -18,7 +17,7 @@ def test_acquisition_without_problems(tmpdir, get_mocked_interface, trained_fov_
     micromanager_interface = get_mocked_interface()
 
     acquisition = PipelinePlateAcquisition(
-        root_dir=str(tmpdir), 
+        root_dir=str(tmpdir),
         pml_id=pml_id,
         plate_id=plate_id,
         platemap_type=platemap_type,
@@ -34,10 +33,13 @@ def test_acquisition_without_problems(tmpdir, get_mocked_interface, trained_fov_
 
     # check that all of the logfiles were generated
     for filepath in [
-        'experiment-metadata.json', 'afc-calls.csv', 'all-events.log', 'important-events.log'
+        'experiment-metadata.json',
+        'afc-calls.csv',
+        'all-events.log',
+        'important-events.log',
     ]:
         assert os.path.isfile(tmpdir / 'logs' / filepath)
-    
+
     # there should have been no errors
     assert not os.path.isfile(tmpdir / 'logs' / 'error-events.log')
 
@@ -59,7 +61,7 @@ def test_acquisition_without_problems(tmpdir, get_mocked_interface, trained_fov_
     num_good_fovs = (fovs.score > fov_selection_settings.min_score).sum()
     assert num_good_fovs == 1
 
-    # check that the expected number of z-stacks were acquired 
+    # check that the expected number of z-stacks were acquired
     # (in test mode this is only two, for 405 and 488 channels at one FOV)
     df = pd.read_csv(tmpdir / 'logs' / 'acquired-images.csv')
     assert df.shape[0] == 2
@@ -80,7 +82,7 @@ def test_acquisition_with_problems(tmpdir, get_mocked_interface, trained_fov_sco
     )
 
     acquisition = PipelinePlateAcquisition(
-        root_dir=str(tmpdir), 
+        root_dir=str(tmpdir),
         pml_id=pml_id,
         plate_id=plate_id,
         platemap_type=platemap_type,
@@ -93,7 +95,7 @@ def test_acquisition_with_problems(tmpdir, get_mocked_interface, trained_fov_sco
 
     # run the acquisition in test mode (only visit one well and take one z-stack)
     acquisition.run(mode='test', test_mode_well_id=None)
-    
+
     # there should have been several errors
     assert os.path.isfile(tmpdir / 'logs' / 'error-events.log')
 
@@ -106,7 +108,7 @@ def test_acquisition_with_problems(tmpdir, get_mocked_interface, trained_fov_sco
     num_good_fovs = (fovs.score > fov_selection_settings.min_score).sum()
     assert num_good_fovs == 1
 
-    # check that the expected number of z-stacks were acquired 
+    # check that the expected number of z-stacks were acquired
     # (in test mode this is only two, for 405 and 488 channels at one FOV)
     df = pd.read_csv(tmpdir / 'logs' / 'acquired-images.csv')
     assert df.shape[0] == 2

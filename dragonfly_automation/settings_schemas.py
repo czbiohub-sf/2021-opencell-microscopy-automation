@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 
 
@@ -64,7 +63,7 @@ class AutoexposureSettings:
     min_laser_power: float
 
     # factor by which to decrease the exposure time or laser power
-    # if a z-slice is found to be over-exposed 
+    # if a z-slice is found to be over-exposed
     relative_exposure_step: float
 
     # z-step size to use

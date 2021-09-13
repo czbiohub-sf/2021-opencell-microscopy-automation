@@ -1,4 +1,3 @@
-
 import os
 import time
 
@@ -9,15 +8,13 @@ except ImportError:
 
 
 class MicromanagerInterface:
-
     def __init__(self, gate, mm_studio, mm_core):
         self.gate = gate
         self.mm_studio = mm_studio
         self.mm_core = mm_core
         self.has_open_datastore = False
 
-
-    @classmethod    
+    @classmethod
     def from_java_gateway(cls):
         gateway = JavaGateway()
         gate = gateway.entry_point
@@ -25,16 +22,13 @@ class MicromanagerInterface:
         mm_studio = gate.getStudio()
         return cls(gate, mm_studio, mm_core)
 
-
     def wrap(self, event_logger):
         self.gate = Py4jWrapper(self.gate, event_logger)
         self.mm_core = Py4jWrapper(self.mm_core, event_logger)
         self.mm_studio = Py4jWrapper(self.mm_studio, event_logger)
 
-
     def create_datastore(self, data_dir):
-        '''
-        '''
+        ''' '''
         # the datastore can only be initialized if the data directory does not exist
         if os.path.isdir(data_dir):
             raise ValueError('Data directory already exists at %s' % data_dir)
@@ -47,7 +41,6 @@ class MicromanagerInterface:
         )
         self.mm_studio.displays().createDisplay(self.datastore)
         self.has_open_datastore = True
-
 
     def freeze_datastore(self):
         if self.has_open_datastore:
@@ -93,7 +86,7 @@ class Py4jWrapper:
             return attr
 
         def wrapper(*args):
-            
+
             # construct and log the message
             pretty_args = tuple([self.prettify_arg(arg) for arg in args])
             message = f'''MM2PYTHON: {self.wrapped_obj.__class__.__name__}.{name}{pretty_args}'''
@@ -110,7 +103,7 @@ class Py4jWrapper:
                     break
                 except Exception as error:
                     # HACK: do not intercept AFC errors (these are handled in call_afc)
-                    # or getTaggedImage errors (these are handled in acquire_stack 
+                    # or getTaggedImage errors (these are handled in acquire_stack
                     # by re-calling both snapImage and getTaggedImage)
                     if name in ['fullFocus', 'getTaggedImage']:
                         raise
@@ -133,4 +126,4 @@ class Py4jWrapper:
             else:
                 return result
 
-        return wrapper 
+        return wrapper

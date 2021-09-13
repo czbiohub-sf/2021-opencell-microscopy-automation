@@ -54,7 +54,7 @@ def test_call_afc_with_too_many_timeouts(get_mocked_interface, event_logger):
 
 
 def test_acquire_z_stack(tmpdir, get_mocked_interface, event_logger):
-    
+
     # a z-stack with four z-slices
     stack_settings = StackSettings(
         stage_label='label', relative_bottom=0, relative_top=3, step_size=1
@@ -67,11 +67,11 @@ def test_acquire_z_stack(tmpdir, get_mocked_interface, event_logger):
     position_ind = 123
     microscope_operations.acquire_stack(
         interface,
-        stack_settings, 
+        stack_settings,
         channel_ind=channel_ind,
         position_ind=position_ind,
         position_name='position_name',
-        event_logger=event_logger
+        event_logger=event_logger,
     )
 
     assert len(event_logger.events) == 0
@@ -101,11 +101,11 @@ def test_acquire_z_stack_camera_error(tmpdir, get_mocked_interface, event_logger
     position_ind = 123
     microscope_operations.acquire_stack(
         interface,
-        stack_settings, 
+        stack_settings,
         channel_ind=channel_ind,
         position_ind=position_ind,
         position_name='position_name',
-        event_logger=event_logger
+        event_logger=event_logger,
     )
 
     # there should be one error message
@@ -133,7 +133,7 @@ def test_move_z_stage(get_mocked_interface):
 
 
 def test_autoexposure_underexposed_fov(get_mocked_interface, event_logger):
-    
+
     interface = get_mocked_interface(channel='488', exposure_state='under')
     initial_exposure_time = settings.gfp_channel_settings.exposure_time
 
@@ -142,7 +142,7 @@ def test_autoexposure_underexposed_fov(get_mocked_interface, event_logger):
         settings.fluorescence_stack_settings,
         settings.autoexposure_settings,
         settings.gfp_channel_settings,
-        event_logger
+        event_logger,
     )
     assert autoexposure_did_succeed
 
@@ -160,7 +160,7 @@ def test_autoexposure_overexposed_fov(get_mocked_interface, event_logger):
         settings.fluorescence_stack_settings,
         settings.autoexposure_settings,
         settings.gfp_channel_settings,
-        event_logger
+        event_logger,
     )
     assert autoexposure_did_succeed
 
@@ -178,10 +178,9 @@ def test_autoexposure_hopelessly_overexposed_fov(get_mocked_interface, event_log
         settings.fluorescence_stack_settings,
         settings.autoexposure_settings,
         settings.gfp_channel_settings,
-        event_logger
+        event_logger,
     )
     assert not autoexposure_did_succeed
 
     # check that the exposure time has been increased
     assert settings.gfp_channel_settings.laser_power < initial_laser_power
-

@@ -35,7 +35,7 @@ measured_focusdrive_positions = {
     'H1': 6185.746645,
     'H4': 6255.530345,
     'H8': 6303.899505,
-    'H12': 6294.01792
+    'H12': 6294.01792,
 }
 
 # from PML0330
@@ -51,7 +51,7 @@ measured_focusdrive_positions = {
     'H1': 6203.16974,
     'H4': 6248.60144,
     'H8': 6291.228855,
-    'H12': 6302.704735
+    'H12': 6302.704735,
 }
 
 # position_list_filepath = '../tests/data/20200609_raw_positions_interpolated.pos'
