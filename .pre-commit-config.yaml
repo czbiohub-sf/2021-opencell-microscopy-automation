@@ -1,4 +1,4 @@
-exclude: legacy|doc|data|models|notebooks|ignore
+exclude: ^(legacy|doc|data|models|notebooks|ignore)/
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
@@ -14,4 +14,11 @@ repos:
     hooks:
     -   id: black
         entry: black
+        # exclusion rules for black defined in pyproject.toml are ignored by pre-commit,
+        # so they must be copied here
         exclude: pipeline_plate_settings.py
+
+-   repo: https://github.com/pycqa/isort
+    rev: 5.8.0
+    hooks:
+    -   id: isort
