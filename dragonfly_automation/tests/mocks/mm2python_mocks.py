@@ -1,6 +1,5 @@
 import os
 import py4j
-import glob
 import itertools
 import tifffile
 import tempfile

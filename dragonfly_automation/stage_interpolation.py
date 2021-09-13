@@ -1,8 +1,6 @@
-import os
 import re
 import py4j
 import json
-import skimage
 import numpy as np
 import pandas as pd
 

@@ -1,23 +1,4 @@
-import os
-import re
-import sys
-import glob
-import json
-import dask
-import shutil
-import pickle
-import hashlib
-import skimage
-import datetime
-import tifffile
 import argparse
-import numpy as np
-import pandas as pd
-import dask.diagnostics
-
-HERE = os.path.abspath(os.path.dirname(__file__))
-REPO_ROOT = os.path.join(HERE, os.pardir)
-sys.path.insert(0, REPO_ROOT)
 
 from dragonfly_automation.qc.pipeline_plate_qc import PipelinePlateQC
 

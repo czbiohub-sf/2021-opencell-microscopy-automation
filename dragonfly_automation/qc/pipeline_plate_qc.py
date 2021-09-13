@@ -1,11 +1,8 @@
 import os
 import re
-import sys
 import glob
 import json
-import time
 import dask
-import shutil
 import tifffile
 import datetime
 import jsonschema

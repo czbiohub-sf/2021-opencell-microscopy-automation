@@ -3,10 +3,6 @@ import sys
 import time
 import argparse
 
-HERE = os.path.abspath(os.path.dirname(__file__))
-PROJECT_ROOT = os.path.join(HERE, os.pardir)
-
-sys.path.insert(0, PROJECT_ROOT)
 from dragonfly_automation.tests.mocks import mm2python_mocks
 from dragonfly_automation.fov_models import PipelineFOVScorer
 from dragonfly_automation.micromanager_interface import MicromanagerInterface

@@ -9,4 +9,4 @@ requests
 dask
 dask[delayed]
 py4j
-GitPythonp
+GitPython
