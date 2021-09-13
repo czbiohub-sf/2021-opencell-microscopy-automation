@@ -1,14 +1,15 @@
+import dataclasses
+import json
 import os
 import re
-import git
-import json
 import time
-import py4j
-import dataclasses
+
+import git
 import numpy as np
 import pandas as pd
+import py4j
 
-from dragonfly_automation import utils, microscope_operations
+from dragonfly_automation import microscope_operations, utils
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
 
 

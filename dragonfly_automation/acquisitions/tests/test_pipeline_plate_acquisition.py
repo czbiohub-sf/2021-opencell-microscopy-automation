@@ -1,6 +1,7 @@
-import os
 import json
+import os
 import pathlib
+
 import pandas as pd
 
 from dragonfly_automation.acquisitions.pipeline_plate_acquisition import PipelinePlateAcquisition

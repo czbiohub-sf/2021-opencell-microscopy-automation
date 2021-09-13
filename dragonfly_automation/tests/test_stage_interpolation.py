@@ -1,4 +1,4 @@
-from dragonfly_automation import utils, stage_interpolation
+from dragonfly_automation import stage_interpolation, utils
 
 
 def test_visitation_manager(raw_hcs_position_list, get_mocked_interface):

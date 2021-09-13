@@ -2,7 +2,6 @@ import numpy as np
 
 from dragonfly_automation import microscope_operations, utils
 
-
 top_left_well_id = 'A1'
 bottom_right_well_id = 'H12'
 

@@ -1,12 +1,12 @@
-import re
-import py4j
 import json
+import re
+
 import numpy as np
 import pandas as pd
-
-from scipy import interpolate
+import py4j
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D as ax3
+from scipy import interpolate
 
 from dragonfly_automation import microscope_operations, utils
 

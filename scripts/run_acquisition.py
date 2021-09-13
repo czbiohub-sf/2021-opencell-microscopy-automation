@@ -1,12 +1,12 @@
+import argparse
 import os
 import pathlib
 import time
-import argparse
 
-from dragonfly_automation.tests.mocks import mm2python_mocks
+from dragonfly_automation.acquisitions.pipeline_plate_acquisition import PipelinePlateAcquisition
 from dragonfly_automation.fov_models import PipelineFOVScorer
 from dragonfly_automation.micromanager_interface import MicromanagerInterface
-from dragonfly_automation.acquisitions.pipeline_plate_acquisition import PipelinePlateAcquisition
+from dragonfly_automation.tests.mocks import mm2python_mocks
 
 
 def parse_args():

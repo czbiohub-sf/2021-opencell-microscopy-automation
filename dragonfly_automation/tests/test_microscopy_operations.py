@@ -1,9 +1,9 @@
-import pytest
 import numpy as np
+import pytest
 
 from dragonfly_automation import microscope_operations
-from dragonfly_automation.settings_schemas import StackSettings
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings
+from dragonfly_automation.settings_schemas import StackSettings
 
 
 def test_call_afc(get_mocked_interface, event_logger):

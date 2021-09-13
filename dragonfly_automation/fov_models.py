@@ -1,20 +1,18 @@
+import datetime
+import json
 import os
 import re
 import sys
-import json
+
+import numpy as np
+import pandas as pd
 import skimage
 import sklearn
 import tifffile
-import datetime
-import numpy as np
-import pandas as pd
-from scipy import ndimage
-from sklearn import cluster
-from sklearn import metrics
-from sklearn import ensemble
-from skimage import feature
-from skimage import morphology
 from matplotlib import pyplot as plt
+from scipy import ndimage
+from skimage import feature, morphology
+from sklearn import cluster, ensemble, metrics
 
 from dragonfly_automation import utils
 

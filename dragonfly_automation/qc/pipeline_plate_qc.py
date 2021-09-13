@@ -1,23 +1,21 @@
-import os
-import re
+import datetime
 import glob
 import json
-import dask
-import tifffile
-import datetime
-import jsonschema
-import dask.diagnostics
+import os
+import re
 
+import dask
+import dask.diagnostics
+import jsonschema
 import numpy as np
 import pandas as pd
+import tifffile
 from matplotlib import pyplot as plt
+from opencell.imaging import images
 
 from dragonfly_automation import utils
 from dragonfly_automation.qc import half_plate_layout
 from dragonfly_automation.qc.hcs_site_well_ids import hcs_site_well_ids
-
-from opencell.imaging import images
-
 
 # schema for the manually-defined metadata required for each pipeline_plate acquisition
 EXTERNAL_METADATA_SCHEMA = {

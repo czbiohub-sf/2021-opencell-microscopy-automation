@@ -1,6 +1,7 @@
-import py4j
 import time
+
 import numpy as np
+import py4j
 
 
 class MicroscopeOperations:

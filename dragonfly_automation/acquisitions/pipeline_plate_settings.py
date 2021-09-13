@@ -7,12 +7,11 @@ TODO: should/must laser powers also be floats? (they are ints in Nathan's script
 '''
 
 from dragonfly_automation.settings_schemas import (
-    StackSettings,
-    ChannelSettings,
     AutoexposureSettings,
+    ChannelSettings,
     FOVSelectionSettings,
+    StackSettings,
 )
-
 
 fov_selection_settings = FOVSelectionSettings(
 

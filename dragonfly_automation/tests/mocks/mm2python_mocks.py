@@ -1,11 +1,12 @@
-import os
-import py4j
 import itertools
-import tifffile
-import tempfile
-import numpy as np
-import py4j.protocol
+import os
 import pathlib
+import tempfile
+
+import numpy as np
+import py4j
+import py4j.protocol
+import tifffile
 
 from dragonfly_automation import microscope_operations, utils
 from dragonfly_automation.acquisitions import pipeline_plate_settings as settings

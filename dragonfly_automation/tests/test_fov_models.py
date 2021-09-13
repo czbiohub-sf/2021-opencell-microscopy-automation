@@ -1,6 +1,5 @@
 import numpy as np
 
-
 KWARGS = dict(min_otsu_thresh=700, min_num_nuclei=10)
 
 

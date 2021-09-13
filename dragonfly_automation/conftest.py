@@ -1,10 +1,11 @@
 import json
-import pytest
-import imageio
 import pathlib
 
-from dragonfly_automation.tests.mocks import mm2python_mocks
+import imageio
+import pytest
+
 from dragonfly_automation.fov_models import PipelineFOVScorer
+from dragonfly_automation.tests.mocks import mm2python_mocks
 
 
 @pytest.fixture(scope='session')
