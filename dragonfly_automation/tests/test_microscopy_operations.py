@@ -110,7 +110,7 @@ def test_acquire_z_stack_camera_error(tmpdir, get_mocked_interface, event_logger
 
     # there should be one error message
     assert len(event_logger.events) == 1
-    assert 'Mocked getTaggedImage error' in event_logger.events[0]
+    assert 'ERROR' in event_logger.events[0]
 
     # all z-slices should have been acquired
     assert len(interface.datastore._images) == 4
