@@ -1,9 +1,9 @@
 # dragonfly-automation
-This is a Python package that organizes, and provides a framework for writing, automation scripts that use `mm2python` to control the spinning disk confocal microscope (nicknamed 'dragonfly'). 
+This is a Python package that organizes, and provides a framework for writing, automation scripts that use `mm2python` to control the spinning disk confocal microscope (nicknamed 'dragonfly').
 
 
 ## Usage examples
-The script is called using a CLI. Some common examples are shown below. See `scripts/run_acquisition.py` for all CLI arguments. 
+The script is called using a CLI. Some common examples are shown below. See `scripts/run_acquisition.py` for all CLI arguments.
 ```
 // start an acquisition in test mode, using the mocked MicroManager API
 // (this can be run in any environment and does not require py4j, mm2python, or MicroManager)

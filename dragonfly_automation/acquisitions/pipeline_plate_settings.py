@@ -35,7 +35,7 @@ fov_selection_settings = FOVSelectionSettings(
 
     # intensity threshold used to determine whether any nuclei are present in the FOV,
     # in units of raw fluorescence intensity in a snapshot of the 405 channel
-    # note: a value of 700 is used for standard OpenCell/pipeline imaging, 
+    # note: a value of 700 is used for standard OpenCell/pipeline imaging,
     # based on the observation that the background intensity in raw FOVs is around 500
     # WARNING: this value depends on the Hoechst staining protocol and the exposure settings!
     absolute_intensity_threshold=700,
@@ -109,7 +109,7 @@ autoexposure_settings = AutoexposureSettings(
     min_intensity=2**15,
     max_intensity=2**15,
 
-    # min and max exposure times 
+    # min and max exposure times
     # (min of 40ms is to avoid artifacts from the spinning disk)
     min_exposure_time=50.0,
     max_exposure_time=500.0,
@@ -124,5 +124,3 @@ autoexposure_settings = AutoexposureSettings(
     # a coarse z-step is sufficient for stepping through the stack during autoexposure
     z_step_size=1.0
 )
-
-

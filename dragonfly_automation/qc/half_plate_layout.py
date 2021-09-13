@@ -3,7 +3,7 @@ Platemaps for canonical 'half-plate' pipeline plate imaging acquisitions
 
 In these acquisitions, half of a pipeline plate is imaged by transposing
 either the first or second half of the pipeline plate (columns 1-6 or columns 7-12)
-to the region of the imaging plate spanned by B2 to G9. 
+to the region of the imaging plate spanned by B2 to G9.
 
 The maps hard-coded below encode the way in which this transposition is performed,
 and are used in `pipeline_plate_qc.rename_raw_tiffs_from_half_plate`

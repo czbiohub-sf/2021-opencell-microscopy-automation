@@ -4,27 +4,22 @@ from dragonfly_automation.qc.pipeline_plate_qc import PipelinePlateQC
 
 
 def parse_args():
-    '''
-    '''
+    ''' '''
     parser = argparse.ArgumentParser()
 
     parser.add_argument('root_dir', type=str)
 
     # CLI args whose presence in the command sets them to True
-    action_arg_names = [
-        'inspect', 'project', 'plot', 'construct_metadata', 'overwrite', 'run_all'
-    ]
+    action_arg_names = ['inspect', 'project', 'plot', 'construct_metadata', 'overwrite', 'run_all']
 
     for arg_name in action_arg_names:
         parser.add_argument(
-            '--%s' % arg_name.replace('_', '-'), 
-            dest=arg_name,
-            action='store_true',
-            required=False)
+            '--%s' % arg_name.replace('_', '-'), dest=arg_name, action='store_true', required=False
+        )
 
     for arg_name in action_arg_names:
         parser.set_defaults(**{arg_name: False})
-    
+
     args = parser.parse_args()
     return args
 
