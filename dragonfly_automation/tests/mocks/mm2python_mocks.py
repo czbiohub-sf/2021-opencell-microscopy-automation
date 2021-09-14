@@ -14,12 +14,13 @@ from dragonfly_automation.micromanager_interface import MicromanagerInterface
 
 
 def get_mocked_interface(
-    num_wells=2,
-    num_sites_per_well=6,
+    num_wells=3,
+    num_sites_per_well=2,
     channel='405',
     exposure_state='over',
     afc_failure_rate=0,
     afc_fail_on_first_n_calls=0,
+    afc_always_fail_in_wells=None,
     raise_go_to_position_error_once=False,
     raise_get_tagged_image_error_once=False,
     get_tagged_image_error_rate=0,
@@ -39,9 +40,13 @@ def get_mocked_interface(
     mm_core._raise_get_tagged_image_error_once = raise_get_tagged_image_error_once
     mm_core._raise_go_to_position_error_once = raise_go_to_position_error_once
 
+    # general AFC failure rates/flags
     mm_studio.af_manager.af_plugin._num_full_focus_calls = 0
     mm_studio.af_manager.af_plugin._afc_failure_rate = afc_failure_rate
     mm_studio.af_manager.af_plugin._afc_fails_on_first_n_calls = afc_fail_on_first_n_calls
+
+    # optional list of wells in which AFC should always fail
+    gate._afc_always_fail_in_wells = afc_always_fail_in_wells or []
 
     micromanager_interface = MicromanagerInterface(gate, mm_studio, mm_core)
 
@@ -100,6 +105,9 @@ class Gate:
         # the kind of exposure problem to mock (under- or over-exposure)
         self._exposure_state = None
 
+        # optional list of well_ids in which AFC should always fail
+        self._afc_always_fail_in_wells = []
+
         # filepaths to the test FOV snaps
         test_snap_filenames = [
             'good-1.tif',
@@ -112,8 +120,12 @@ class Gate:
         snap_dir = pathlib.Path(__file__).parent.parent / 'artifacts' / 'snaps'
         self._snap_filepaths = [snap_dir / filepath for filepath in test_snap_filenames]
 
-        def set_position_ind(position_ind):
+        def set_position_ind(position_ind, position_label):
             self._position_ind = position_ind
+            well_id, site_num = utils.parse_hcs_site_label(position_label)
+            self.mm_studio.af_manager.af_plugin._always_fail = (
+                well_id in self._afc_always_fail_in_wells
+            )
 
         def set_config_name(name):
             self._config_name = name
@@ -148,10 +160,7 @@ class Gate:
         Returns a Meta object that provides access to the last image (or 'snap')
         taken by MicroManager (usually via live.snap()) as an numpy memmap
         '''
-        meta = MockedMeta()
-
         im = tifffile.imread(self._snap_filepaths[self._position_ind % len(self._snap_filepaths)])
-
         if self._config_name == settings.hoechst_channel_settings.config_name:
             channel = settings.hoechst_channel_settings
         elif self._config_name == settings.gfp_channel_settings.config_name:
@@ -182,6 +191,7 @@ class Gate:
 
             im = utils.multiply_and_clip_to_uint16(im, relative_exposure)
 
+        meta = MockedMeta()
         meta._make_memmap(im)
         return meta
 
@@ -220,11 +230,15 @@ class AutofocusManager(BaseMockedPy4jObject):
 class AutofocusPlugin(BaseMockedPy4jObject):
     def __init__(self):
         self._num_full_focus_calls = 0
+        self._always_fail = False
         self._afc_failure_rate = 0.0
         self._afc_fails_on_first_n_calls = 0
 
     def fullFocus(self):
-        if self._afc_failure_rate > 0 and np.random.rand() < self._afc_failure_rate:
+        if self._always_fail:
+            raise MockPy4JJavaError()
+
+        elif self._afc_failure_rate > 0 and np.random.rand() < self._afc_failure_rate:
             raise MockPy4JJavaError()
 
         elif self._num_full_focus_calls < self._afc_fails_on_first_n_calls:
@@ -232,7 +246,7 @@ class AutofocusPlugin(BaseMockedPy4jObject):
             raise MockPy4JJavaError()
 
     def getPropertyNames(self):
-        return 'Offset', 'LockThreshold'
+        return ('Offset', 'LockThreshold')
 
     def getPropertyValue(self, name):
         return 0
@@ -353,7 +367,7 @@ class PositionList:
     def getPosition(self, ind):
         # set_position_ind is called here, instead of in Position.goToPosition,
         # because calls to position.goToPosition are always preceeded by a call to getPosition
-        self.set_position_ind(ind)
+        self.set_position_ind(ind, self._position_list[ind])
         return Position(self._position_list[ind])
 
 

@@ -30,7 +30,7 @@ class PipelinePlateAcquisition:
         plate_id,
         platemap_type,
         micromanager_interface,
-        acquire_brightfield_stacks=True,
+        acquire_brightfield_stacks=False,
         skip_fov_scoring=False,
         fov_scorer=None,
     ):
