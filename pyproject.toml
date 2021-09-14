@@ -1,0 +1,11 @@
+[tool.black]
+line-length = 100
+target-version = ['py36', 'py37', 'py38']
+include = '\.pyi?$'
+skip-string-normalization = true
+# config file with lots of vertical whitespace
+exclude = 'pipeline_plate_settings.py'
+
+[tool.isort]
+profile = 'black'
+line_length = 100

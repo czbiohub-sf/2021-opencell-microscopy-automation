@@ -1,11 +1,10 @@
-
-import py4j
 import time
+
 import numpy as np
+import py4j
 
 
-class Operations:
-
+class MicroscopeOperations:
     def __init__(self, event_logger):
         self.event_logger = event_logger
 
@@ -17,41 +16,39 @@ class Operations:
             result = operation(*args, **kwargs)
             self.event_logger('OPERATION INFO: Exiting %s' % operation.__name__)
             return result
+
         return wrapper
 
 
-def go_to_position(mm_studio, mm_core, position_ind):
+def go_to_position(micromanager_interface, position_ind):
 
-    mm_position_list = mm_studio.getPositionList()
+    mm_position_list = micromanager_interface.mm_studio.getPositionList()
     mm_position = mm_position_list.getPosition(position_ind)
 
     # move the stage to the new position
     # note that `goToPosition` moves the stages specified in the position list
     # we try twice because, for large stage movements, MicroManager will throw a timeout error
     try:
-        mm_position.goToPosition(mm_position, mm_core)
+        mm_position.goToPosition(mm_position, micromanager_interface.mm_core)
     except py4j.protocol.Py4JJavaError:
-        mm_position.goToPosition(mm_position, mm_core)
+        mm_position.goToPosition(mm_position, micromanager_interface.mm_core)
 
 
-def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=None):
-
+def call_afc(micromanager_interface, event_logger, afc_logger=None, position_ind=None):
     '''
-    Minimal wrapper around the `fullFocus` method of the active autofocus plugin,
-    ** which is assumed to be AFC **
+    Attempt to call AFC and recover from timeout errors
+    by incrementally adjusting the FocusDrive stage up and down
 
-    TODO: consider switching to mm_core API, 
+    TODO: consider switching to mm_core API,
     which has its own fullFocus method - might be faster
-
     '''
-
     # get the active AutofocusPlugin (assumed to be AFC)
-    af_manager = mm_studio.getAutofocusManager()
+    af_manager = micromanager_interface.mm_studio.getAutofocusManager()
     af_plugin = af_manager.getAutofocusMethod()
 
     # the initial AFC score and FocusDrive position
     initial_afc_score = af_plugin.getCurrentFocusScore()
-    initial_focusdrive_position = mm_core.getPosition('FocusDrive')
+    initial_focusdrive_position = micromanager_interface.mm_core.getPosition('FocusDrive')
 
     # here we attempt to call AFC at various FocusDrive positions.
     # the logic of this is that, when AFC times out, it is usually because
@@ -69,15 +66,15 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
 
         if offset != 0:
             # if we're here, it means AFC has failed once (at offset = 0),
-            # which means we need to reset the FocusDrive to its original position 
+            # which means we need to reset the FocusDrive to its original position
             # and then move it up by the (now nonzero) offset
             # (note that when AFC times out, it lowers the FocusDrive by around 500um)
             focusdrive_position = initial_focusdrive_position + offset
             move_z_stage(
-                mm_core, 
-                'FocusDrive', 
+                micromanager_interface,
+                stage_label='FocusDrive',
                 position=focusdrive_position,
-                kind='absolute'
+                kind='absolute',
             )
             # delay to help AFC 'adjust' to the new position (see comments below)
             time.sleep(0.5)
@@ -92,11 +89,11 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
             failed_offsets.append(offset)
 
     # add an artificial delay before retrieving the AFC score
-    # because, anecdotally, the score requires some time to update 
+    # because, anecdotally, the score requires some time to update
     # after the FocusDrive is moved
     # time.sleep(0.5)
     final_afc_score = af_plugin.getCurrentFocusScore()
-    final_focusdrive_position = mm_core.getPosition('FocusDrive')
+    final_focusdrive_position = micromanager_interface.mm_core.getPosition('FocusDrive')
 
     # if AFC failed, move the FocusDrive back to where it was,
     # which is, at this point, the best we can do
@@ -113,10 +110,10 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
         )
 
         move_z_stage(
-            mm_core,
-            'FocusDrive',
+            micromanager_interface,
+            stage_label='FocusDrive',
             position=initial_focusdrive_position,
-            kind='absolute'
+            kind='absolute',
         )
 
     if afc_logger is not None:
@@ -128,13 +125,13 @@ def call_afc(mm_studio, mm_core, event_logger, afc_logger=None, position_ind=Non
             last_afc_error_message=afc_error_message,
             failed_offsets=failed_offsets,
             afc_did_succeed=afc_did_succeed,
-            position_ind=position_ind
+            position_ind=position_ind,
         )
 
     return afc_did_succeed
 
 
-def acquire_image(gate, mm_studio, mm_core, event_logger):
+def acquire_image(micromanager_interface, event_logger):
     '''
     This method just wraps _acquire_image and attempts to call it multiple times
 
@@ -149,7 +146,7 @@ def acquire_image(gate, mm_studio, mm_core, event_logger):
     wait_time = 10
     for _ in range(num_tries):
         try:
-            data = _acquire_image(gate, mm_studio, mm_core)
+            data = _acquire_image(micromanager_interface)
             break
         except Exception as error:
             event_logger('ACQUIRE_IMAGE ERROR: %s' % str(error))
@@ -161,38 +158,38 @@ def acquire_image(gate, mm_studio, mm_core, event_logger):
     return data
 
 
-def _acquire_image(gate, mm_studio, mm_core):
+def _acquire_image(micromanager_interface):
     '''
     'snap' an image using the current laser/camera/exposure settings
     and return the image data as a numpy memmap
     '''
 
     # KC: not sure if this is necessary but it seems wise
-    mm_core.waitForSystem()
+    micromanager_interface.mm_core.waitForSystem()
 
     # number of times to try calling gate.getLastMeta()
     num_tries = 10
 
     # time in seconds to wait between calls to gate.getLastMeta()
-    wait_time = .10
+    wait_time = 0.10
 
     # clear the mm2python queue
     # this ensure that gate.getLastMeta returns either None
     # or the image generated by the call to mm_studio.live().snap() below
-    gate.clearQueue()
+    micromanager_interface.gate.clearQueue()
 
     # acquire an image using the current exposure settings
     # note that this method does not exit until the exposure is complete
-    mm_studio.live().snap(True)
+    micromanager_interface.mm_studio.live().snap(True)
 
     # retrieve the mm2python metadata corresponding to the image acquired above
     # (this seems to require waiting for some amount of time between 30 and 100ms)
     for _ in range(num_tries):
         time.sleep(wait_time)
-        meta = gate.getLastMeta()
+        meta = micromanager_interface.gate.getLastMeta()
         if meta is not None:
             break
-    
+
     # if meta is still None, try again with a longer wait time
     # (KC: I have no reason to believe this would ever be necessary;
     # I've included it only out of an abundance of caution)
@@ -200,10 +197,10 @@ def _acquire_image(gate, mm_studio, mm_core):
         wait_time *= 10
         for _ in range(num_tries):
             time.sleep(wait_time)
-            meta = gate.getLastMeta()
+            meta = micromanager_interface.gate.getLastMeta()
             if meta is not None:
                 break
-    
+
     # if meta is still None, we're in big trouble
     if meta is None:
         raise TypeError('The meta object returned by gate.getLastMeta() is None')
@@ -213,20 +210,13 @@ def _acquire_image(gate, mm_studio, mm_core):
         dtype='uint16',
         mode='r+',
         offset=0,
-        shape=(meta.getxRange(), meta.getyRange())
+        shape=(meta.getxRange(), meta.getyRange()),
     )
     return data
 
 
 def acquire_stack(
-    mm_studio, 
-    mm_core, 
-    datastore, 
-    stack_settings, 
-    channel_ind,
-    position_ind, 
-    position_name,
-    event_logger
+    micromanager_interface, stack_settings, channel_ind, position_ind, position_name, event_logger
 ):
     '''
     Acquire a z-stack using the given settings and 'put' it in the datastore object
@@ -237,8 +227,7 @@ def acquire_stack(
 
     Parameters
     ----------
-    mm_studio, mm_core, datastore : 
-    stack_settings : 
+    stack_settings :
     channel_ind : int
         a position-unique channel index (usually 0 for hoechst an 1 for GFP)
     position_ind : int
@@ -246,12 +235,12 @@ def acquire_stack(
     position_name : str
         an arbitrary but experiment-unique name for the current position,
         used to determine the filename of the TIFF stack
-    
+
     Context
     -------
-    The MicroManager API calls that acquire and 'save' an image at each z-slice 
-    are based on those that appear in the MicroManager v2 beanshell scripts. 
-    The relevant block from these scripts is copied verbatim below for reference. 
+    The MicroManager API calls that acquire and 'save' an image at each z-slice
+    are based on those that appear in the MicroManager v2 beanshell scripts.
+    The relevant block from these scripts is copied verbatim below for reference.
     ```
     mmc.snapImage();
     tmp1 = mmc.getTaggedImage();
@@ -268,8 +257,8 @@ def acquire_stack(
         wrapper to try this block multiple times, in an attempt to catch a camera hardware error
         '''
         # acquire an image
-        mm_core.waitForImageSynchro()
-        mm_core.snapImage()
+        micromanager_interface.mm_core.waitForImageSynchro()
+        micromanager_interface.mm_core.snapImage()
 
         # optional wait time between snapImage and getTaggedImage calls
         if delay > 0:
@@ -277,27 +266,29 @@ def acquire_stack(
 
         # convert the image
         # TODO: understand what's happening here
-        tagged_image = mm_core.getTaggedImage()
-        image = mm_studio.data().convertTaggedImage(tagged_image)
+        tagged_image = micromanager_interface.mm_core.getTaggedImage()
+        image = micromanager_interface.mm_studio.data().convertTaggedImage(tagged_image)
         return image
 
     # generate a list of the z positions to visit
     z_positions = np.arange(
-        stack_settings.relative_bottom, 
-        stack_settings.relative_top + stack_settings.step_size, 
-        stack_settings.step_size
+        stack_settings.relative_bottom,
+        stack_settings.relative_top + stack_settings.step_size,
+        stack_settings.step_size,
     )
 
     for z_ind, z_position in enumerate(z_positions):
 
-        # move to the new z-position 
-        move_z_stage(mm_core, stack_settings.stage_label, position=z_position, kind='absolute')
+        # move to the new z-position
+        move_z_stage(
+            micromanager_interface, stack_settings.stage_label, position=z_position, kind='absolute'
+        )
 
         # this is an attempt to recover from the 'camera image buffer read failed' error
         # that is randomly and rarely thrown by the `getTaggedImage` call
         image = None
         num_tries = 10
-        intertry_wait_time = 10
+        intertry_wait_time = 3
         intratry_wait_time = 0
         for _ in range(num_tries):
             try:
@@ -326,41 +317,38 @@ def acquire_stack(
         coords = coords.build()
 
         # construct image metadata
-        # NOTE: the filename of the TIFF stack is determined entirely 
+        # NOTE: the filename of the TIFF stack is determined entirely
         # by the value passed to metadata.positionName (and this value can be any string)
         metadata = image.getMetadata().copy()
         metadata = metadata.positionName(position_name)
         metadata = metadata.build()
 
         image = image.copyWith(coords, metadata)
-        if datastore:
-            datastore.putImage(image)
+        if micromanager_interface.has_open_datastore:
+            micromanager_interface.datastore.putImage(image)
 
     # cleanup: reset the piezo stage
     # TODO: decide if this is necessary
-    move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
+    move_z_stage(micromanager_interface, stack_settings.stage_label, position=0.0, kind='absolute')
 
 
-def change_channel(mm_core, channel_settings):
+def change_channel(micromanager_interface, channel_settings):
     '''
     Convenience method to set the laser power, exposure time, and camera gain
-    
+
     (KC: pretty sure the order of these operations doesn't matter,
     but to be safe the order here is preserved from Nathan's script)
     '''
+    mm_core = micromanager_interface.mm_core
 
-    # hardware config
+    # hardware config (this takes some time)
     mm_core.setConfig(channel_settings.config_group, channel_settings.config_name)
-
-    # changing the config takes time
     mm_core.waitForConfig(channel_settings.config_group, channel_settings.config_name)
 
     # laser power
     if channel_settings.laser_line is not None:
         mm_core.setProperty(
-            channel_settings.laser_line,
-            channel_settings.laser_name,
-            channel_settings.laser_power
+            channel_settings.laser_line, channel_settings.laser_name, channel_settings.laser_power
         )
 
     # exposure time
@@ -368,62 +356,46 @@ def change_channel(mm_core, channel_settings):
 
     # camera gain
     property_name = 'Gain'
-    mm_core.setProperty(
-        channel_settings.camera_name, 
-        property_name, 
-        channel_settings.camera_gain
-    )
+    mm_core.setProperty(channel_settings.camera_name, property_name, channel_settings.camera_gain)
 
 
-def move_z_stage(mm_core, stage_label, position=None, kind=None):
+def move_z_stage(micromanager_interface, stage_label, position=None, kind=None):
     '''
     Convenience method to move a z-stage
-    (adapted from Nathan's script)
-
     TODO: basic sanity checks on the value of `position`
     (e.g., if kind=='relative', `position` shouldn't be a 'big' number)
     '''
 
-    # validate `kind`
     if kind not in ['relative', 'absolute']:
         raise ValueError("`kind` must be either 'relative' or 'absolute'")
-    
-    # validate `position`
+
     try:
         position = float(position)
     except ValueError:
         raise TypeError('`position` cannot be coerced to float')
-    
-    if np.isnan(position):
+
+    if not np.isfinite(position):
         raise TypeError('`position` cannot be nan')
-    
+
     # move the stage
     if kind == 'absolute':
-        mm_core.setPosition(stage_label, position)
-
+        micromanager_interface.mm_core.setPosition(stage_label, position)
     elif kind == 'relative':
-        mm_core.setRelativePosition(stage_label, position)
-    
-    mm_core.waitForDevice(stage_label)
+        micromanager_interface.mm_core.setRelativePosition(stage_label, position)
+
+    micromanager_interface.mm_core.waitForDevice(stage_label)
 
 
 def autoexposure(
-    gate,
-    mm_studio,
-    mm_core,
-    stack_settings, 
-    autoexposure_settings,
-    channel_settings,
-    event_logger
+    micromanager_interface, stack_settings, autoexposure_settings, channel_settings, event_logger
 ):
     '''
 
     Parameters
     ----------
-    gate, mm_studio, mm_core : gateway objects
     stack_settings : an instance of StackSettings
     autoexposure_settings : an instance of AutoexposureSettings
-    channel_settings : the ChannelSettings instance 
+    channel_settings : the ChannelSettings instance
         corresponding to the channel on which to run the autoexposure algorithm
         NOTE: this method modifies the `laser_power` and `exposure_time` attributes
 
@@ -440,16 +412,16 @@ def autoexposure(
             then lower the exposure time and/or laser power
 
     stack check:
-        if no slices were over-exposed, check for under-exposure 
+        if no slices were over-exposed, check for under-exposure
         using the overall max intensity and lower the exposure time if necessary
 
     '''
-    
+
     autoexposure_did_succeed = True
 
     # keep track of the maximum intensity
     stack_max_intensity = 0
-    
+
     # keep track of whether any slices were ever over-exposed
     overexposure_did_occur = False
 
@@ -459,25 +431,21 @@ def autoexposure(
     # step through the z-stack and check each slice for over-exposure
     while z_position <= stack_settings.relative_top:
 
-        # move to the next z-position 
+        # move to the next z-position
         # (either the next slice or the bottom of the stack)
         move_z_stage(
-            mm_core, 
-            stack_settings.stage_label, 
-            position=z_position,
-            kind='absolute'
+            micromanager_interface, stack_settings.stage_label, position=z_position, kind='absolute'
         )
 
         # acquire an image and check the exposure
-        image = acquire_image(gate, mm_studio, mm_core, event_logger)
+        image = acquire_image(micromanager_interface, event_logger)
 
-        # use a percentile to calculate the 'max' intensity 
+        # use a percentile to calculate the 'max' intensity
         # as a defense against hot pixels, anomalous bright spots/dust, etc
         # (the 99.99th percentile corresponds to ~100 pixels in a 1024x1024 image)
         slice_max_intensity = np.percentile(image, 99.99)
         event_logger(
-            'AUTOEXPOSURE INFO: max_intensity = %d at z = %0.1f'
-            % (slice_max_intensity, z_position)
+            'AUTOEXPOSURE INFO: max_intensity = %d at z = %0.1f' % (slice_max_intensity, z_position)
         )
 
         # if the slice was over-exposed, lower the exposure time or the laser power,
@@ -500,19 +468,18 @@ def autoexposure(
                 channel_settings.laser_power *= autoexposure_settings.relative_exposure_step
                 event_logger(
                     'AUTOEXPOSURE INFO: The minimum exposure time was exceeded '
-                    'so the laser power was reduced to %0.1f%%'
-                    % (channel_settings.laser_power)
+                    'so the laser power was reduced to %0.1f%%' % (channel_settings.laser_power)
                 )
 
                 # update the laser power
-                mm_core.setProperty(
+                micromanager_interface.mm_core.setProperty(
                     channel_settings.laser_line,
                     channel_settings.laser_name,
-                    channel_settings.laser_power
+                    channel_settings.laser_power,
                 )
 
             # update the exposure time
-            mm_core.setExposure(float(channel_settings.exposure_time))
+            micromanager_interface.mm_core.setExposure(float(channel_settings.exposure_time))
 
             # prepare to return to the bottom of the stack
             z_position = stack_settings.relative_bottom
@@ -531,12 +498,11 @@ def autoexposure(
                 )
                 break
 
-        # if the slice was not over-exposed, 
+        # if the slice was not over-exposed,
         # update stack_max and move to the next z-slice
         else:
             stack_max_intensity = max(stack_max_intensity, slice_max_intensity)
             z_position += autoexposure_settings.z_step_size
-    
 
     # after exiting the while-loop, either
     # 1) some slices were over-exposed and the exposure is now adjusted, or
@@ -561,7 +527,7 @@ def autoexposure(
                 )
 
     # reset the piezo stage
-    move_z_stage(mm_core, stack_settings.stage_label, position=0.0, kind='absolute')
+    move_z_stage(micromanager_interface, stack_settings.stage_label, position=0.0, kind='absolute')
 
     # log the final results
     event_logger(
@@ -571,4 +537,3 @@ def autoexposure(
     )
 
     return autoexposure_did_succeed
-
