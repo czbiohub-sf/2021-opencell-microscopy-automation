@@ -27,8 +27,10 @@ python ./scripts/run_acquisition.py \
 ```
 
 ## Development
-We use black for formatting, flake8 and pylint for linting, pytest for testing, and Github Actions for CI. To setup a new dev env (starting from a clean virtualenv):
+We use black for formatting, flake8 and pylint for linting, pytest for testing, and Github Actions for CI. To setup a new dev env:
 
-1) Clone the repo, install dependencies, and install the `dragonfly_automation` package using: `pip install -e .`
-2) Install pre-commit hooks using `pre-commit install`
-3) To run tests locally, use `make test`
+1) Create a new Python 3.7 virtualenv: `conda create -n dragonflyenv python=3.7`
+2) Clone this repo and install dependencies using pip: `pip install -r requirements.txt`
+3) Install the `dragonfly_automation` package: `pip install -e .`
+4) Install the pre-commit hooks: `pre-commit install`
+5) To run tests locally, use `make test`
