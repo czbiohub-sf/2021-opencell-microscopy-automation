@@ -146,7 +146,7 @@ def test_autoexposure_underexposed_fov(get_mocked_interface, event_logger):
     )
     assert autoexposure_did_succeed
 
-    # check that the exposure time has been increased
+    # check that the exposure time was increased
     assert settings.gfp_channel_settings.exposure_time > initial_exposure_time
 
 
@@ -164,15 +164,13 @@ def test_autoexposure_overexposed_fov(get_mocked_interface, event_logger):
     )
     assert autoexposure_did_succeed
 
-    # check that the exposure time has been increased
+    # check that the laser power was decreased
     assert settings.gfp_channel_settings.laser_power < initial_laser_power
 
 
 def test_autoexposure_hopelessly_overexposed_fov(get_mocked_interface, event_logger):
 
     interface = get_mocked_interface(channel='488', exposure_state='way-over')
-    initial_laser_power = settings.gfp_channel_settings.laser_power
-
     autoexposure_did_succeed = microscope_operations.autoexposure(
         interface,
         settings.fluorescence_stack_settings,
@@ -182,5 +180,7 @@ def test_autoexposure_hopelessly_overexposed_fov(get_mocked_interface, event_log
     )
     assert not autoexposure_did_succeed
 
-    # check that the exposure time has been increased
-    assert settings.gfp_channel_settings.laser_power < initial_laser_power
+    # check that the laser power was decreased as much as possible
+    assert (
+        settings.gfp_channel_settings.laser_power < settings.autoexposure_settings.min_laser_power
+    )

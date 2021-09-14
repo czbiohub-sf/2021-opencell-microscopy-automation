@@ -39,6 +39,8 @@ def fov_snap_and_score(snaps_dirpath):
     '''
     An FOV snap and its exact predicted score using the model defined in trained_fov_scorer below
     (i.e., a model trained on the 2019-10-08 dataset with random_state = 42)
+    Note that the value of the expected_score depends on the environment;
+    the score here is specific to Python 3.7.10 and the dependency versions in requirements.txt
     '''
     snap = imageio.imread(snaps_dirpath / 'good-1.tif')
     expected_score = 0.85
