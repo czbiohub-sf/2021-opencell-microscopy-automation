@@ -11,27 +11,19 @@ This is a Python package that contains the microscope-automation scripts used to
 ## Usage examples
 The script is called using a CLI. Some common examples are shown below. See `scripts/run_acquisition.py` for all CLI arguments.
 ```
-// start an acquisition in test mode, using the mocked MicroManager API
+// start an acquisition in test mode and using the mocked MicroManager API
 // (this does not require mm2python or MicroManager)
 python ./scripts/run_acquisition.py \
 --data-dir ./tests/output/ \
 --pml-id PML0000 \
 --plate-id P0000 \
 --platemap-type none \
---mock-micromanager-api \
---mode test
+--mode test \
+--mock-micromanager-api
 
-// start an acquisition in test mode, using the real API and well A1 for the test
+// start a full-plate acquisition, using mm2python and the real MicroManager API
 python ./scripts/run_acquisition.py \
---data-dir ./tests/output/ \
---pml-id PML0000 \
---plate-id P0000 \
---platemap-type none \
---mode test
---test-well A1
-
-// start a full-plate acquisition, using the real API
-python ./scripts/run_acquisition.py --pml-id PML0123 --plate-id P0021 --platemap-type none
+--pml-id PML0123 --plate-id P0021 --platemap-type none
 ```
 
 ## Development
@@ -40,24 +32,3 @@ We use black for formatting, flake8 and pylint for linting, pytest for testing, 
 1) Clone the repo, install dependencies, and install the `dragonfly_automation` package using: `pip install -e .`
 2) Install pre-commit hooks using `pre-commit install`
 3) To run tests locally, use `make test`
-
-
-## Near-term TODOs
-- migrate to pycromanager and gamma
-- add tests for the complex AFC-related logic in score_positions (e.g. mock multiple wells in a row failing)
-- define explicit event kinds (autofocus, scoring, autoexposure, etc) and levels (info, warning, error) for event logging
-
-
-## Long-term TODOs
-- better autoexposure method (using threshold_multiotsu method?)
-- image fluorescent beads to measure PSF and chromatic aberration
-- develop script to acquire short timelapses (instead of z-stacks)
-- add an ability to 'interact' with a running script to change some critical settings:
-	- max number of FOVs per well
-	- wells to skip
-	- whether to stop the script safely
-
-## FOV scoring TODOs
-- optimize the dbscan epsilon (the clustering is very sensitive to this)
-- organize/clarify all of the empirical parameters and thresholds in FOVScorer
-- try a CNN on downsampled FOVs (requires augmentation to enforce rotational invariance)
