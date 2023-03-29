@@ -1,6 +1,8 @@
 # dragonfly-automation
 This is a Python package that contains the microscope-automation scripts used to enable high-throughput microscopy for the OpenCell project. These scripts use [`mm2python`](https://github.com/czbiohub/mm2python) to control the spinning disk confocal microscope (nicknamed 'dragonfly'). They are written against the MicroManager 2.0 beta API.
 
+Refer to our [2022 OpenCell paper](https://www.science.org/doi/10.1126/science.abi6983) for more details.
+
 #### Primary features
 * Modular and reusable methods for common tasks (e.g., autofocusing, adjusting exposures, acquiring z-stacks)
 * Pre-trained machine-learning models for dynamic field-of-view scoring and/or classification
